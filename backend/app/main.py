@@ -75,11 +75,22 @@ app.include_router(voice_router, prefix=settings.API_V1_PREFIX)
 @app.get("/health")
 def top_health():
     from app.services.llm_service import get_gemini_client
-    client = get_gemini_client()
+    raw_env = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or getattr(settings, "GEMINI_API_KEY", "") or "").strip().strip('"').strip("'")
+    key_len = len(raw_env)
+    key_prefix = raw_env[:5] + "..." if key_len > 5 else (raw_env if key_len > 0 else "none")
+    genai_err = None
+    client = None
+    try:
+        client = get_gemini_client()
+    except Exception as e:
+        genai_err = str(e)
     return {
         "status": "ok",
         "app": settings.PROJECT_NAME,
-        "gemini_connected": client is not None
+        "gemini_connected": client is not None,
+        "key_detected": key_len > 10,
+        "key_prefix": key_prefix,
+        "error": genai_err
     }
 
 @app.get("/download-apk")
