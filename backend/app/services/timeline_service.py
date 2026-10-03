@@ -62,13 +62,63 @@ class TimelineService:
         try:
             target_date = datetime.strptime(date_str, "%Y-%m-%d")
             start_dt = target_date.replace(hour=0, minute=0, second=0)
-            end_dt = target_date.replace(hour=23, minute=59, end_second=59) if hasattr(target_date, "end_second") else target_date.replace(hour=23, minute=59, second=59)
+            end_dt = target_date.replace(hour=23, minute=59, second=59)
             
             return db.query(Message).filter(
                 Message.user_id == user_id,
                 Message.timestamp >= start_dt,
                 Message.timestamp <= end_dt
             ).order_by(Message.timestamp.asc()).all()
+        except Exception:
+            return []
+
+    def search_past_conversations(
+        self,
+        db: Session,
+        user_id: str,
+        query: str,
+        top_k: int = 5,
+        exclude_conversation_id: Optional[str] = None
+    ) -> List[Message]:
+        """
+        Cross-session historical conversation search:
+        Retrieves relevant historical messages across all user conversations
+        outside of the current session's immediate window.
+        Enforces strict user isolation.
+        """
+        try:
+            # Check for date query first
+            detected_date = self.parse_natural_date_query(query)
+            if detected_date:
+                msgs = self.get_conversation_history_for_date(db, user_id, detected_date)
+                if exclude_conversation_id:
+                    msgs = [m for m in msgs if m.conversation_id != exclude_conversation_id]
+                return msgs[:top_k]
+
+            # Otherwise, keyword/relevance search across past messages
+            q_lower = query.lower()
+            stop_words = {"what", "did", "tell", "you", "about", "last", "month", "week", "yesterday", "earlier", "maine", "kya", "bataya", "tha"}
+            keywords = [w for w in re.findall(r'\b[a-zA-Z0-9_]{3,}\b', q_lower) if w not in stop_words]
+
+            base_q = db.query(Message).filter(Message.user_id == user_id)
+            if exclude_conversation_id:
+                base_q = base_q.filter(Message.conversation_id != exclude_conversation_id)
+
+            if keywords:
+                from sqlalchemy import or_
+                conditions = [Message.content.ilike(f"%{kw}%") for kw in keywords]
+                candidates = base_q.filter(or_(*conditions)).order_by(Message.timestamp.desc()).limit(50).all()
+                if candidates:
+                    scored = []
+                    for cand in candidates:
+                        c_lower = cand.content.lower()
+                        match_count = sum(1 for kw in keywords if kw in c_lower)
+                        scored.append((match_count, cand))
+                    scored.sort(key=lambda x: x[0], reverse=True)
+                    return [c for _, c in scored[:top_k]]
+
+            # Fallback to most recent past messages
+            return base_q.order_by(Message.timestamp.desc()).limit(top_k).all()
         except Exception:
             return []
 

@@ -171,6 +171,16 @@ class LLMService:
                     "timeline, aur daily activities yaad rakhti hoon, sath hi aapke sawalon ke jawab deti hoon.\n\n"
                     "Aap mujhse apne documents, college profile, skills ya memories ke bare mein pooch sakte hain!"
                 )
+            if any(w in lower for w in ["bestie", "best friend", "dost"]):
+                if context_memories:
+                    for line in context_memories.splitlines():
+                        if any(w in line.lower() for w in ["bestie", "best friend", "dost"]):
+                            clean = line.replace("•", "").strip()
+                            m = re.search(r"is\s+([A-Za-z0-9_\s]+)", clean, re.IGNORECASE)
+                            if m:
+                                name = m.group(1).strip()
+                                return f"Aapki bestie ka naam {name} hai!"
+                            return f"Aapki bestie ke baare mein: {clean}"
             if "skill" in lower or "kya skills" in lower:
                 if context_memories or user_profile_summary:
                     return f"Aapki profile ke mutabik: {user_profile_summary or context_memories}"
@@ -205,6 +215,16 @@ class LLMService:
 
         # Intelligent local fallback for personal timeline & profile
         lower = user_message.lower()
+        if any(w in lower for w in ["bestie", "best friend", "dost"]):
+            if context_memories:
+                for line in context_memories.splitlines():
+                    if any(w in line.lower() for w in ["bestie", "best friend", "dost"]):
+                        clean = line.replace("•", "").strip()
+                        m = re.search(r"is\s+([A-Za-z0-9_\s]+)", clean, re.IGNORECASE)
+                        if m:
+                            name = m.group(1).strip()
+                            return f"Aapki bestie ka naam {name} hai!"
+                        return f"Aapki bestie ke baare mein: {clean}"
         if "skill" in lower or "kya skills" in lower:
             if context_memories or user_profile_summary:
                 return f"Aapki profile ke mutabik: {user_profile_summary or context_memories}"
@@ -231,22 +251,193 @@ class LLMService:
             "👉 Agar local computer par hain: `backend/.env` file mein `GEMINI_API_KEY` set karein."
         )
 
+    def _extract_rule_based_facts(self, user_message: str) -> List[Dict[str, Any]]:
+        """Instant sub-millisecond deterministic extractor for core facts (100% resilient to network/quota limits)."""
+        extracted = []
+        raw = user_message.strip()
+        lower = raw.lower()
+
+        # Guard against pure queries / questions
+        if lower.endswith("?") or lower.startswith(("what is", "who is", "where is", "how is", "kya hai", "kaun hai", "kahan hai")):
+            return []
+
+        # 1. Best friend / Bestie
+        bestie_patterns = [
+            r"(?:my\s+bestie(?:'s\s+name)?|my\s+best\s+friend(?:'s\s+name)?)\s+(?:is|=|hai)\s+([A-Za-z0-9_\s]+)",
+            r"(?:meri\s+bestie|meri\s+best\s+friend|mere\s+dost|dost)\s+(?:ka\s+naam\s+)?([A-Za-z0-9_\s]+?)\s+hai",
+            r"(?:bestie|best\s+friend)\s*:\s*([A-Za-z0-9_\s]+)"
+        ]
+        for pat in bestie_patterns:
+            m = re.search(pat, raw, re.IGNORECASE)
+            if m:
+                name = m.group(1).strip().rstrip(".,!")
+                if len(name) >= 2 and not any(w in name.lower() for w in ["what", "who", "kya", "kaun"]):
+                    extracted.append({
+                        "content": f"User's bestie / best friend is {name.title()}",
+                        "memory_type": "relationship",
+                        "topic": "best_friend",
+                        "importance": 5,
+                        "confidence": 1.0
+                    })
+                    break
+
+        # 2. General relationships: girlfriend, boyfriend, wife, husband, sister, brother, mother, father
+        rel_pattern = r"(?:my|mera|meri)\s+(girlfriend|gf|boyfriend|bf|wife|husband|sister|brother|mother|mom|father|dad)\s+(?:ka\s+naam\s+|name\s+is\s+|is\s+)?([A-Za-z0-9_\s]+?)(?:\s+hai|[.,!]|$)"
+        m_rel = re.search(rel_pattern, raw, re.IGNORECASE)
+        if m_rel and not any(e.get("topic") == "best_friend" for e in extracted):
+            relation_type = m_rel.group(1).lower()
+            rel_name = m_rel.group(2).strip().rstrip(".,!")
+            if len(rel_name) >= 2 and not any(w in rel_name.lower() for w in ["what", "who", "kya", "kaun", "is"]):
+                extracted.append({
+                    "content": f"User's {relation_type} is {rel_name.title()}",
+                    "memory_type": "relationship",
+                    "topic": f"rel_{relation_type}",
+                    "importance": 4,
+                    "confidence": 1.0
+                })
+
+        # 3. User's Name
+        name_patterns = [
+            r"(?:my\s+name\s+is|call\s+me)\s+([A-Za-z0-9_\s]+)",
+            r"(?:mera\s+naam)\s+([A-Za-z0-9_\s]+?)\s+hai"
+        ]
+        for pat in name_patterns:
+            m = re.search(pat, raw, re.IGNORECASE)
+            if m:
+                u_name = m.group(1).strip().rstrip(".,!")
+                if len(u_name) >= 2 and not any(w in u_name.lower() for w in ["what", "who", "kya"]):
+                    extracted.append({
+                        "content": f"User's name is {u_name.title()}",
+                        "memory_type": "profile",
+                        "topic": "name",
+                        "importance": 5,
+                        "confidence": 1.0
+                    })
+                    break
+
+        # 4. Location / City
+        loc_patterns = [
+            r"(?:i\s+live\s+in|i\s+am\s+from|i'm\s+from)\s+([A-Za-z0-9_\s]+)",
+            r"(?:main|mein)\s+([A-Za-z0-9_\s]+?)\s+(?:mein\s+rehta|se\s+hoon)"
+        ]
+        for pat in loc_patterns:
+            m = re.search(pat, raw, re.IGNORECASE)
+            if m:
+                city = m.group(1).strip().rstrip(".,!")
+                if len(city) >= 2:
+                    extracted.append({
+                        "content": f"User lives in {city.title()}",
+                        "memory_type": "personal_fact",
+                        "topic": "location",
+                        "importance": 4,
+                        "confidence": 1.0
+                    })
+                    break
+
+        # 5. Education / College
+        col_patterns = [
+            r"(?:my\s+college\s+is|i\s+study\s+at)\s+([A-Za-z0-9_\s]+)",
+            r"(?:mera\s+college)\s+([A-Za-z0-9_\s]+?)\s+hai"
+        ]
+        for pat in col_patterns:
+            m = re.search(pat, raw, re.IGNORECASE)
+            if m:
+                col = m.group(1).strip().rstrip(".,!")
+                if len(col) >= 2:
+                    extracted.append({
+                        "content": f"User studies at {col}",
+                        "memory_type": "education",
+                        "topic": "college",
+                        "importance": 4,
+                        "confidence": 1.0
+                    })
+                    break
+
+        # 6. Work / Company
+        work_patterns = [
+            r"(?:i\s+work\s+at|my\s+company\s+is)\s+([A-Za-z0-9_\s]+)",
+            r"(?:main|mein)\s+([A-Za-z0-9_\s]+?)\s+(?:mein\s+kaam\s+karta)"
+        ]
+        for pat in work_patterns:
+            m = re.search(pat, raw, re.IGNORECASE)
+            if m:
+                comp = m.group(1).strip().rstrip(".,!")
+                if len(comp) >= 2:
+                    extracted.append({
+                        "content": f"User works at {comp}",
+                        "memory_type": "personal_fact",
+                        "topic": "company",
+                        "importance": 4,
+                        "confidence": 1.0
+                    })
+                    break
+
+        # 7. Skills
+        if "my skills are" in lower or "i know " in lower or "mujhe aati hai" in lower:
+            extracted.append({
+                "content": raw,
+                "memory_type": "skill",
+                "topic": "skills",
+                "importance": 4,
+                "confidence": 0.95
+            })
+
+        # 8. Projects
+        elif "working on" in lower or "kaam kar raha" in lower or "project" in lower:
+            extracted.append({
+                "content": raw,
+                "memory_type": "project",
+                "topic": "projects",
+                "importance": 4,
+                "confidence": 0.9
+            })
+
+        # 9. Goals
+        elif "goal" in lower or "lakshya" in lower or "want to learn" in lower:
+            extracted.append({
+                "content": raw,
+                "memory_type": "goal",
+                "topic": "goals",
+                "importance": 4,
+                "confidence": 0.85
+            })
+
+        # 10. Explicit "Remember that..." or "Yaad rakhna..."
+        rem_m = re.search(r"(?:remember\s+that|remember\s+this|yaad\s+rakhna\s+ki)\s+(.+)", raw, re.IGNORECASE)
+        if rem_m and not extracted:
+            fact = rem_m.group(1).strip().rstrip(".,!")
+            extracted.append({
+                "content": f"User note: {fact}",
+                "memory_type": "personal_fact",
+                "topic": "user_instruction",
+                "importance": 4,
+                "confidence": 0.95
+            })
+
+        return extracted
+
     def extract_memories_and_entities(self, user_message: str, assistant_response: str) -> List[Dict[str, Any]]:
         """
         Analyze conversation turn to detect if user revealed new persistent long-term facts:
-        skills, projects, preferences, goals, education, achievements, daily activities.
+        skills, projects, preferences, goals, education, achievements, daily activities, relationships.
+        Combines deterministic rule extraction with LLM reasoning.
         """
+        # Step 1: Rule-based deterministic extraction (runs in 0.1ms, 100% reliable)
+        rule_extracted = self._extract_rule_based_facts(user_message)
+
+        # Step 2: Advanced LLM extraction for non-templated statements
         prompt = f"""
-Analyze this conversation turn and extract any NEW long-term personal facts, activities, skills, or plans.
+Analyze this conversation turn and extract any NEW long-term personal facts, relationships, activities, skills, or plans.
 Do NOT extract temporary chatter (e.g. 'I am hungry', 'hello', 'good morning', 'weather is nice').
-Extract ONLY persistent facts or significant activities.
+Extract ONLY persistent facts, relationships, or significant activities.
 
 User: "{user_message}"
 Assistant: "{assistant_response}"
 
 Return valid JSON list of objects with these keys:
-- "content": concise statement of the fact (e.g., "User knows FastAPI and React", "User worked on SQL RAG project")
-- "memory_type": one of ["skill", "project", "education", "goal", "interest", "preference", "achievement", "activity", "personal_fact"]
+- "content": concise statement of the fact (e.g., "User's bestie is Niku", "User knows FastAPI and React", "User worked on SQL RAG project")
+- "memory_type": one of ["relationship", "skill", "project", "education", "goal", "interest", "preference", "achievement", "activity", "personal_fact"]
+- "topic": concise entity or topic category (e.g. "best_friend", "college", "company", "skills", "location", "projects")
 - "importance": integer from 1 to 5
 - "confidence": float from 0.0 to 1.0
 - "event_date": optional date string (YYYY-MM-DD) if referring to a specific day
@@ -255,6 +446,7 @@ If no long-term memory is present, return [].
 Only return raw JSON, no markdown formatting.
 """
         genai = get_gemini_client()
+        llm_extracted = []
         if genai:
             models_to_try = [self.model_name] + [m for m in CANDIDATE_MODELS if m != self.model_name]
             for candidate in models_to_try:
@@ -268,35 +460,31 @@ Only return raw JSON, no markdown formatting.
                         text = text[:-3]
                     parsed = json.loads(text.strip())
                     if isinstance(parsed, list):
-                        return parsed
+                        llm_extracted = parsed
+                        break
                 except Exception as e:
                     logger.warning(f"Memory extraction note with {candidate}: {e}")
                     continue
 
-        # Rule-based fallback extraction
-        extracted = []
-        lower = user_message.lower()
-        if "my skills are" in lower or "i know " in lower or "mujhe aati hai" in lower:
-            extracted.append({
-                "content": user_message,
-                "memory_type": "skill",
-                "importance": 4,
-                "confidence": 0.95
-            })
-        elif "working on" in lower or "kaam kar raha" in lower or "project" in lower:
-            extracted.append({
-                "content": user_message,
-                "memory_type": "project",
-                "importance": 4,
-                "confidence": 0.9
-            })
-        elif "goal" in lower or "lakshya" in lower or "want to learn" in lower:
-            extracted.append({
-                "content": user_message,
-                "memory_type": "goal",
-                "importance": 4,
-                "confidence": 0.85
-            })
-        return extracted
+        # Merge extracted items, rule-based takes precedence for high-confidence items
+        final_list = list(rule_extracted)
+        seen_topics = {item.get("topic") for item in rule_extracted if item.get("topic")}
+        seen_contents = {item.get("content", "").lower() for item in rule_extracted}
+
+        for item in llm_extracted:
+            content = item.get("content", "").strip()
+            topic = item.get("topic")
+            if not content:
+                continue
+            if topic and topic in seen_topics:
+                continue
+            if content.lower() in seen_contents:
+                continue
+            final_list.append(item)
+            if topic:
+                seen_topics.add(topic)
+            seen_contents.add(content.lower())
+
+        return final_list
 
 llm_service = LLMService()

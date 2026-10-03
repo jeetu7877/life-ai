@@ -187,13 +187,19 @@ class AgentService:
                 retrieved_sources.append({"source": "documents", "count": len(doc_chunks)})
 
         # RETRIEVAL: Level 2 Long-Term Semantic Memory (Top 3-5 memories, STRICT USER ISOLATION)
-        # CRITICAL OPTIMIZATION: Bypass memory vector search if this is purely a document query or general query
         t_mem_start = time.perf_counter()
         needs_memory = False
-        if not needs_docs and intent != QueryIntent.GENERAL:
-            needs_memory = intent in [QueryIntent.MEMORY, QueryIntent.TIMELINE] or any(
-                w in lower_msg for w in ["remember", "yaad", "dost", "friend", "favourite", "favorite", "preference", "mera", "meri", "mere", "my"]
-            )
+        if not needs_docs:
+            if intent in [QueryIntent.MEMORY, QueryIntent.TIMELINE]:
+                needs_memory = True
+            elif any(
+                w in lower_msg for w in [
+                    "remember", "yaad", "dost", "friend", "bestie", "favourite", "favorite",
+                    "preference", "mera", "meri", "mere", "my", "who is my", "what is my",
+                    "where do i", "where did i", "what did i", "tell me about my"
+                ]
+            ):
+                needs_memory = True
 
         if needs_memory:
             t_vec_start = time.perf_counter()
@@ -205,10 +211,30 @@ class AgentService:
             )
             timing_metrics["vector_ms"] = round((time.perf_counter() - t_vec_start) * 1000, 2)
             timing_metrics["memory_ms"] = round((time.perf_counter() - t_mem_start) * 1000, 2)
+            logger.info(f"[MEMORY_RETRIEVE] user_id={user_id} count={len(semantic_memories)} ids={[m['id'] for m in semantic_memories]}")
             if semantic_memories:
                 mem_texts = [f"• {m['content']}" for m in semantic_memories]
                 context_memories += "\n" + "\n".join(mem_texts)
+                logger.info(f"[MEMORY_CONTEXT] user_id={user_id} count={len(semantic_memories)} total_len={len(context_memories)}")
                 retrieved_sources.append({"source": "long_term_memory", "count": len(semantic_memories)})
+
+        # RETRIEVAL: Past Conversation Cross-Session Retrieval
+        is_past_conversation_query = any(w in lower_msg for w in [
+            "what did i tell you", "what did we discuss", "what did i say earlier",
+            "what did i say about", "maine kya bataya", "pichli baar", "last time",
+            "last week", "last month", "previously", "earlier conversation"
+        ])
+        if is_past_conversation_query:
+            past_msgs = timeline_service.search_past_conversations(
+                db=db,
+                user_id=user_id,
+                query=user_message,
+                top_k=5
+            )
+            if past_msgs:
+                past_texts = [f"• [{m.role.upper()} ({m.local_time_str or m.timestamp})]: {m.content}" for m in past_msgs]
+                context_memories += "\n=== PAST CONVERSATIONS ===\n" + "\n".join(past_texts)
+                retrieved_sources.append({"source": "past_conversations", "count": len(past_msgs)})
 
         # Step 5: Answer Generation via Gemini LLM
         t_llm_start = time.perf_counter()

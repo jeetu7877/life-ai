@@ -130,24 +130,31 @@ async def send_chat_message(
     db.commit()
     db.refresh(assistant_msg)
 
-    # 7. Memory extraction pipeline runs asynchronously in background only when personal facts are shared
+    # 7. Memory extraction pipeline: commit deterministic facts immediately (<1ms)
     lower_content = payload.content.lower().strip()
     is_greeting = any(s.get("source") in ["fast_greeting", "profile_memory", "secure_vault"] for s in retrieved_sources)
     is_general_query = lower_content.startswith(("explain", "what is", "how do", "how does", "why is", "tell me about"))
     has_fact_marker = any(k in lower_content for k in [
         "mera", "meri", "mere", "mujhe", "maine", "i am", "i'm", "my", "i have", 
-        "i work", "i live", "i like", "i prefer", "remember", "yaad", "favorite"
+        "i work", "i live", "i like", "i prefer", "remember", "yaad", "favorite",
+        "bestie", "best friend", "dost"
     ])
     should_extract = not is_greeting and not is_general_query and (has_fact_marker or not lower_content.endswith("?"))
 
+    extracted_memories = []
     if should_extract:
-        background_tasks.add_task(
-            extract_memories_task,
-            user.id,
-            payload.content,
-            response_text,
-            conv.id
-        )
+        try:
+            extracted_memories = memory_service.process_conversation_for_memories(
+                db=db,
+                user_id=user.id,
+                user_message=payload.content,
+                assistant_response=response_text,
+                conversation_id=conv.id,
+                source_message_id=user_msg.id
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger("life.chat").warning(f"Memory extraction note: {e}")
 
     total_ms = round((time.perf_counter() - t_req_start) * 1000, 2)
     profile_ms = agent_timing.get("profile_ms", 0.0)
@@ -178,7 +185,7 @@ async def send_chat_message(
         message_id=assistant_msg.id,
         audio_url=audio_url,
         retrieved_sources=retrieved_sources,
-        memories_extracted=[]
+        memories_extracted=[m.id for m in extracted_memories]
     )
 
 @router.get("/conversations", response_model=List[ConversationResponse])

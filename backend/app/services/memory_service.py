@@ -26,11 +26,13 @@ class MemoryService:
         user_id: str,
         user_message: str,
         assistant_response: str,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        source_message_id: Optional[str] = None
     ) -> List[Memory]:
         """
         Extract facts from conversation, deduplicate against existing memories,
         resolve conflicts, update structured profile if relevant, and index persistently.
+        PostgreSQL is the single canonical source of truth; database write commits FIRST.
         """
         extracted = llm_service.extract_memories_and_entities(user_message, assistant_response)
         saved_memories = []
@@ -38,6 +40,7 @@ class MemoryService:
         for item in extracted:
             content = item.get("content", "").strip()
             mem_type = item.get("memory_type", "personal_fact")
+            topic = item.get("topic")
             importance = int(item.get("importance", 3))
             confidence = float(item.get("confidence", 0.9))
             event_date = item.get("event_date")
@@ -45,10 +48,11 @@ class MemoryService:
             if not content:
                 continue
 
+            logger.info(f"[MEMORY_WRITE] user_id={user_id} topic={topic} type={mem_type} importance={importance}")
+
             # Strict user isolation: Check for exact or near duplicate for this user
             existing = db.query(Memory).filter(
                 Memory.user_id == user_id,
-                Memory.memory_type == mem_type,
                 Memory.status == "active"
             ).all()
 
@@ -59,45 +63,60 @@ class MemoryService:
                     break
 
             if matched_memory:
-                # Update last confirmed timestamp & confidence
+                # Deduplication: Update last confirmed timestamp & confidence without duplicating
                 matched_memory.last_confirmed_at = datetime.utcnow()
                 matched_memory.confidence = min(1.0, matched_memory.confidence + 0.05)
                 db.commit()
+                logger.info(f"[MEMORY_DB_SAVE] id={matched_memory.id} user_id={user_id} action=deduplicate_confirm status=active")
                 saved_memories.append(matched_memory)
                 continue
 
-            # Check if this memory supersedes an older fact (e.g. CGPA, role, current focus)
-            self._handle_superseding(db, user_id, mem_type, content)
+            # Check if this memory supersedes an older fact (e.g. bestie, CGPA, role, current focus)
+            self._handle_superseding(db, user_id, mem_type, topic, content)
 
-            # Compute persistent vector embedding
-            embedding_vector = embedding_service.get_embedding(content)
-
-            # Create new Memory record
+            # Step 1: Commit directly to PostgreSQL first (Source of Truth)
             new_memory = Memory(
                 user_id=user_id,
                 content=content,
                 memory_type=mem_type,
+                topic=topic,
+                source_message_id=source_message_id,
                 importance=importance,
                 confidence=confidence,
                 status="active",
                 event_date=event_date or datetime.utcnow().strftime("%Y-%m-%d"),
                 source_conversation_id=conversation_id,
                 last_confirmed_at=datetime.utcnow(),
-                embedding=embedding_vector,
-                embedding_status="ready"
+                embedding_status="pending"
             )
             db.add(new_memory)
             db.commit()
             db.refresh(new_memory)
+            logger.info(f"[MEMORY_DB_SAVE] id={new_memory.id} user_id={user_id} topic={topic} status=active")
 
-            # Add to vector store index
-            rag_service.add_memory(
-                memory_id=new_memory.id,
-                user_id=user_id,
-                content=new_memory.content,
-                memory_type=new_memory.memory_type,
-                event_date=new_memory.event_date
-            )
+            # Step 2: Compute persistent vector embedding
+            embedding_vector = None
+            try:
+                embedding_vector = embedding_service.get_embedding(content)
+                new_memory.embedding = embedding_vector
+                new_memory.embedding_status = "ready"
+                db.commit()
+                logger.info(f"[MEMORY_EMBED] id={new_memory.id} dim={len(embedding_vector) if embedding_vector else 0}")
+            except Exception as e:
+                logger.warning(f"Embedding generation note for memory {new_memory.id}: {e}")
+
+            # Step 3: Add to derived Chroma vector index (wrapped in safe handler)
+            try:
+                rag_service.add_memory(
+                    memory_id=new_memory.id,
+                    user_id=user_id,
+                    content=new_memory.content,
+                    memory_type=new_memory.memory_type,
+                    event_date=new_memory.event_date
+                )
+                logger.info(f"[MEMORY_VECTOR_INDEX] id={new_memory.id} collection=personal_memories")
+            except Exception as e:
+                logger.warning(f"Chroma indexing note for memory {new_memory.id}: {e}")
 
             # If it's a skill or project, update the profile automatically
             self._sync_profile_from_memory(db, user_id, mem_type, content)
@@ -129,9 +148,38 @@ class MemoryService:
             db=db
         )
 
-    def _handle_superseding(self, db: Session, user_id: str, mem_type: str, new_content: str):
+    def _handle_superseding(
+        self,
+        db: Session,
+        user_id: str,
+        mem_type: str,
+        topic: Optional[str],
+        new_content: str,
+        new_memory_id: Optional[str] = None
+    ):
         """Mark older conflicting facts as superseded while preserving history."""
-        supersede_keywords = ["cgpa", "current focus", "current project", "phone", "email", "address"]
+        # 1. Supersede by explicit topic match (e.g. best_friend, location, college)
+        if topic:
+            old_topic_memories = db.query(Memory).filter(
+                Memory.user_id == user_id,
+                Memory.status == "active",
+                Memory.topic == topic
+            ).all()
+            for old in old_topic_memories:
+                old.status = "superseded"
+                if new_memory_id:
+                    old.superseded_by_id = new_memory_id
+                old.updated_at = datetime.utcnow()
+                rag_service.delete_memory(old.id)
+            if old_topic_memories:
+                db.commit()
+                logger.info(f"Superseded {len(old_topic_memories)} older memories by topic={topic}")
+
+        # 2. Supersede by entity / semantic keywords
+        supersede_keywords = [
+            "bestie", "best friend", "dost", "cgpa", "current focus", 
+            "current project", "phone", "email", "address", "company", "role"
+        ]
         for kw in supersede_keywords:
             if kw in new_content.lower():
                 old_memories = db.query(Memory).filter(
@@ -141,7 +189,13 @@ class MemoryService:
                 ).all()
                 for old in old_memories:
                     old.status = "superseded"
-                db.commit()
+                    if new_memory_id:
+                        old.superseded_by_id = new_memory_id
+                    old.updated_at = datetime.utcnow()
+                    rag_service.delete_memory(old.id)
+                if old_memories:
+                    db.commit()
+                    logger.info(f"Superseded {len(old_memories)} older memories matching kw='{kw}'")
 
     def _sync_profile_from_memory(self, db: Session, user_id: str, mem_type: str, content: str):
         """Keep structured profile updated with newly stated skills and projects."""

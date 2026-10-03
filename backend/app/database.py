@@ -62,6 +62,12 @@ def _ensure_sqlite_columns(engine):
                 if "embedding_status" not in cols:
                     conn.execute(text("ALTER TABLE memories ADD COLUMN embedding_status VARCHAR(50) DEFAULT 'ready'"))
                     logger.info("Migrated memories table: added embedding_status column")
+                if "topic" not in cols:
+                    conn.execute(text("ALTER TABLE memories ADD COLUMN topic VARCHAR(100)"))
+                    logger.info("Migrated memories table: added topic column")
+                if "source_message_id" not in cols:
+                    conn.execute(text("ALTER TABLE memories ADD COLUMN source_message_id VARCHAR(36)"))
+                    logger.info("Migrated memories table: added source_message_id column")
                 conn.commit()
     except Exception as e:
         logger.debug(f"SQLite column migration note: {e}")
@@ -71,7 +77,9 @@ def _ensure_indexes(engine):
     index_statements = [
         "CREATE INDEX IF NOT EXISTS ix_memories_user_status ON memories (user_id, status);",
         "CREATE INDEX IF NOT EXISTS ix_memories_user_type ON memories (user_id, memory_type);",
+        "CREATE INDEX IF NOT EXISTS ix_memories_topic ON memories (user_id, topic);",
         "CREATE INDEX IF NOT EXISTS ix_messages_conv_timestamp ON messages (conversation_id, timestamp);",
+        "CREATE INDEX IF NOT EXISTS ix_messages_user_timestamp ON messages (user_id, timestamp);",
         "CREATE INDEX IF NOT EXISTS ix_documents_user_cat ON documents (user_id, category);",
         "CREATE INDEX IF NOT EXISTS ix_docchunks_doc_chunk ON document_chunks (document_id, chunk_index);"
     ]

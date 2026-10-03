@@ -24,6 +24,8 @@ class Memory(Base):
     last_confirmed_at = Column(DateTime, default=datetime.utcnow)
     
     superseded_by_id = Column(String(36), nullable=True)
+    topic = Column(String(100), nullable=True, index=True)  # e.g., best_friend, location, college, company
+    source_message_id = Column(String(36), nullable=True)  # direct linkage to conversation message
     metadata_json = Column(JSON, default=dict)
     
     # Persistent Vector Embeddings stored directly in Database

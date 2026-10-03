@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
@@ -187,6 +188,8 @@ class RAGService:
 
             query_vec = embedding_service.get_query_embedding(query)
             scored_memories = []
+            q_lower = query.lower()
+            q_words = set(re.findall(r'\b[a-zA-Z0-9_]{3,}\b', q_lower))
 
             for m in active_memories:
                 # Retrieve or compute persistent embedding
@@ -201,13 +204,26 @@ class RAGService:
                         pass
 
                 sim = embedding_service.cosine_similarity(query_vec, m_vec)
-                scored_memories.append((sim, m))
 
-            # Sort descending by similarity
+                # Hybrid lexical match
+                m_lower = m.content.lower()
+                m_words = set(re.findall(r'\b[a-zA-Z0-9_]{3,}\b', m_lower))
+                overlap = len(q_words.intersection(m_words))
+
+                # Entity/topic bonus
+                topic_bonus = 0.0
+                if m.topic and m.topic.lower() in q_lower:
+                    topic_bonus = 1.0
+                elif any(kw in q_lower and kw in m_lower for kw in ["bestie", "best friend", "dost", "college", "company", "project"]):
+                    topic_bonus = 1.0
+
+                composite_score = sim + (0.4 * overlap) + (1.2 * topic_bonus)
+                scored_memories.append((composite_score, sim, m))
+
+            # Sort descending by composite score
             scored_memories.sort(key=lambda x: x[0], reverse=True)
 
-            for sim, m in scored_memories[:top_k]:
-                # Include relevant items (positive score or keyword presence)
+            for comp_score, sim, m in scored_memories[:top_k]:
                 output.append({
                     "id": f"mem_{m.id}",
                     "content": m.content,
@@ -215,8 +231,10 @@ class RAGService:
                         "user_id": m.user_id,
                         "memory_id": m.id,
                         "memory_type": m.memory_type,
+                        "topic": m.topic or "",
                         "event_date": m.event_date or "",
-                        "similarity": round(float(sim), 4)
+                        "similarity": round(float(sim), 4),
+                        "score": round(float(comp_score), 4)
                     }
                 })
 

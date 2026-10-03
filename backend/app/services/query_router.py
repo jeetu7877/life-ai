@@ -82,10 +82,14 @@ class QueryRouter:
         "in the file", "document mein", "pdf mein", "uploaded"
     ]
 
-    # Memory patterns (Level 2 facts)
+    # Memory patterns (Level 2 facts & relationships)
     MEMORY_KEYWORDS = [
-        "best friend", "dost ka naam", "dost kaun", "remember", "yaad hai",
-        "favourite", "favorite", "preference", "maine kab kaha", "habit"
+        "best friend", "bestfriend", "bestie", "besties", "dost ka naam", "dost kaun",
+        "dost", "friend", "girlfriend", "boyfriend", "gf", "bf", "wife", "husband",
+        "sister", "brother", "family", "remember", "yaad hai", "yaad", "favourite",
+        "favorite", "preference", "maine kab kaha", "habit", "who is my", "what is my",
+        "where do i", "where did i", "what did i tell", "what did i say", "meri bestie",
+        "mera dost", "mere dost", "kaun hai mera", "kaun hai meri"
     ]
 
     def classify_intent(self, user_message: str) -> Tuple[QueryIntent, Optional[str]]:
@@ -123,6 +127,9 @@ class QueryRouter:
 
         # 6. Check Semantic Memory Query
         if any(mk in lower for mk in self.MEMORY_KEYWORDS):
+            return QueryIntent.MEMORY, None
+
+        if any(lower.startswith(prefix) for prefix in ["who is my ", "what is my ", "where do i ", "where did i "]):
             return QueryIntent.MEMORY, None
 
         # 7. Default to General / Complex Reasoning (LLM)
