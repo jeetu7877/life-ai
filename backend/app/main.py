@@ -44,12 +44,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize database on startup
+# Initialize database and warm up resources on startup
 @app.on_event("startup")
 def on_startup():
-    logger.info("Initializing Jeet AI backend...")
+    logger.info("Initializing Life AI backend and pre-warming resources...")
+    # 1. Initialize persistent database schema & indexes
     init_db()
-    logger.info("Jeet AI backend is ready to serve!")
+
+    # 2. Warm up DB connection pool
+    try:
+        from app.database import engine
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("Database connection pool pre-warmed.")
+    except Exception as e:
+        logger.debug(f"DB pool warmup note: {e}")
+
+    # 3. Warm up ChromaDB collections (initialized once at startup)
+    try:
+        from app.services.rag_service import rag_service
+        if rag_service.memory_collection:
+            _ = rag_service.memory_collection.count()
+        if rag_service.doc_collection:
+            _ = rag_service.doc_collection.count()
+        logger.info("ChromaDB vector store pre-warmed.")
+    except Exception as e:
+        logger.debug(f"ChromaDB warmup note: {e}")
+
+    # 4. Pre-warm embedding service and LLM client
+    try:
+        from app.services.embedding_service import embedding_service
+        _ = embedding_service.get_query_embedding("warmup")
+        from app.services.llm_service import get_gemini_client
+        _ = get_gemini_client()
+        logger.info("AI reasoning and embedding pipelines pre-warmed.")
+    except Exception as e:
+        logger.debug(f"AI services warmup note: {e}")
+
+    logger.info("Life AI backend is ready to serve!")
 
 # Global Exception Handler
 @app.exception_handler(Exception)

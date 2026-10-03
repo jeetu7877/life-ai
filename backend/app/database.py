@@ -66,6 +66,27 @@ def _ensure_sqlite_columns(engine):
     except Exception as e:
         logger.debug(f"SQLite column migration note: {e}")
 
+def _ensure_indexes(engine):
+    """Ensure high-performance composite indexes exist idempotently for PostgreSQL & SQLite."""
+    index_statements = [
+        "CREATE INDEX IF NOT EXISTS ix_memories_user_status ON memories (user_id, status);",
+        "CREATE INDEX IF NOT EXISTS ix_memories_user_type ON memories (user_id, memory_type);",
+        "CREATE INDEX IF NOT EXISTS ix_messages_conv_timestamp ON messages (conversation_id, timestamp);",
+        "CREATE INDEX IF NOT EXISTS ix_documents_user_cat ON documents (user_id, category);",
+        "CREATE INDEX IF NOT EXISTS ix_docchunks_doc_chunk ON document_chunks (document_id, chunk_index);"
+    ]
+    try:
+        with engine.connect() as conn:
+            for stmt in index_statements:
+                try:
+                    conn.execute(text(stmt))
+                except Exception as ex:
+                    logger.debug(f"Index creation note ({stmt}): {ex}")
+            conn.commit()
+            logger.info("High-speed database composite indexes verified.")
+    except Exception as e:
+        logger.debug(f"Index verification note: {e}")
+
 def init_db():
     """
     Idempotent non-destructive database initialization:
@@ -80,6 +101,8 @@ def init_db():
 
     if is_sqlite:
         _ensure_sqlite_columns(engine)
+
+    _ensure_indexes(engine)
 
     # Idempotent startup sync: if vector store is clean (e.g. ephemeral container start on Render),
     # sync active memories from the persistent database into the vector index

@@ -40,12 +40,15 @@ def get_optional_user(
     db: Session = Depends(get_db)
 ) -> User:
     """Returns the current user, or defaults to the first user for local voice / fast test flow."""
+    import time
+    t_auth_start = time.perf_counter()
     if token:
         payload = decode_access_token(token)
         if payload:
             user_id = payload.get("sub")
             user = db.query(User).filter(User.id == user_id).first()
             if user:
+                user._auth_ms = round((time.perf_counter() - t_auth_start) * 1000, 2)
                 return user
     
     # Return first active user if present, or create demo user
@@ -73,4 +76,5 @@ def get_optional_user(
         db.add(profile)
         db.commit()
 
+    user._auth_ms = round((time.perf_counter() - t_auth_start) * 1000, 2)
     return user

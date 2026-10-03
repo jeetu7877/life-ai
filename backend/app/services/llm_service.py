@@ -21,6 +21,8 @@ CANDIDATE_MODELS = [
 ]
 
 _last_gemini_init_error = None
+_cached_client = None
+_cached_key = None
 
 def get_gemini_init_error():
     global _last_gemini_init_error
@@ -29,9 +31,9 @@ def get_gemini_init_error():
 def get_gemini_client():
     """
     Dynamically loads and configures Google Gemini client if API key is present.
-    Prioritizes real environment variables (e.g. Render Dashboard) over dummy .env files.
+    Caches configured client to eliminate redundant setup overhead.
     """
-    global _last_gemini_init_error
+    global _last_gemini_init_error, _cached_client, _cached_key
     
     # 1. First check environment variables already present in os.environ (Render/Docker/System)
     api_key = (
@@ -56,10 +58,14 @@ def get_gemini_client():
         ).strip().strip('"').strip("'")
     
     if api_key and api_key != "your_google_gemini_api_key_here" and len(api_key) > 10:
+        if _cached_client is not None and _cached_key == api_key:
+            return _cached_client
         try:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
             _last_gemini_init_error = None
+            _cached_client = genai
+            _cached_key = api_key
             return genai
         except Exception as e:
             _last_gemini_init_error = f"genai.configure error: {e}"

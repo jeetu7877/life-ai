@@ -46,6 +46,10 @@ async def send_chat_message(
     6. Extract persistent long-term memories in background
     7. Generate natural speech audio
     """
+    import time
+    t_req_start = time.perf_counter()
+    auth_ms = getattr(user, "_auth_ms", 0.0)
+
     # 1. Get or create conversation
     conv = None
     if payload.conversation_id:
@@ -79,12 +83,14 @@ async def send_chat_message(
     db.add(user_msg)
     db.commit()
 
-    # 3. Retrieve recent history for context
+    # 3. Retrieve recent history for context (Push LIMIT to SQL database)
+    t_hist_start = time.perf_counter()
     history_records = db.query(Message).filter(
         Message.conversation_id == conv.id
-    ).order_by(Message.timestamp.asc()).all()
+    ).order_by(Message.timestamp.desc()).limit(10).all()
 
-    chat_history = [{"role": m.role, "content": m.content} for m in history_records[-10:]]
+    chat_history = [{"role": m.role, "content": m.content} for m in reversed(history_records)]
+    history_ms = round((time.perf_counter() - t_hist_start) * 1000, 2)
 
     # 4. Agent processing (run in worker thread to prevent event-loop starvation)
     import asyncio
@@ -99,11 +105,14 @@ async def send_chat_message(
 
     response_text = agent_result["response"]
     retrieved_sources = agent_result.get("retrieved_sources", [])
+    agent_timing = agent_result.get("timing", {})
 
     # 5. Audio generation (only if in voice mode)
+    t_tts_start = time.perf_counter()
     audio_url = None
     if payload.voice_mode:
         audio_url = await voice_service.text_to_speech(response_text)
+    tts_ms = round((time.perf_counter() - t_tts_start) * 1000, 2)
 
     # 6. Save Assistant Message
     assistant_msg = Message(
@@ -121,9 +130,17 @@ async def send_chat_message(
     db.commit()
     db.refresh(assistant_msg)
 
-    # 7. Memory extraction pipeline runs asynchronously in background (skip for trivial greetings/chit-chat)
-    is_greeting = any(s.get("source") == "fast_greeting" for s in retrieved_sources)
-    if not is_greeting:
+    # 7. Memory extraction pipeline runs asynchronously in background only when personal facts are shared
+    lower_content = payload.content.lower().strip()
+    is_greeting = any(s.get("source") in ["fast_greeting", "profile_memory", "secure_vault"] for s in retrieved_sources)
+    is_general_query = lower_content.startswith(("explain", "what is", "how do", "how does", "why is", "tell me about"))
+    has_fact_marker = any(k in lower_content for k in [
+        "mera", "meri", "mere", "mujhe", "maine", "i am", "i'm", "my", "i have", 
+        "i work", "i live", "i like", "i prefer", "remember", "yaad", "favorite"
+    ])
+    should_extract = not is_greeting and not is_general_query and (has_fact_marker or not lower_content.endswith("?"))
+
+    if should_extract:
         background_tasks.add_task(
             extract_memories_task,
             user.id,
@@ -131,6 +148,29 @@ async def send_chat_message(
             response_text,
             conv.id
         )
+
+    total_ms = round((time.perf_counter() - t_req_start) * 1000, 2)
+    profile_ms = agent_timing.get("profile_ms", 0.0)
+    memory_ms = agent_timing.get("memory_ms", 0.0)
+    vector_ms = agent_timing.get("vector_ms", 0.0)
+    document_ms = agent_timing.get("document_ms", 0.0)
+    llm_ms = agent_timing.get("llm_ms", 0.0)
+
+    perf_log = (
+        f"\n[PERF]\n"
+        f"auth_ms={auth_ms:.2f}\n"
+        f"profile_ms={profile_ms:.2f}\n"
+        f"memory_ms={memory_ms:.2f}\n"
+        f"vector_ms={vector_ms:.2f}\n"
+        f"history_ms={history_ms:.2f}\n"
+        f"document_ms={document_ms:.2f}\n"
+        f"llm_ms={llm_ms:.2f}\n"
+        f"tts_ms={tts_ms:.2f}\n"
+        f"total_ms={total_ms:.2f}\n"
+    )
+    import logging
+    logging.getLogger("life.perf").info(perf_log)
+    print(perf_log)
 
     return ChatAnswerResponse(
         response=response_text,

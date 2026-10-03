@@ -41,4 +41,6 @@ def update_profile(
     profile.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(profile)
+    from app.services.profile_cache import profile_cache
+    profile_cache.invalidate(user.id)
     return profile

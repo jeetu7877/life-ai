@@ -76,8 +76,9 @@ class QueryRouter:
 
     # Document patterns
     DOCUMENT_KEYWORDS = [
+        "resume", "cv", "pdf", "document", "marksheet", "certificate",
         "in my document", "in the pdf", "search my resume", "uploaded document",
-        "in the file", "marksheet", "certificate", "document mein", "pdf mein"
+        "in the file", "document mein", "pdf mein", "uploaded"
     ]
 
     # Memory patterns (Level 2 facts)
@@ -156,45 +157,47 @@ class QueryRouter:
     ) -> Optional[str]:
         """
         Level 1 Profile Memory Fast-Path:
-        Direct SQL query on PersonalProfile table without vector search (<50ms).
+        In-process profile cache or direct SQL query on PersonalProfile table (<1ms).
         """
-        profile = db.query(PersonalProfile).filter(PersonalProfile.user_id == user_id).first()
+        from app.services.profile_cache import profile_cache
+        profile = profile_cache.get_profile_dict(db, user_id)
         if not profile:
             return None
 
         if sub_category == "college":
-            college_name = profile.college or profile.education or "NIT Jalandhar"
-            branch = profile.branch or "Computer Science and Engineering"
-            degree = profile.degree or "B.Tech"
+            college_name = profile.get("college") or profile.get("education") or "NIT Jalandhar"
+            branch = profile.get("branch") or "Computer Science and Engineering"
+            degree = profile.get("degree") or "B.Tech"
             return f"Aap {college_name} se {degree} in {branch} kar rahe hain."
 
         elif sub_category == "skills":
-            skills_list = profile.skills or []
+            skills_list = profile.get("skills") or []
             if skills_list:
                 formatted_skills = ", ".join(skills_list)
                 return f"Aapki profile ke mutabik aapki skills hain: {formatted_skills}."
             return "Aapki profile mein abhi tak specific skills add nahi hui hain. Aap mujhe bata sakte hain!"
 
         elif sub_category == "name":
-            name = profile.name or profile.preferred_name or "Jeet"
-            pref = f" (jise aap {profile.preferred_name} kehte hain)" if profile.preferred_name and profile.preferred_name != name else ""
+            name = profile.get("name") or profile.get("preferred_name") or "Jeet"
+            preferred = profile.get("preferred_name")
+            pref = f" (jise aap {preferred} kehte hain)" if preferred and preferred != name else ""
             return f"Aapka naam {name}{pref} hai."
 
         elif sub_category == "projects":
-            projects = profile.projects or []
+            projects = profile.get("projects") or []
             if projects:
                 names = [p.get("name", str(p)) if isinstance(p, dict) else str(p) for p in projects]
                 return f"Aapke projects hain: {', '.join(names)}."
             return "Aapne NeuroNote aur SQL RAG jaise projects par kaam kiya hai."
 
         elif sub_category == "goals":
-            goals = profile.goals or []
+            goals = profile.get("goals") or []
             if goals:
                 return f"Aapke primary goals hain: {', '.join(goals)}."
             return "Aapka goal apne coding skills aur spoken English ko strong banana hai."
 
         elif sub_category == "interests":
-            interests = profile.interests or []
+            interests = profile.get("interests") or []
             if interests:
                 return f"Aapke interests hain: {', '.join(interests)}."
             return "Aapko coding, AI systems explore karna aur cricket khelna pasand hai."
