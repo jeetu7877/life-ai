@@ -34,7 +34,8 @@ class QueryRouter:
         r'^(bye|goodbye|alvida|tata)\b',
         r'^(ok|okay|theek hai|achha|accha|sahi hai)\b',
         r'^(bolo|sun rahe ho|kya kar rahi ho|kya kar rahe ho)\b',
-        r'^(who are you|tum kaun ho|aap kaun ho)\b'
+        r'^(who are you|tum kaun ho|aap kaun ho)\b',
+        r'(how (can you|you can) help|what can you do|kya kar sakti ho|kya kar sakte ho|help me|how to use|features|capabilities)'
     ]
 
     # Level 1 Profile patterns
@@ -96,7 +97,7 @@ class QueryRouter:
         words = lower.split()
 
         # 1. Check Greetings / Casual Chit-Chat
-        if len(words) <= 5:
+        if len(words) <= 7:
             for pattern in self.GREETING_PATTERNS:
                 if re.search(pattern, lower):
                     return QueryIntent.GREETING, None
@@ -130,6 +131,21 @@ class QueryRouter:
     def handle_greeting_fast_path(self, user_message: str) -> str:
         """Sub-millisecond friendly companion response for casual messages."""
         lower = user_message.lower().strip()
+
+        if any(w in lower for w in [
+            "how you can help", "how can you help", "what can you do", 
+            "kya kar sakti ho", "kya kar sakte ho", "help me", "tum kya karti ho"
+        ]):
+            return (
+                "Main Life hoon — aapki personal AI companion! Main aapki in cheezon mein madad kar sakti hoon:\n\n"
+                "1. 🧠 **Long-Term Memory**: Aapki personal baatein, preferences aur important facts hamesha yaad rakhna.\n"
+                "2. 📄 **Document Search (RAG)**: Aapke uploaded PDFs, resumes aur files se accurate jankari dhoondhna.\n"
+                "3. 📅 **Daily Timeline**: Din bhar ki activities aur plans track karna.\n"
+                "4. 🔒 **Secure Vault**: Aadhaar, PAN aur sensitive documents securely manage karna.\n"
+                "5. 💻 **Coding & General AI**: Programming, math, writing aur kisi bhi topic par ChatGPT ki tarah madad karna.\n"
+                "6. 🎙️ **Voice Assistant**: Natural voice conversation aur voice commands.\n\n"
+                "Aap mujhse koi bhi sawal pooch sakte hain!"
+            )
 
         if any(w in lower for w in ["kaise ho", "kya haal", "kya hal"]):
             return "Main bilkul badhiya hoon! Aap bataiye, aaj aapka din kaisa chal raha hai?"

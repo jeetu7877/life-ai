@@ -11,13 +11,14 @@ logger = logging.getLogger(__name__)
 # Initial load of environment variables
 load_dotenv()
 
-# List of high-speed Gemini models to try in order of priority/quota availability
-# gemini-flash-lite-latest provides sub-second responses and high free-tier rate limits
+# List of high-speed Gemini models with active free-tier quotas to try in order of priority
 CANDIDATE_MODELS = [
     "gemini-flash-lite-latest",
-    "gemini-2.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
     "gemini-flash-latest",
-    "gemini-2.5-pro",
+    "gemini-2.5-flash",
 ]
 
 _last_gemini_init_error = None
@@ -156,19 +157,44 @@ class LLMService:
                 except Exception as e:
                     last_error = e
                     err_str = str(e).lower()
-                    logger.warning(f"Gemini generation error with {candidate}: {e}")
-                    # Fast break on quota exhaustion / rate limit across same API project
-                    if "quota" in err_str or "429" in err_str or "resourceexhausted" in err_str:
-                        break
+                    logger.warning(f"Gemini generation note with {candidate}: {e}")
+                    # Try next candidate model (different models often have independent quotas)
                     continue
 
-        # If key is present but all models returned an error
+        # If key is present but all models returned an error or quota was exhausted
         if genai and last_error:
+            lower = user_message.lower().strip()
+            # Capability / helper questions
+            if any(w in lower for w in ["help", "madad", "who are you", "tum kaun ho", "kya kar sakti", "kya kar sakte", "what can you do"]):
+                return (
+                    "Main Life hoon — aapki intelligent personal AI companion! Main aapki personal memories, documents, "
+                    "timeline, aur daily activities yaad rakhti hoon, sath hi aapke sawalon ke jawab deti hoon.\n\n"
+                    "Aap mujhse apne documents, college profile, skills ya memories ke bare mein pooch sakte hain!"
+                )
+            if "skill" in lower or "kya skills" in lower:
+                if context_memories or user_profile_summary:
+                    return f"Aapki profile ke mutabik: {user_profile_summary or context_memories}"
+                return "Aapne abhi tak skills add nahi kiye hain. Aap mujhe bata sakte hain, main yaad rakhungi!"
+            if "kaun hoon" in lower or "who am i" in lower:
+                return f"Aap mere dost hain! {user_profile_summary or ''}"
+            if any(w in lower for w in ["kya kiya", "what did i do", "yesterday", "today", "aaj kya"]):
+                if context_memories:
+                    clean_text = context_memories.strip()
+                    if "User activities on" in clean_text or "Activities on" in clean_text:
+                        parts = clean_text.split(":", 1)
+                        if len(parts) > 1:
+                            clean_text = parts[1].strip()
+                    clean_text = clean_text.replace("•", "").replace("-", "").strip()
+                    if clean_text:
+                        return f"Aaj aapne {clean_text} par kaam kiya."
+                return "Aaj ki koi specific activity mujhe note nahi mili. Aap batayein aaj aapne kya naya kiya?"
+
             err_str = str(last_error).lower()
             if "quota" in err_str or "429" in err_str or "rate" in err_str or "resourceexhausted" in err_str:
                 return (
-                    "Aapka Gemini API key connect ho chuka hai, lekin Google Gemini ka free tier limit (rate limit) exceed ho gaya hai. "
-                    "Kripya 1-2 minute baad dubara try karein, quota jaldi reset ho jata hai."
+                    "Google Gemini API ka free-tier rate limit reach ho gaya hai. "
+                    "Main offline personal context (memories, profile, timeline) ke sath active hoon. "
+                    "General online questions ke liye kripya 1-2 minute baad dubara try karein, quota jaldi reset ho jata hai."
                 )
             else:
                 logger.error(f"Gemini generation failed for all models: {last_error}")

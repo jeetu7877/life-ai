@@ -54,27 +54,41 @@ def get_optional_user(
     # Return first active user if present, or create demo user
     user = db.query(User).first()
     if not user:
+        from sqlalchemy.exc import IntegrityError
         from app.security.jwt import get_password_hash
-        user = User(
-            email="user@jeet.ai",
-            username="jeet_user",
-            full_name="Vikash Yadav",
-            hashed_password=get_password_hash("jeet123")
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        
-        # Also create initial profile
-        from app.models.profile import PersonalProfile
-        profile = PersonalProfile(
-            user_id=user.id,
-            name="Vikash Yadav",
-            preferred_name="Vikash",
-            skills=["Python", "FastAPI", "React", "Node.js", "ChromaDB", "SQL RAG"]
-        )
-        db.add(profile)
-        db.commit()
+        try:
+            # Check by username first to avoid concurrent race
+            user = db.query(User).filter(User.username == "jeet_user").first()
+            if not user:
+                user = User(
+                    email="user@jeet.ai",
+                    username="jeet_user",
+                    full_name="Vikash Yadav",
+                    hashed_password=get_password_hash("jeet123")
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+                
+                # Also create initial profile
+                from app.models.profile import PersonalProfile
+                profile = PersonalProfile(
+                    user_id=user.id,
+                    name="Vikash Yadav",
+                    preferred_name="Vikash",
+                    skills=["Python", "FastAPI", "React", "Node.js", "ChromaDB", "SQL RAG"]
+                )
+                db.add(profile)
+                db.commit()
+        except IntegrityError:
+            db.rollback()
+            user = db.query(User).filter(User.username == "jeet_user").first()
+            if not user:
+                user = db.query(User).first()
+        except Exception:
+            db.rollback()
+            user = db.query(User).first()
 
-    user._auth_ms = round((time.perf_counter() - t_auth_start) * 1000, 2)
+    if user:
+        user._auth_ms = round((time.perf_counter() - t_auth_start) * 1000, 2)
     return user

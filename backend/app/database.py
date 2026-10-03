@@ -87,6 +87,40 @@ def _ensure_indexes(engine):
     except Exception as e:
         logger.debug(f"Index verification note: {e}")
 
+def _ensure_default_user(db: Session):
+    """Safely seed default user and profile once at boot time to prevent concurrent request race conditions."""
+    from app.models.user import User
+    from app.models.profile import PersonalProfile
+    from app.security.jwt import get_password_hash
+    try:
+        user = db.query(User).filter(
+            (User.username == "jeet_user") | (User.email == "user@jeet.ai")
+        ).first()
+        if not user:
+            user = User(
+                email="user@jeet.ai",
+                username="jeet_user",
+                full_name="Vikash Yadav",
+                hashed_password=get_password_hash("jeet123")
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        profile = db.query(PersonalProfile).filter(PersonalProfile.user_id == user.id).first()
+        if not profile:
+            profile = PersonalProfile(
+                user_id=user.id,
+                name="Vikash Yadav",
+                preferred_name="Vikash",
+                skills=["Python", "FastAPI", "React", "Node.js", "ChromaDB", "SQL RAG"]
+            )
+            db.add(profile)
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.debug(f"Default user initialization note: {e}")
+
 def init_db():
     """
     Idempotent non-destructive database initialization:
@@ -103,6 +137,14 @@ def init_db():
         _ensure_sqlite_columns(engine)
 
     _ensure_indexes(engine)
+
+    # Ensure default user exists before any HTTP requests arrive
+    try:
+        db = SessionLocal()
+        _ensure_default_user(db)
+        db.close()
+    except Exception as e:
+        logger.debug(f"Startup user seed note: {e}")
 
     # Idempotent startup sync: if vector store is clean (e.g. ephemeral container start on Render),
     # sync active memories from the persistent database into the vector index
