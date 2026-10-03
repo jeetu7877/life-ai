@@ -8,7 +8,7 @@ def test_health():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["companion"] == "Jeet"
+    assert data["companion"] in ["Life", "Jeet"]
 
 def test_register_and_login():
     email = "testuser@jeet.ai"

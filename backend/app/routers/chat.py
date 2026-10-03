@@ -121,14 +121,16 @@ async def send_chat_message(
     db.commit()
     db.refresh(assistant_msg)
 
-    # 7. Memory extraction pipeline runs asynchronously in background
-    background_tasks.add_task(
-        extract_memories_task,
-        user.id,
-        payload.content,
-        response_text,
-        conv.id
-    )
+    # 7. Memory extraction pipeline runs asynchronously in background (skip for trivial greetings/chit-chat)
+    is_greeting = any(s.get("source") == "fast_greeting" for s in retrieved_sources)
+    if not is_greeting:
+        background_tasks.add_task(
+            extract_memories_task,
+            user.id,
+            payload.content,
+            response_text,
+            conv.id
+        )
 
     return ChatAnswerResponse(
         response=response_text,

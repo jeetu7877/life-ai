@@ -141,14 +141,19 @@ class LLMService:
                     
                     response = model.generate_content(
                         contents,
-                        generation_config={"max_output_tokens": 1024, "temperature": 0.7}
+                        generation_config={"max_output_tokens": 1024, "temperature": 0.7},
+                        request_options={"timeout": 15}
                     )
                     if response and response.text:
                         self.model_name = candidate  # Stick to the working model
                         return response.text.strip()
                 except Exception as e:
                     last_error = e
+                    err_str = str(e).lower()
                     logger.warning(f"Gemini generation error with {candidate}: {e}")
+                    # Fast break on quota exhaustion / rate limit across same API project
+                    if "quota" in err_str or "429" in err_str or "resourceexhausted" in err_str:
+                        break
                     continue
 
         # If key is present but all models returned an error

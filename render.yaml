@@ -1,3 +1,10 @@
+databases:
+  - name: life-ai-db
+    databaseName: life_ai
+    user: life_user
+    plan: free
+    region: oregon
+
 services:
   - type: web
     name: life-ai-backend
@@ -16,4 +23,6 @@ services:
       - key: ENCRYPTION_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: "sqlite:///./jeet.db"
+        fromDatabase:
+          name: life-ai-db
+          property: connectionString

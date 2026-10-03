@@ -26,6 +26,10 @@ class Memory(Base):
     superseded_by_id = Column(String(36), nullable=True)
     metadata_json = Column(JSON, default=dict)
     
+    # Persistent Vector Embeddings stored directly in Database
+    embedding = Column(JSON, nullable=True)  # List[float] vector representation
+    embedding_status = Column(String(50), default="ready", index=True)  # ready, pending, failed
+    
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

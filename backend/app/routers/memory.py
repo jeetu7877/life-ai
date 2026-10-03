@@ -8,6 +8,7 @@ from app.schemas.memory import MemoryCreate, MemoryUpdate, MemoryResponse, Memor
 from app.security.dependencies import get_optional_user
 from app.services.memory_service import memory_service
 from app.services.rag_service import rag_service
+from app.services.embedding_service import embedding_service
 
 router = APIRouter(prefix="/memories", tags=["Long-Term Memory"])
 
@@ -31,6 +32,9 @@ def create_memory(
     db: Session = Depends(get_db),
     user: User = Depends(get_optional_user)
 ):
+    # Compute persistent vector embedding
+    embedding_vector = embedding_service.get_embedding(mem_in.content)
+
     mem = Memory(
         user_id=user.id,
         content=mem_in.content,
@@ -38,13 +42,15 @@ def create_memory(
         importance=mem_in.importance,
         confidence=mem_in.confidence,
         event_date=mem_in.event_date,
-        metadata_json=mem_in.metadata_json or {}
+        metadata_json=mem_in.metadata_json or {},
+        embedding=embedding_vector,
+        embedding_status="ready"
     )
     db.add(mem)
     db.commit()
     db.refresh(mem)
 
-    # Index in ChromaDB
+    # Index in vector store (safe try/except inside add_memory)
     rag_service.add_memory(
         memory_id=mem.id,
         user_id=user.id,
@@ -67,6 +73,8 @@ def update_memory(
     
     if mem_in.content is not None:
         mem.content = mem_in.content
+        mem.embedding = embedding_service.get_embedding(mem_in.content)
+        mem.embedding_status = "ready"
     if mem_in.memory_type is not None:
         mem.memory_type = mem_in.memory_type
     if mem_in.importance is not None:
@@ -81,7 +89,7 @@ def update_memory(
     db.commit()
     db.refresh(mem)
 
-    # Re-index in ChromaDB
+    # Re-index in vector cache
     rag_service.add_memory(
         memory_id=mem.id,
         user_id=user.id,
@@ -105,12 +113,14 @@ def delete_memory(
 @router.post("/search")
 def search_memories(
     search_in: MemorySearchQuery,
+    db: Session = Depends(get_db),
     user: User = Depends(get_optional_user)
 ):
     results = rag_service.search_memories(
         user_id=user.id,
         query=search_in.query,
         top_k=search_in.limit,
-        memory_type=search_in.memory_type
+        memory_type=search_in.memory_type,
+        db=db
     )
     return {"query": search_in.query, "results": results}
