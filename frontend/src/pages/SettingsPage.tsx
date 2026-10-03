@@ -24,7 +24,7 @@ export const SettingsPage: React.FC = () => {
   const [serverUrl, setServerUrl] = useState<string>(() => {
     const saved = localStorage.getItem('life_server_url');
     if (saved && !saved.includes('192.168.1.123')) return saved;
-    return 'http://10.10.202.55:8000';
+    return 'https://life-ai-daoh.onrender.com';
   });
 
   // Test Connection state
@@ -237,12 +237,22 @@ export const SettingsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                setServerUrl('https://life-ai-daoh.onrender.com');
+                setTestStatus('idle');
+              }}
+              className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 text-[11px] font-mono cursor-pointer font-semibold"
+            >
+              ☁️ Cloud (Render 24/7)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setServerUrl('http://10.10.202.55:8000');
                 setTestStatus('idle');
               }}
               className="px-2.5 py-1 rounded-lg bg-orange-500/10 border border-orange-500/25 text-orange-400 hover:bg-orange-500/20 text-[11px] font-mono cursor-pointer"
             >
-              Current Wi-Fi: 10.10.202.55:8000
+              Laptop Wi-Fi: 10.10.202.55:8000
             </button>
             <button
               type="button"

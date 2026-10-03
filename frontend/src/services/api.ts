@@ -15,12 +15,12 @@ export const getServerHostUrl = (): string => {
     // 1. Check if running inside Capacitor Android APK (Native Mobile App)
     const isCapacitor = !!(window as any).Capacitor;
     if (isCapacitor || window.location.protocol === 'file:') {
-      // In native app, localhost has no backend server - connect to laptop Wi-Fi IP
+      // In native app, connect to 24/7 Render cloud or user-customized URL
       const customUrl = localStorage.getItem('life_server_url') || localStorage.getItem('jeet_server_url');
       if (customUrl && customUrl.trim() && !customUrl.includes('192.168.1.123') && !customUrl.includes('localhost')) {
         return customUrl.trim().replace(/\/+$/, '').replace(/\/api\/v1$/, '');
       }
-      return 'http://10.10.202.55:8000';
+      return 'https://life-ai-daoh.onrender.com';
     }
 
     // 2. Custom server URL from Settings
