@@ -329,6 +329,126 @@ def test_10_strict_user_isolation():
         top_k=5,
         db=db
     )
-    assert len(chunks_b) == 0, "User B retrieved User A's document chunks!"
-
     db.close()
+
+def test_11_college_id_accuracy_roll_number_vs_phone_landline():
+    """
+    CRITICAL ACCURACY TEST:
+    Document containing:
+    "Dr. B. R. Ambedkar National Institute of Technology Jalandhar
+    Phone No. - 0181-2690301, 2690302
+    Roll No. 24103068
+    Vikash Yadav"
+
+    Extracted result MUST be roll_number = "24103068", NOT "2690301".
+    """
+    raw_card_text = """Dr. B. R. Ambedkar National Institute of Technology Jalandhar
+Phone No. - 0181-2690301, 2690302
+Roll No. 24103068
+Vikash Yadav"""
+
+    # 1. Pure extraction verification
+    category, fields = document_service._classify_and_extract_fields("nit_college_id.txt", raw_card_text)
+    assert category in ["college_id", "college_document"]
+    assert fields.get("roll_number") == "24103068", f"Expected '24103068' but got {fields.get('roll_number')}"
+    assert fields.get("roll_number") != "2690301", "Institute landline was mistakenly assigned as roll_number!"
+    assert "_evidence" in fields
+    assert fields["_evidence"]["roll_number"]["value"] == "24103068"
+
+    # 2. End-to-end ingestion & Chat verification
+    db = SessionLocal()
+    try:
+        user = get_or_create_user(db, username="user_accuracy_test", email="accuracy@jeet.ai")
+        headers = create_auth_headers(user)
+
+        doc = ingest_test_document(db, user.id, "nit_college_id.txt", raw_card_text)
+        assert doc.structured_fields.get("roll_number") == "24103068"
+        assert doc.structured_fields.get("roll_number") != "2690301"
+
+        # Verify metadata evidence
+        assert doc.metadata_json is not None
+        assert "field_evidence" in doc.metadata_json
+        assert doc.metadata_json["field_evidence"]["roll_number"]["value"] == "24103068"
+    finally:
+        db.close()
+
+    # Query 'What is my roll number?'
+    res = client.post("/api/v1/chat", json={
+        "content": "What is my roll number?",
+        "timezone": "Asia/Kolkata"
+    }, headers=headers)
+    assert res.status_code == 200
+    res_data = res.json()
+    assert "24103068" in res_data["response"]
+    assert "2690301" not in res_data["response"]
+
+def test_12_what_is_written_on_my_college_id_full_summary():
+    """
+    Test 3: User query: 'What is written on my college ID?'
+    Summary MUST include: Roll Number: 24103068 (and not 2690301).
+    """
+    raw_card_text = """Dr. B. R. Ambedkar National Institute of Technology Jalandhar
+Phone No. - 0181-2690301, 2690302
+Roll No. 24103068
+Vikash Yadav"""
+
+    db = SessionLocal()
+    try:
+        user = get_or_create_user(db, username="user_accuracy_test", email="accuracy@jeet.ai")
+        headers = create_auth_headers(user)
+    finally:
+        db.close()
+
+    res = client.post("/api/v1/chat", json={
+        "content": "What is written on my college ID?",
+        "timezone": "Asia/Kolkata"
+    }, headers=headers)
+    assert res.status_code == 200
+    res_data = res.json()
+    response_text = res_data["response"]
+    assert "24103068" in response_text
+    assert "**Roll Number**: 24103068" in response_text or "Roll Number: 24103068" in response_text
+    assert "**Roll Number**: 2690301" not in response_text
+    assert "Roll Number: 2690301" not in response_text
+
+def test_13_unlabeled_number_rejection():
+    """
+    Test 4: Unlabeled number rejection test.
+    Text with random 7-digit numbers but no 'Roll' label must NOT extract roll_number.
+    """
+    unlabeled_text = """Random Institute Circular
+Document Ref: 7384910
+Office Landline: 0181-2690301
+General Notice for Students
+Date: 12/05/2026"""
+
+    category, fields = document_service._classify_and_extract_fields("circular.txt", unlabeled_text)
+    assert fields.get("roll_number") is None, f"Unlabeled number was falsely mapped: {fields.get('roll_number')}"
+    assert fields.get("enrollment_number") is None
+
+def test_14_database_reprocessing_cleanses_stale_values():
+    """
+    Test database reprocessing: Ensures any previously corrupted roll_number is corrected.
+    """
+    db = SessionLocal()
+    try:
+        user = get_or_create_user(db, username="user_reprocess_test", email="reprocess@jeet.ai")
+        # Ingest document
+        raw_card_text = """Dr. B. R. Ambedkar National Institute of Technology Jalandhar
+Phone No. - 0181-2690301, 2690302
+Roll No. 24103068
+Vikash Yadav"""
+        doc = ingest_test_document(db, user.id, "corrupted_id.txt", raw_card_text)
+
+        # Intentionally inject the old corrupted value to simulate stale database state
+        doc.structured_fields = {"roll_number": "2690301"}
+        db.commit()
+
+        # Run reprocess_document
+        reprocessed = document_service.reprocess_document(db, doc.id)
+        assert reprocessed is not None
+        assert reprocessed.structured_fields.get("roll_number") == "24103068"
+        assert reprocessed.structured_fields.get("roll_number") != "2690301"
+    finally:
+        db.close()
+

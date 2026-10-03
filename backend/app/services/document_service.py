@@ -58,6 +58,9 @@ class DocumentService:
             category, structured = self._classify_and_extract_fields(doc.original_filename, extracted_text)
             doc.category = category
             doc.structured_fields = structured
+            meta = dict(doc.metadata_json or {})
+            meta["field_evidence"] = structured.get("_evidence", {})
+            doc.metadata_json = meta
 
             # Step 3: Route identity documents to Secure Vault
             self._route_sensitive_fields_to_vault(db, doc.user_id, doc.id, category, structured)
@@ -334,8 +337,10 @@ class DocumentService:
         # ----------------- 6. Certificate -----------------
         is_certificate = "certificate" in f_lower or "completion" in t_lower or "has successfully completed" in t_lower
 
+        evidence_map: Dict[str, Any] = {}
+
         # Extract Universal Fields (Roll No, Enrollment No, Registration No, College, Branch, DOB, Phone, Email)
-        self._extract_academic_and_contact_fields(text, fields)
+        self._extract_academic_and_contact_fields(text, fields, evidence_map)
 
         if is_id_card:
             category = "college_id"
@@ -354,124 +359,284 @@ class DocumentService:
         else:
             category = "other"
 
-        # Optional LLM Enhancement for non-standard formats
-        self._supplement_fields_with_llm(category, text, fields)
+        # Grounded LLM Enhancement with strict rules
+        self._supplement_fields_with_llm(category, text, fields, evidence_map)
+
+        # Critical Validation Layer: Groundedness check, Anti-Phone collision, and Confidence scoring
+        self._validate_and_finalize_fields(text, fields, evidence_map)
 
         logger.info(f"[DOC_CLASSIFY] category={category}")
-        logger.info(f"[DOC_STRUCTURED_EXTRACT] field_count={len(fields)} fields_found={list(fields.keys())}")
+        active_fields = [k for k in fields if not k.startswith("_")]
+        logger.info(f"[DOC_STRUCTURED_EXTRACT] field_count={len(active_fields)} fields_found={active_fields}")
         return category, fields
 
-    def _extract_academic_and_contact_fields(self, text: str, fields: Dict[str, Any]):
-        """Extract core institutional identifiers using robust regex patterns."""
-        # 1. Roll Number
-        roll_pats = [
-            r'(?:roll\s*(?:no|number)?|rollno|id\s*no\.?)\s*[:=\-]?\s*([A-Za-z0-9/\-]+)',
-            r'\broll\s*#\s*([A-Za-z0-9/\-]+)',
-            r'\b([0-9]{7,12})\b'  # Numeric student roll numbers
-        ]
-        for pat in roll_pats:
-            m = re.search(pat, text, re.IGNORECASE)
-            if m:
-                val = m.group(1).strip().rstrip(".,")
-                if len(val) >= 3 and not any(w in val.lower() for w in ["number", "student"]):
-                    fields["roll_number"] = val
-                    break
+    def _is_phone_or_std_number(self, val: str, raw_text: str) -> bool:
+        """
+        Anti-collision check: Detects if a number is part of a phone, fax, or landline string.
+        Guarantees that institute landlines like 0181-2690301 or mobile numbers are NEVER mapped to roll_number.
+        """
+        if not val or not raw_text:
+            return False
+        val_clean = re.sub(r'[^0-9]', '', str(val))
+        if not val_clean:
+            return False
 
-        # 2. Enrollment / Registration Number
-        enroll_pats = [
-            r'(?:enrollment\s*(?:no|number)?|enrolment\s*(?:no|number)?|enrol\s*no\.?)\s*[:=\-]?\s*([A-Za-z0-9/\-]+)',
-            r'(?:registration\s*(?:no|number)?|reg\s*(?:no|number)?\.?|regn\s*no\.?)\s*[:=\-]?\s*([A-Za-z0-9/\-]+)'
+        phone_patterns = [
+            r'(?i)(?:phone|tel|mobile|mob|contact|fax|epabx)[\s.:=-]*[0-9\s,\-]*' + re.escape(val_clean),
+            r'[0-9]{2,5}[-\s]' + re.escape(val_clean),  # STD code prefix like 0181-2690301
+            re.escape(val_clean) + r'[-\s][0-9]{2,5}'
         ]
-        for pat in enroll_pats:
-            m = re.search(pat, text, re.IGNORECASE)
-            if m:
+        for p in phone_patterns:
+            if re.search(p, raw_text):
+                return True
+        return False
+
+    def _extract_academic_and_contact_fields(self, text: str, fields: Dict[str, Any], evidence_map: Dict[str, Any]):
+        """
+        Extract core institutional identifiers using STRICT label-aware patterns.
+        Every identity number MUST be explicitly anchored to its label.
+        Arbitrary unlabeled numbers are STRICTLY BANNED.
+        """
+        # 1. Roll Number (Must be preceded by explicit Roll No / Student ID label)
+        roll_patterns = [
+            r'(?i)\broll[\s.]*(?:no|number|num|#)[\s.:=-]*([A-Za-z0-9/\-]+)',
+            r'(?i)\bstudent[\s.]*id[\s.]*(?:no|number|#)?[\s.:=-]*([A-Za-z0-9/\-]+)',
+            r'(?i)\bid[\s.]*(?:no|number|#)[\s.:=-]*([A-Za-z0-9/\-]+)',
+            r'(?i)\brollno[\s.:=-]*([A-Za-z0-9/\-]+)',
+            r'(?i)\broll[\s.:=-]+([0-9][A-Za-z0-9/\-]+)'
+        ]
+        for pat in roll_patterns:
+            for m in re.finditer(pat, text):
                 val = m.group(1).strip().rstrip(".,")
-                if len(val) >= 3 and not any(w in val.lower() for w in ["number", "date"]):
+                if len(val) >= 3 and val.lower() not in ["number", "student", "roll", "card"]:
+                    # Groundedness check: must appear in text
+                    if val not in text:
+                        continue
+                    # Must not be preceded by phone / contact labels
+                    start_idx = m.start()
+                    preceding = text[max(0, start_idx-50):start_idx].lower()
+                    if any(pk in preceding for pk in ["phone", "tel", "mobile", "fax", "epabx", "call", "std"]):
+                        continue
+                    # Anti-collision with phone numbers
+                    if self._is_phone_or_std_number(val, text):
+                        continue
+
+                    fields["roll_number"] = val
+                    evidence_map["roll_number"] = {
+                        "value": val,
+                        "evidence": m.group(0).strip(),
+                        "confidence": 0.99,
+                        "source_page": 1,
+                        "method": "label_regex"
+                    }
+                    break
+            if "roll_number" in fields:
+                break
+
+        # 2. Enrollment / Registration Number (Must be preceded by explicit label)
+        enroll_patterns = [
+            r'(?i)\b(?:enrollment|enrolment)[\s.]*(?:no|number|num|#)[\s.:=-]*([A-Za-z0-9/\-]+)',
+            r'(?i)\b(?:registration|regn|reg)[\s.]*(?:no|number|num|#)[\s.:=-]*([A-Za-z0-9/\-]+)',
+            r'(?i)\b(?:enrollment|enrolment|registration)[\s.:=-]+([0-9][A-Za-z0-9/\-]+)'
+        ]
+        for pat in enroll_patterns:
+            for m in re.finditer(pat, text):
+                val = m.group(1).strip().rstrip(".,")
+                if len(val) >= 3 and val.lower() not in ["number", "date", "enrol", "reg"]:
+                    if val not in text:
+                        continue
+                    if self._is_phone_or_std_number(val, text):
+                        continue
                     fields["enrollment_number"] = val
                     fields["registration_number"] = val
+                    evidence_map["enrollment_number"] = {
+                        "value": val,
+                        "evidence": m.group(0).strip(),
+                        "confidence": 0.99,
+                        "source_page": 1,
+                        "method": "label_regex"
+                    }
+                    evidence_map["registration_number"] = evidence_map["enrollment_number"]
                     break
+            if "enrollment_number" in fields:
+                break
 
         # 3. Student / Candidate Name
-        name_pats = [
-            r'(?:student\s*name|candidate\s*name|name\s*of\s*student|name)\s*[:=\-]?\s*([A-Za-z\s\.]+?)(?:\n|$|,)',
-            r'(?:mr\.|ms\.|shri)\s+([A-Za-z\s]+?)(?:\n|$|,)'
+        name_patterns = [
+            r'(?i)\b(?:student\s*name|candidate\s*name|name\s*of\s*student)\b[\s.:=-]*([A-Za-z\s.]+?)(?:\n|$|,)',
+            r'(?i)\bname\b[\s.:=-]+([A-Za-z\s.]+?)(?:\n|$|,)',
+            r'(?i)\b(?:mr\.|ms\.|shri)\s+([A-Za-z\s]+?)(?:\n|$|,)'
         ]
-        for pat in name_pats:
-            m = re.search(pat, text, re.IGNORECASE)
+        for pat in name_patterns:
+            m = re.search(pat, text)
             if m:
-                name_val = m.group(1).strip().rstrip(".,")
-                if len(name_val) >= 3 and not any(w in name_val.lower() for w in ["college", "university", "school", "exam", "grade"]):
-                    fields["student_name"] = name_val.title()
+                raw_name = m.group(1).strip().rstrip(".,")
+                if len(raw_name) >= 3 and not any(w in raw_name.lower() for w in ["college", "university", "institute", "school", "exam", "grade", "national", "technology"]):
+                    fields["student_name"] = raw_name.title()
+                    evidence_map["student_name"] = {
+                        "value": raw_name.title(),
+                        "evidence": m.group(0).strip(),
+                        "confidence": 0.95,
+                        "source_page": 1,
+                        "method": "label_regex"
+                    }
                     break
 
-        # 4. College / University
-        col_pats = [
-            r'(?:college|institution|institute|university)\s*[:=\-]?\s*([A-Za-z\s,\.\(\)]+?)(?:\n|$)',
+        # 4. Father's Name / Guardian Name
+        father_patterns = [
+            r'(?i)\b(?:father[\'s\s]*name|father\s*name|s/o|d/o|w/o|guardian[\'s\s]*name)\b[\s.:=-]*([A-Za-z\s.]+?)(?:\n|$|,)'
+        ]
+        for pat in father_patterns:
+            m = re.search(pat, text)
+            if m:
+                raw_fname = m.group(1).strip().rstrip(".,")
+                if len(raw_fname) >= 3 and not any(w in raw_fname.lower() for w in ["college", "university", "school"]):
+                    fields["father_name"] = raw_fname.title()
+                    evidence_map["father_name"] = {
+                        "value": raw_fname.title(),
+                        "evidence": m.group(0).strip(),
+                        "confidence": 0.95,
+                        "source_page": 1,
+                        "method": "label_regex"
+                    }
+                    break
+
+        # 5. College / University
+        col_patterns = [
+            r'\b(Dr\.?\s+B\.?\s*R\.?\s*Ambedkar\s+National\s+Institute\s+of\s+Technology[A-Za-z\s,]*)\b',
             r'\b(National\s+Institute\s+of\s+Technology[A-Za-z\s,]+)\b',
             r'\b(Indian\s+Institute\s+of\s+Technology[A-Za-z\s,]+)\b',
+            r'(?i)\b(?:college|institution|institute|university)\b[\s.:=-]*([A-Za-z\s,().]+?)(?:\n|$)',
             r'\b([A-Za-z\s]+(?:University|Engineering\s+College|Institute\s+of\s+Technology))\b'
         ]
-        for pat in col_pats:
+        for pat in col_patterns:
             m = re.search(pat, text, re.IGNORECASE)
             if m:
                 col_val = m.group(1).strip().rstrip(".,")
-                if len(col_val) >= 4 and not any(w in col_val.lower() for w in ["roll", "student", "branch"]):
+                if len(col_val) >= 4 and not any(w in col_val.lower() for w in ["roll", "student", "branch", "name:"]):
                     fields["college"] = col_val
+                    evidence_map["college"] = {
+                        "value": col_val,
+                        "evidence": m.group(0).strip(),
+                        "confidence": 0.95,
+                        "source_page": 1,
+                        "method": "label_regex"
+                    }
                     break
 
-        # 5. Branch / Department
-        branch_pats = [
-            r'(?:branch|department|dept\.?|stream|discipline)\s*[:=\-]?\s*([A-Za-z\s&]+?)(?:\n|$|,)',
-            r'\b(Computer\s+Science(?:\s+and\s+Engineering)?|Information\s+Technology|Mechanical|Electrical|Civil|Electronics)\b'
+        # 6. Branch / Department
+        branch_patterns = [
+            r'(?i)\b(?:branch|department|dept\.?|stream|discipline)\b[\s.:=-]*([A-Za-z\s&]+?)(?:\n|$|,)',
+            r'\b(Computer\s+Science(?:\s+(?:and|&)\s+Engineering)?|Information\s+Technology|Mechanical(?:\s+Engineering)?|Electrical(?:\s+Engineering)?|Civil(?:\s+Engineering)?|Electronics(?:\s+(?:and|&)\s+Communication)?)\b'
         ]
-        for pat in branch_pats:
+        for pat in branch_patterns:
             m = re.search(pat, text, re.IGNORECASE)
             if m:
                 b_val = m.group(1).strip().rstrip(".,")
                 if len(b_val) >= 2:
                     fields["branch"] = b_val.title()
+                    evidence_map["branch"] = {
+                        "value": b_val.title(),
+                        "evidence": m.group(0).strip(),
+                        "confidence": 0.95,
+                        "source_page": 1,
+                        "method": "label_regex"
+                    }
                     break
 
-        # 6. Course / Degree
-        course_pats = [
-            r'(?:course|programme|degree)\s*[:=\-]?\s*([A-Za-z\.\s]+?)(?:\n|$|,)',
+        # 7. Course / Degree
+        course_patterns = [
+            r'(?i)\b(?:course|programme|degree)\b[\s.:=-]*([A-Za-z.\s]+?)(?:\n|$|,)',
             r'\b(B\.?Tech|M\.?Tech|B\.?E\.?|BCA|MCA|B\.?Sc|M\.?Sc|MBA)\b'
         ]
-        for pat in course_pats:
+        for pat in course_patterns:
             m = re.search(pat, text, re.IGNORECASE)
             if m:
                 c_val = m.group(1).strip().rstrip(".,")
                 if len(c_val) >= 2:
                     fields["course"] = c_val.upper()
+                    evidence_map["course"] = {
+                        "value": c_val.upper(),
+                        "evidence": m.group(0).strip(),
+                        "confidence": 0.95,
+                        "source_page": 1,
+                        "method": "label_regex"
+                    }
                     break
 
-        # 7. Batch / Session
+        # 8. Batch / Session
         batch_m = re.search(r'(?:batch|session|admission\s*year)\s*[:=\-]?\s*(\d{4}(?:\s*-\s*\d{2,4})?)', text, re.IGNORECASE)
         if batch_m:
-            fields["batch"] = batch_m.group(1).strip()
+            b_val = batch_m.group(1).strip()
+            fields["batch"] = b_val
+            evidence_map["batch"] = {
+                "value": b_val,
+                "evidence": batch_m.group(0).strip(),
+                "confidence": 0.95,
+                "source_page": 1,
+                "method": "label_regex"
+            }
 
-        # 8. Date of Birth
-        dob_m = re.search(r'(?:d\.?o\.?b\.?|date\s*of\s*birth)\s*[:=\-]?\s*([0-3]?[0-9][/-][0-1]?[0-9][/-][12][90][0-9]{2})', text, re.IGNORECASE)
-        if dob_m:
-            fields["dob"] = dob_m.group(1).strip()
-            fields["date_of_birth"] = dob_m.group(1).strip()
+        # 9. Date of Birth
+        dob_patterns = [
+            r'(?i)\b(?:d\.?o\.?b\.?|date\s*of\s*birth|birth\s*date)\b[\s.:=-]*([0-3]?[0-9][/-][0-1]?[0-9][/-][12][90][0-9]{2})',
+            r'\b([0-3]?[0-9][/-][0-1]?[0-9][/-][12][90][0-9]{2})\b'
+        ]
+        for pat in dob_patterns:
+            m = re.search(pat, text)
+            if m:
+                d_val = m.group(1).strip()
+                fields["dob"] = d_val
+                fields["date_of_birth"] = d_val
+                evidence_map["dob"] = {
+                    "value": d_val,
+                    "evidence": m.group(0).strip(),
+                    "confidence": 0.95,
+                    "source_page": 1,
+                    "method": "label_regex"
+                }
+                evidence_map["date_of_birth"] = evidence_map["dob"]
+                break
 
-        # 9. Blood Group
-        bg_m = re.search(r'(?:blood\s*group|b\.g\.?)\s*[:=\-]?\s*([ABOab][+-])', text, re.IGNORECASE)
+        # 10. Blood Group
+        bg_m = re.search(r'(?i)\b(?:blood\s*group|b\.g\.?)\b[\s.:=-]*([ABOab][+-])', text)
         if bg_m:
-            fields["blood_group"] = bg_m.group(1).strip().upper()
+            bg_val = bg_m.group(1).strip().upper()
+            fields["blood_group"] = bg_val
+            evidence_map["blood_group"] = {
+                "value": bg_val,
+                "evidence": bg_m.group(0).strip(),
+                "confidence": 0.95,
+                "source_page": 1,
+                "method": "label_regex"
+            }
 
-        # 10. Phone / Mobile
-        phone_m = re.search(r'(?:phone|mobile|contact|tel\.?)\s*[:=\-]?\s*([+0-9\s\-]{10,15})', text, re.IGNORECASE)
+        # 11. Phone / Mobile
+        phone_m = re.search(r'(?i)\b(?:phone|mobile|contact|tel\.?|mob\.?)\b[\s.:=-]*([+0-9\s\-]{10,18})', text)
         if phone_m:
             p_val = re.sub(r'[^0-9+]', '', phone_m.group(1).strip())
             if len(p_val) >= 10:
                 fields["phone"] = p_val
+                evidence_map["phone"] = {
+                    "value": p_val,
+                    "evidence": phone_m.group(0).strip(),
+                    "confidence": 0.90,
+                    "source_page": 1,
+                    "method": "label_regex"
+                }
 
-        # 11. Email
+        # 12. Email
         email_m = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text)
         if email_m:
-            fields["email"] = email_m.group(0).strip().lower()
+            e_val = email_m.group(0).strip().lower()
+            fields["email"] = e_val
+            evidence_map["email"] = {
+                "value": e_val,
+                "evidence": e_val,
+                "confidence": 0.98,
+                "source_page": 1,
+                "method": "label_regex"
+            }
 
     def _extract_marksheet_table_fields(self, text: str, fields: Dict[str, Any]):
         """Extract marksheet semester, SGPA/CGPA, and tabular subject-marks mapping."""
@@ -555,20 +720,29 @@ class DocumentService:
         if name_m and "name" not in fields:
             fields["name"] = name_m.group(1).strip().title()
 
-    def _supplement_fields_with_llm(self, category: str, text: str, fields: Dict[str, Any]):
-        """Supplement fields with LLM if Gemini is available for complex documents."""
+    def _supplement_fields_with_llm(self, category: str, text: str, fields: Dict[str, Any], evidence_map: Dict[str, Any]):
+        """
+        Grounded LLM enhancement:
+        Extracts complex or uncaptured fields, but strictly enforces grounding in raw text.
+        Never allows ungrounded values, hallucinated numbers, or phone/STD numbers to be assigned.
+        """
         genai = get_gemini_client()
         if not genai or len(text.strip()) < 40:
             return
 
         prompt = f"""
-Extract key structured attributes from this {category} document as a JSON dictionary.
-Do NOT hallucinate or guess. Only extract values present in the text.
+You are an expert document field extractor. Extract key structured attributes from this {category} document as JSON.
+CRITICAL INSTRUCTIONS:
+1. Do NOT hallucinate, infer, guess, or autocomplete any values.
+2. Every extracted value MUST appear VERBATIM in the document text.
+3. NEVER map telephone numbers, STD codes, fax numbers, PIN codes, or contact numbers as roll_number, enrollment_number, or student ID.
+4. If a field is not explicitly labeled or present, omit it.
+
 Document Text:
 \"\"\"{text[:2500]}\"\"\"
 
-Return ONLY valid JSON with keys like:
-roll_number, student_name, enrollment_number, college, branch, semester, cgpa, subjects (as dict of subject: marks)
+Return ONLY a valid JSON dictionary with keys from:
+roll_number, student_name, father_name, enrollment_number, registration_number, college, branch, course, batch, semester, cgpa, sgpa, dob, blood_group, phone, email, subjects
 """
         for candidate in CANDIDATE_MODELS:
             try:
@@ -582,11 +756,78 @@ roll_number, student_name, enrollment_number, college, branch, semester, cgpa, s
                 parsed = json.loads(t.strip())
                 if isinstance(parsed, dict):
                     for k, v in parsed.items():
-                        if k not in fields and v:
-                            fields[k] = v
+                        if not v or k in fields:
+                            continue
+                        val_str = str(v).strip()
+                        # Strict Grounding Check: Must exist in text
+                        if val_str not in text and val_str.lower() not in text.lower():
+                            logger.warning(f"[EXTRACTION_REJECTED] field={k} invalid_value={val_str} reason=llm_ungrounded")
+                            continue
+                        # If numeric identity, ensure not phone collision
+                        if k in ["roll_number", "enrollment_number", "registration_number"]:
+                            if self._is_phone_or_std_number(val_str, text):
+                                logger.warning(f"[EXTRACTION_REJECTED] field={k} invalid_value={val_str} reason=llm_phone_std_collision")
+                                continue
+                        fields[k] = v
+                        evidence_map[k] = {
+                            "value": v,
+                            "evidence": f"LLM grounded extraction: '{val_str}'",
+                            "confidence": 0.88,
+                            "source_page": 1,
+                            "method": "gemini_llm_grounded"
+                        }
                     break
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Gemini structured field supplement error with {candidate}: {e}")
                 continue
+
+    def _validate_and_finalize_fields(self, text: str, fields: Dict[str, Any], evidence_map: Dict[str, Any]):
+        """
+        Strict validation layer to guarantee 100% groundedness and reject false mappings.
+        - roll_number must exist in raw text.
+        - roll_number must NOT be a phone/STD number, pin code, or date.
+        - enrollment_number must exist in raw text.
+        - Non-dictionary fields must be grounded in raw text.
+        - Attaches evidence metadata to fields["_evidence"].
+        """
+        rejected_keys = []
+        for k, v in list(fields.items()):
+            if k.startswith("_"):
+                continue
+            if isinstance(v, (str, int, float)):
+                v_str = str(v).strip()
+                # 1. Grounding check
+                if v_str not in text and v_str.lower() not in text.lower():
+                    logger.warning(f"[EXTRACTION_REJECTED] field={k} invalid_value={v_str} reason=unlabeled_or_ungrounded")
+                    rejected_keys.append(k)
+                    continue
+
+                # 2. Identity number collision checks
+                if k in ["roll_number", "enrollment_number", "registration_number"]:
+                    # Anti-phone / STD collision
+                    if self._is_phone_or_std_number(v_str, text):
+                        logger.warning(f"[EXTRACTION_REJECTED] field={k} invalid_value={v_str} reason=phone_or_std_collision")
+                        rejected_keys.append(k)
+                        continue
+
+                    # Anti-postal / PIN code collision (6 digits with pin/postal context)
+                    if re.match(r'^\d{6}$', v_str) and re.search(rf'(?i)(?:pin|pincode|postal)[\s.:=-]*{re.escape(v_str)}', text):
+                        logger.warning(f"[EXTRACTION_REJECTED] field={k} invalid_value={v_str} reason=postal_pincode_collision")
+                        rejected_keys.append(k)
+                        continue
+
+                    # Anti-date collision (looks like DD/MM/YYYY or YYYY)
+                    if re.match(r'^(?:19|20)\d{2}$', v_str) or re.match(r'^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$', v_str):
+                        logger.warning(f"[EXTRACTION_REJECTED] field={k} invalid_value={v_str} reason=date_collision")
+                        rejected_keys.append(k)
+                        continue
+
+        for rk in rejected_keys:
+            fields.pop(rk, None)
+            evidence_map.pop(rk, None)
+
+        # Store evidence and confidence scores in _evidence
+        fields["_evidence"] = evidence_map
 
     def _route_sensitive_fields_to_vault(self, db: Session, user_id: str, doc_id: str, category: str, structured_fields: Dict[str, Any]):
         """Encrypt and persist sensitive identity identifiers in Secure Vault."""
@@ -920,6 +1161,23 @@ roll_number, student_name, enrollment_number, college, branch, semester, cgpa, s
                         "document_id": doc.id
                     }
 
+        # 13. Father's Name in Document
+        if any(k in q_lower for k in ["father", "father's name", "pitaji", "father name", "guardian"]):
+            for doc in user_docs:
+                s_fields = doc.structured_fields or {}
+                if "father_name" in s_fields:
+                    val = s_fields["father_name"]
+                    logger.info(f"[DOC_FIELD_LOOKUP] user_id={user_id} target_field=father_name found=True doc_id={doc.id}")
+                    return {
+                        "is_full_summary": False,
+                        "field_name": "father_name",
+                        "field_value": val,
+                        "answer_text": f"Your father's name is {val}, according to your uploaded {doc.category.replace('_', ' ').title()} ({doc.original_filename}).",
+                        "document_name": doc.original_filename,
+                        "document_category": doc.category,
+                        "document_id": doc.id
+                    }
+
         logger.info(f"[DOC_FIELD_LOOKUP] user_id={user_id} target_field=none found=False")
         return None
 
@@ -931,6 +1189,7 @@ roll_number, student_name, enrollment_number, college, branch, semester, cgpa, s
         field_labels = {
             "student_name": "Student Name",
             "name": "Name",
+            "father_name": "Father's Name",
             "roll_number": "Roll Number",
             "enrollment_number": "Enrollment Number",
             "registration_number": "Registration Number",
@@ -967,5 +1226,37 @@ roll_number, student_name, enrollment_number, college, branch, semester, cgpa, s
 
         lines.append(f"\n**Source:** {doc.original_filename} ({doc.category.replace('_', ' ').title()})")
         return "\n".join(lines)
+
+    def reprocess_document(self, db: Session, doc_id: str) -> Optional[Document]:
+        """
+        Re-run classification, field extraction, validation, and metadata update on a stored document.
+        Purges any stale or corrupted values (such as landline phone numbers mapped as roll_number).
+        """
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        if not doc or not doc.extracted_text:
+            return None
+        
+        category, structured = self._classify_and_extract_fields(doc.original_filename, doc.extracted_text)
+        doc.category = category
+        doc.structured_fields = structured
+        meta = dict(doc.metadata_json or {})
+        meta["field_evidence"] = structured.get("_evidence", {})
+        doc.metadata_json = meta
+        db.commit()
+        logger.info(f"[DOC_REPROCESS] doc_id={doc.id} category={category} roll_number={structured.get('roll_number')}")
+        return doc
+
+    def reprocess_all_user_documents(self, db: Session, user_id: Optional[str] = None) -> List[str]:
+        """Re-run extraction and validation across all documents to fix stale or incorrect values."""
+        query = db.query(Document)
+        if user_id:
+            query = query.filter(Document.user_id == user_id)
+        docs = query.all()
+        reprocessed = []
+        for doc in docs:
+            if doc.extracted_text:
+                self.reprocess_document(db, doc.id)
+                reprocessed.append(doc.id)
+        return reprocessed
 
 document_service = DocumentService()
