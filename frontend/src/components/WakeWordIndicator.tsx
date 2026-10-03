@@ -1,28 +1,34 @@
 import React from 'react';
-import { Mic, MicOff, Volume2, Sparkles, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Volume2, Sparkles, Loader2, Radio } from 'lucide-react';
 import { VoiceState } from '../types';
 
 interface WakeWordIndicatorProps {
   state: VoiceState;
   wakeWordEnabled: boolean;
+  isHandsFreeMode?: boolean;
+  wakeWord?: string;
   onToggleWakeWord: () => void;
+  onToggleHandsFree?: () => void;
   onManualTrigger: () => void;
 }
 
 export const WakeWordIndicator: React.FC<WakeWordIndicatorProps> = ({
   state,
   wakeWordEnabled,
+  isHandsFreeMode = false,
+  wakeWord = 'Hey Life',
   onToggleWakeWord,
+  onToggleHandsFree,
   onManualTrigger
 }) => {
   const getOrbStyles = () => {
     switch (state) {
       case 'listening':
-        return 'border-orange-500 bg-orange-500/20 shadow-[0_0_50px_rgba(249,115,22,0.8)] scale-110';
+        return 'border-orange-500 bg-orange-500/25 shadow-[0_0_55px_rgba(249,115,22,0.85)] scale-110';
       case 'thinking':
-        return 'border-amber-400 bg-amber-500/20 shadow-[0_0_40px_rgba(251,191,36,0.6)] animate-pulse';
+        return 'border-amber-400 bg-amber-500/20 shadow-[0_0_45px_rgba(251,191,36,0.65)] animate-pulse';
       case 'speaking':
-        return 'border-orange-400 bg-gradient-to-r from-orange-600/30 to-amber-600/30 shadow-[0_0_60px_rgba(249,115,22,0.7)] animate-bounce';
+        return 'border-orange-400 bg-gradient-to-r from-orange-600/35 to-amber-600/35 shadow-[0_0_65px_rgba(249,115,22,0.75)] animate-bounce';
       case 'idle':
       default:
         return 'border-gray-700 bg-gray-900/60 shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:border-orange-500/50';
@@ -34,17 +40,35 @@ export const WakeWordIndicator: React.FC<WakeWordIndicatorProps> = ({
       case 'listening':
         return 'Listening to you...';
       case 'thinking':
-        return 'Thinking & retrieving memories...';
+        return 'Thinking & searching memories...';
       case 'speaking':
         return 'Life is speaking...';
       case 'idle':
       default:
-        return wakeWordEnabled ? 'Say "Life" to wake me' : 'Wake word paused';
+        if (isHandsFreeMode) {
+          return `Say "${wakeWord}" anytime (Screen locked or background)`;
+        }
+        return wakeWordEnabled ? `Say "${wakeWord}" to wake me` : 'Wake word paused';
     }
   };
 
   return (
     <div className="flex flex-col items-center justify-center p-6 text-center select-none">
+      {/* Hands-Free Background Mode Badge */}
+      <div className="mb-4">
+        {isHandsFreeMode ? (
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Hands-Free Background Service Active</span>
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-800/60 border border-gray-700/60 text-gray-400 text-[11px] font-medium">
+            <Radio className="w-3 h-3 text-gray-500" />
+            <span>Hands-Free Mode: Standby</span>
+          </div>
+        )}
+      </div>
+
       {/* Outer Pulse Rings */}
       <div className="relative flex items-center justify-center">
         {state === 'listening' && (
@@ -78,23 +102,37 @@ export const WakeWordIndicator: React.FC<WakeWordIndicatorProps> = ({
       </div>
 
       {/* Wake Word Subtitle / Toggle */}
-      <div className="mt-3 flex items-center gap-3">
+      <div className="mt-3 flex items-center gap-2.5">
         <button
           onClick={onToggleWakeWord}
-          className="text-xs px-3 py-1 rounded-full border border-gray-800 bg-[#16161c] hover:border-orange-500/40 text-gray-400 hover:text-orange-400 transition-all flex items-center gap-1.5"
+          className="text-xs px-3 py-1 rounded-full border border-gray-800 bg-[#16161c] hover:border-orange-500/40 text-gray-400 hover:text-orange-400 transition-all flex items-center gap-1.5 cursor-pointer"
         >
           {wakeWordEnabled ? (
             <>
               <Sparkles className="w-3 h-3 text-orange-400" />
-              Wake phrase: <span className="font-semibold text-orange-300">"Life"</span>
+              Wake phrase: <span className="font-semibold text-orange-300">"{wakeWord}"</span>
             </>
           ) : (
             <>
               <MicOff className="w-3 h-3 text-red-400" />
-              Wake word disabled
+              Wake word paused
             </>
           )}
         </button>
+
+        {onToggleHandsFree && (
+          <button
+            onClick={onToggleHandsFree}
+            className={`text-xs px-3 py-1 rounded-full border transition-all flex items-center gap-1.5 cursor-pointer ${
+              isHandsFreeMode
+                ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-900/40'
+                : 'border-gray-800 bg-[#16161c] text-gray-400 hover:text-white hover:border-gray-700'
+            }`}
+          >
+            <Radio className={`w-3 h-3 ${isHandsFreeMode ? 'text-emerald-400' : 'text-gray-500'}`} />
+            Hands-Free: <span className="font-semibold">{isHandsFreeMode ? 'ON' : 'OFF'}</span>
+          </button>
+        )}
       </div>
     </div>
   );

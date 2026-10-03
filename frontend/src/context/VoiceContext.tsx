@@ -1,15 +1,23 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { VoiceState } from '../types';
 import { api, getServerHostUrl } from '../services/api';
+import { handsFreeService } from '../services/handsFreeService';
 
 interface VoiceContextType {
   voiceState: VoiceState;
   transcript: string;
   assistantResponse: string;
   isWakeWordEnabled: boolean;
+  isHandsFreeMode: boolean;
   micPermissionError: boolean;
   activeConversationId: string | null;
+  wakeWord: string;
+  voiceResponseEnabled: boolean;
+  isNativePlatform: boolean;
   toggleWakeWord: () => void;
+  toggleHandsFreeMode: () => Promise<void>;
+  updateWakeWord: (word: string) => void;
+  updateVoiceResponse: (enabled: boolean) => void;
   triggerManualListen: () => void;
   stopVoice: () => void;
   playAudioResponse: (url: string) => void;
@@ -28,8 +36,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [transcript, setTranscript] = useState<string>('');
   const [assistantResponse, setAssistantResponse] = useState<string>('');
   const [isWakeWordEnabled, setIsWakeWordEnabled] = useState<boolean>(true);
+  const [isHandsFreeMode, setIsHandsFreeMode] = useState<boolean>(handsFreeService.isEnabledLocally());
+  const [wakeWord, setWakeWordState] = useState<string>(handsFreeService.getWakeWord());
+  const [voiceResponseEnabled, setVoiceResponseState] = useState<boolean>(handsFreeService.isVoiceResponseEnabled());
   const [micPermissionError, setMicPermissionError] = useState<boolean>(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+
+  const isNative = handsFreeService.isNativeAvailable();
 
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef<boolean>(false);
@@ -41,13 +54,76 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const speechDebounceTimerRef = useRef<any>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
-  // Request browser microphone permission explicitly
+  // Sync with native Android HandsFreeVoice service events when running inside Android APK
+  useEffect(() => {
+    if (!isNative) return;
+
+    let subState: any;
+    let subTranscript: any;
+    let subResponse: any;
+    let subError: any;
+
+    const setupNativeListeners = async () => {
+      try {
+        subState = await handsFreeService.addListener('voiceStateChanged', (data: { state: string }) => {
+          if (data.state === 'idle') {
+            setVoiceState('idle');
+          } else if (data.state === 'wake_detected' || data.state === 'speaking') {
+            setVoiceState('speaking');
+          } else if (data.state === 'listening' || data.state === 'cooldown') {
+            setVoiceState('listening');
+          } else if (data.state === 'processing') {
+            setVoiceState('thinking');
+          }
+        });
+
+        subTranscript = await handsFreeService.addListener('transcriptUpdate', (data: { transcript: string; isFinal: boolean }) => {
+          setTranscript(data.transcript);
+        });
+
+        subResponse = await handsFreeService.addListener('assistantResponse', (data: { response: string; conversationId?: string }) => {
+          setAssistantResponse(data.response);
+          if (data.conversationId) {
+            setActiveConversationId(data.conversationId);
+          }
+        });
+
+        subError = await handsFreeService.addListener('voiceError', (data: { error: string }) => {
+          if (data.error && (data.error.toLowerCase().includes('permission') || data.error.toLowerCase().includes('denied'))) {
+            setMicPermissionError(true);
+          }
+        });
+
+        const running = await handsFreeService.isRunning();
+        setIsHandsFreeMode(running);
+      } catch (err) {
+        console.warn('Native listener setup note:', err);
+      }
+    };
+
+    setupNativeListeners();
+
+    return () => {
+      if (subState?.remove) subState.remove();
+      if (subTranscript?.remove) subTranscript.remove();
+      if (subResponse?.remove) subResponse.remove();
+      if (subError?.remove) subError.remove();
+    };
+  }, [isNative]);
+
+  // Request microphone permission explicitly
   const requestMicPermission = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(t => t.stop());
-      setMicPermissionError(false);
-      startRecognition();
+      if (isNative) {
+        await handsFreeService.start();
+        setIsHandsFreeMode(true);
+        setMicPermissionError(false);
+      } else {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+        setMicPermissionError(false);
+        startRecognition();
+      }
     } catch (err) {
       console.error('Microphone permission denied:', err);
       setMicPermissionError(true);
@@ -55,6 +131,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const startRecognition = () => {
+    // If native hands-free service is active, it handles background audio capture
+    if (isNative && isHandsFreeMode) return;
     if (!recognitionRef.current || isListeningRef.current || isSpeakingRef.current) return;
     try {
       recognitionRef.current.start();
@@ -75,14 +153,20 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     isListeningRef.current = false;
   };
 
-  // Initialize Speech Recognition
+  // Initialize Web Speech Recognition for Web / Browser Mode
   useEffect(() => {
+    if (isNative && isHandsFreeMode) {
+      // In native hands-free mode, native service manages mic
+      stopRecognitionGracefully();
+      return;
+    }
+
     const SpeechRecognition =
       (window as unknown as IWindow).SpeechRecognition ||
       (window as unknown as IWindow).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      console.warn('SpeechRecognition API not available in this browser.');
+      console.warn('SpeechRecognition API not available in this browser environment.');
       return;
     }
 
@@ -117,15 +201,18 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const lower = heardText.toLowerCase();
 
-      // 1. Idle State: Wake Word Detection ("Life" / "लाइफ" / "Jeet")
+      // 1. Idle State: Wake Word Detection ("Hey Life" / "Life" / "Jeet")
       if (!isInActiveConversationRef.current) {
+        const targetWake = wakeWord.toLowerCase();
         if (
+          lower.includes(targetWake) ||
+          lower.includes('hey life') ||
           lower.includes('life') ||
           lower.includes('lyf') ||
+          lower.includes('हे लाइफ') ||
           lower.includes('लाइफ') ||
-          lower.includes('लाइफ़') ||
+          lower.includes('hey jeet') ||
           lower.includes('jeet') ||
-          lower.includes('jeeth') ||
           lower.includes('जीत')
         ) {
           handleWakeWordTriggered();
@@ -149,7 +236,6 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     recognition.onerror = (e: any) => {
-      // Ignore normal 'aborted' and 'no-speech' events from browser
       if (e.error === 'aborted' || e.error === 'no-speech') {
         isListeningRef.current = false;
         return;
@@ -165,8 +251,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     recognition.onend = () => {
       isListeningRef.current = false;
-      // Auto-restart recognition after 150ms unless assistant is currently speaking
-      if (isWakeWordEnabled && !isSpeakingRef.current) {
+      // Auto-restart recognition after 150ms unless assistant is currently speaking or native mode took over
+      if (isWakeWordEnabled && !isSpeakingRef.current && !(isNative && isHandsFreeMode)) {
         setTimeout(() => {
           startRecognition();
         }, 150);
@@ -181,10 +267,10 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       if (speechDebounceTimerRef.current) clearTimeout(speechDebounceTimerRef.current);
     };
-  }, [isWakeWordEnabled]);
+  }, [isWakeWordEnabled, isHandsFreeMode, isNative, wakeWord]);
 
   const handleWakeWordTriggered = async () => {
-    console.log("Wake word 'Life' detected!");
+    console.log(`Wake word '${wakeWord}' detected!`);
     isInActiveConversationRef.current = true;
     setVoiceState('listening');
     setTranscript('');
@@ -207,7 +293,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!userText || isSpeakingRef.current) return;
     const cleanText = userText.trim();
     const cleanLow = cleanText.toLowerCase();
-    if (cleanLow === 'life' || cleanLow === 'लाइफ' || cleanLow === 'jeet' || cleanLow === 'जीत') return;
+    if (cleanLow === 'hey life' || cleanLow === 'life' || cleanLow === 'लाइफ' || cleanLow === 'jeet' || cleanLow === 'जीत') return;
 
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (speechDebounceTimerRef.current) clearTimeout(speechDebounceTimerRef.current);
@@ -230,9 +316,15 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         speakText(res.response);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to get answer:', err);
-      speakText('Kshama kijiye, mujhe response process karne mein dikkat aayi.');
+      let errMsg = 'Kshama kijiye, mujhe response process karne mein dikkat aayi.';
+      if (!navigator.onLine) {
+        errMsg = 'Internet connection nahi hai.';
+      } else if (err?.message?.includes('timeout')) {
+        errMsg = 'Response lene mein thoda problem aa raha hai.';
+      }
+      speakText(errMsg);
       setVoiceState('idle');
       isInActiveConversationRef.current = false;
     }
@@ -368,6 +460,39 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsWakeWordEnabled(prev => !prev);
   };
 
+  const toggleHandsFreeMode = async () => {
+    if (isHandsFreeMode) {
+      await handsFreeService.stop();
+      setIsHandsFreeMode(false);
+      setVoiceState('idle');
+    } else {
+      try {
+        await handsFreeService.start();
+        setIsHandsFreeMode(true);
+        setMicPermissionError(false);
+      } catch (err: any) {
+        console.error('Hands-Free mode activation error:', err);
+        setMicPermissionError(true);
+      }
+    }
+  };
+
+  const updateWakeWord = (word: string) => {
+    handsFreeService.setWakeWord(word);
+    setWakeWordState(word);
+    if (isHandsFreeMode && isNative) {
+      handsFreeService.start(); // restart service with updated wake word
+    }
+  };
+
+  const updateVoiceResponse = (enabled: boolean) => {
+    handsFreeService.setVoiceResponseEnabled(enabled);
+    setVoiceResponseState(enabled);
+    if (isHandsFreeMode && isNative) {
+      handsFreeService.start();
+    }
+  };
+
   return (
     <VoiceContext.Provider
       value={{
@@ -375,9 +500,16 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         transcript,
         assistantResponse,
         isWakeWordEnabled,
+        isHandsFreeMode,
         micPermissionError,
         activeConversationId,
+        wakeWord,
+        voiceResponseEnabled,
+        isNativePlatform: isNative,
         toggleWakeWord,
+        toggleHandsFreeMode,
+        updateWakeWord,
+        updateVoiceResponse,
         triggerManualListen,
         stopVoice,
         playAudioResponse,
