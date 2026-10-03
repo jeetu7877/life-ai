@@ -19,32 +19,54 @@ CANDIDATE_MODELS = [
     "gemini-2.5-pro",
 ]
 
+_last_gemini_init_error = None
+
+def get_gemini_init_error():
+    global _last_gemini_init_error
+    return _last_gemini_init_error
+
 def get_gemini_client():
     """
     Dynamically loads and configures Google Gemini client if API key is present.
-    Supports on-the-fly key additions to backend/.env without restarting the server.
+    Prioritizes real environment variables (e.g. Render Dashboard) over dummy .env files.
     """
-    load_dotenv(override=True)
-    # Check both backend/.env and root .env
-    backend_env = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
-    if os.path.exists(backend_env):
-        load_dotenv(backend_env, override=True)
-
+    global _last_gemini_init_error
+    
+    # 1. First check environment variables already present in os.environ (Render/Docker/System)
     api_key = (
-        os.getenv("GEMINI_API_KEY") or 
-        os.getenv("GOOGLE_API_KEY") or 
-        settings.GEMINI_API_KEY or 
+        os.environ.get("GEMINI_API_KEY") or 
+        os.environ.get("GOOGLE_API_KEY") or 
         ""
     ).strip().strip('"').strip("'")
+
+    # 2. If not found in system env, load local .env without overwriting existing vars (override=False)
+    if not api_key or api_key == "your_google_gemini_api_key_here":
+        backend_env = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+        if os.path.exists(backend_env):
+            load_dotenv(backend_env, override=False)
+        else:
+            load_dotenv(override=False)
+
+        api_key = (
+            os.getenv("GEMINI_API_KEY") or 
+            os.getenv("GOOGLE_API_KEY") or 
+            getattr(settings, "GEMINI_API_KEY", "") or 
+            ""
+        ).strip().strip('"').strip("'")
     
     if api_key and api_key != "your_google_gemini_api_key_here" and len(api_key) > 10:
         try:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
+            _last_gemini_init_error = None
             return genai
         except Exception as e:
-            logger.warning(f"Google Generative AI configuration error: {e}")
-    return None
+            _last_gemini_init_error = f"genai.configure error: {e}"
+            logger.error(f"Google Generative AI configuration error: {e}", exc_info=True)
+            return None
+    else:
+        _last_gemini_init_error = f"Key invalid or missing: len={len(api_key)}"
+        return None
 
 class LLMService:
     def __init__(self):
