@@ -100,6 +100,15 @@ public class HandsFreeVoicePlugin extends Plugin {
 
             ContextCompat.startForegroundService(getContext(), serviceIntent);
 
+            android.content.SharedPreferences prefs = getContext().getSharedPreferences("life_ai_prefs", android.content.Context.MODE_PRIVATE);
+            prefs.edit()
+                .putBoolean("hands_free_enabled", true)
+                .putString("server_url", serverUrl)
+                .putString("auth_token", token)
+                .putString("wake_word", wakeWord)
+                .putBoolean("voice_response", voiceResponse)
+                .apply();
+
             JSObject ret = new JSObject();
             ret.put("success", true);
             ret.put("running", true);
@@ -116,6 +125,9 @@ public class HandsFreeVoicePlugin extends Plugin {
             Intent stopIntent = new Intent(getContext(), HandsFreeVoiceService.class);
             stopIntent.setAction(HandsFreeVoiceService.ACTION_STOP);
             getContext().startService(stopIntent);
+
+            android.content.SharedPreferences prefs = getContext().getSharedPreferences("life_ai_prefs", android.content.Context.MODE_PRIVATE);
+            prefs.edit().putBoolean("hands_free_enabled", false).apply();
 
             JSObject ret = new JSObject();
             ret.put("success", true);
