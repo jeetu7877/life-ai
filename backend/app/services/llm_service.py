@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # List of high-speed Gemini models to try in order of priority/quota availability
+# gemini-flash-lite-latest provides sub-second responses and high free-tier rate limits
 CANDIDATE_MODELS = [
+    "gemini-flash-lite-latest",
     "gemini-2.5-flash",
     "gemini-flash-latest",
-    "gemini-flash-lite-latest",
     "gemini-2.5-pro",
 ]
 
@@ -70,8 +71,8 @@ def get_gemini_client():
 
 class LLMService:
     def __init__(self):
-        raw_model = os.getenv("GEMINI_MODEL") or settings.GEMINI_MODEL or "gemini-2.5-flash"
-        self.model_name = "gemini-2.5-flash" if any(x in raw_model for x in ["1.5", "2.0", "3.1", "3.5"]) else raw_model
+        raw_model = os.getenv("GEMINI_MODEL") or settings.GEMINI_MODEL or "gemini-flash-lite-latest"
+        self.model_name = "gemini-flash-lite-latest" if any(x in raw_model for x in ["1.5", "2.0", "3.1", "3.5"]) else raw_model
         self.system_prompt = (
             "You are Life, a versatile, friendly, highly intelligent, and private personal AI companion.\n"
             "You have the voice and persona of an articulate, warm, polite, and intelligent Indian woman.\n\n"

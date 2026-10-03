@@ -109,19 +109,25 @@ class AgentService:
                 context_memories += f"\nUser activities on {query_date}: {summary_text}"
                 retrieved_sources.append({"source": "timeline", "date": query_date, "count": len(unique_acc)})
 
-        # 3. Retrieve Relevant Long-Term Memories from ChromaDB
-        semantic_memories = rag_service.search_memories(user_id=user_id, query=user_message, top_k=4)
-        if semantic_memories:
-            mem_texts = [f"• {m['content']}" for m in semantic_memories]
-            context_memories += "\n" + "\n".join(mem_texts)
-            retrieved_sources.append({"source": "long_term_memory", "count": len(semantic_memories)})
+        # Casual greetings check: bypass vector embedding search for sub-second instant response
+        casual_words = ["hi", "hello", "hey", "kaise ho", "kya haal", "kya hal", "thanks", "dhanyawad", "shukriya", "bye", "ok", "theek", "good morning", "good evening", "good night"]
+        words = lower_msg.strip().split()
+        is_casual = len(words) <= 4 and any(cw in lower_msg for cw in casual_words)
 
-        # 4. Retrieve Relevant Document chunks from ChromaDB
-        doc_chunks = rag_service.search_documents(user_id=user_id, query=user_message, top_k=3)
-        if doc_chunks:
-            doc_texts = [f"• [Doc snippet] {d['content']}" for d in doc_chunks]
-            context_docs = "\n".join(doc_texts)
-            retrieved_sources.append({"source": "documents", "count": len(doc_chunks)})
+        # 3. Retrieve Relevant Long-Term Memories from ChromaDB (if not casual greeting)
+        if not is_casual:
+            semantic_memories = rag_service.search_memories(user_id=user_id, query=user_message, top_k=4)
+            if semantic_memories:
+                mem_texts = [f"• {m['content']}" for m in semantic_memories]
+                context_memories += "\n" + "\n".join(mem_texts)
+                retrieved_sources.append({"source": "long_term_memory", "count": len(semantic_memories)})
+
+            # 4. Retrieve Relevant Document chunks from ChromaDB
+            doc_chunks = rag_service.search_documents(user_id=user_id, query=user_message, top_k=3)
+            if doc_chunks:
+                doc_texts = [f"• [Doc snippet] {d['content']}" for d in doc_chunks]
+                context_docs = "\n".join(doc_texts)
+                retrieved_sources.append({"source": "documents", "count": len(doc_chunks)})
 
         # 5. Generate Answer with LLM
         final_answer = llm_service.generate_chat_response(

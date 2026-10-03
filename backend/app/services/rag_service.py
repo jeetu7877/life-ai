@@ -96,6 +96,10 @@ class RAGService:
     ) -> List[Dict[str, Any]]:
         """Retrieve most relevant document snippets for user query."""
         try:
+            # Fast path: Skip vector embedding if no documents exist
+            if self.doc_collection.count() == 0:
+                return []
+
             where_clause = {"user_id": user_id}
             if category:
                 where_clause["category"] = category
@@ -128,6 +132,10 @@ class RAGService:
     ) -> List[Dict[str, Any]]:
         """Retrieve relevant long-term memories using semantic similarity."""
         try:
+            # Fast path: Skip vector embedding if no memories exist
+            if self.memory_collection.count() == 0:
+                return []
+
             where_clause = {"user_id": user_id}
             if memory_type:
                 where_clause["memory_type"] = memory_type
