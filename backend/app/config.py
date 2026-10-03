@@ -35,7 +35,7 @@ class Settings(BaseSettings):
         default=None,
         description="Google Gemini API Key for Agent reasoning, Vision OCR & Embeddings"
     )
-    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
 
     # ChromaDB Vector Storage

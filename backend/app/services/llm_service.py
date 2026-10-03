@@ -13,11 +13,10 @@ load_dotenv()
 
 # List of high-speed Gemini models to try in order of priority/quota availability
 CANDIDATE_MODELS = [
-    "gemini-flash-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-flash-lite-latest",
     "gemini-2.5-flash",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-2.5-pro",
 ]
 
 def get_gemini_client():
@@ -49,8 +48,8 @@ def get_gemini_client():
 
 class LLMService:
     def __init__(self):
-        raw_model = os.getenv("GEMINI_MODEL") or settings.GEMINI_MODEL or "gemini-3.5-flash-lite"
-        self.model_name = "gemini-3.5-flash-lite" if "1.5" in raw_model or "2.5" in raw_model else raw_model
+        raw_model = os.getenv("GEMINI_MODEL") or settings.GEMINI_MODEL or "gemini-2.5-flash"
+        self.model_name = "gemini-2.5-flash" if any(x in raw_model for x in ["1.5", "2.0", "3.1", "3.5"]) else raw_model
         self.system_prompt = (
             "You are Life, a versatile, friendly, highly intelligent, and private personal AI companion.\n"
             "You have the voice and persona of an articulate, warm, polite, and intelligent Indian woman.\n\n"
@@ -126,7 +125,7 @@ class LLMService:
                     logger.warning(f"Gemini generation error with {candidate}: {e}")
                     continue
 
-        # If key is present but all models hit quota / rate limit
+        # If key is present but all models returned an error
         if genai and last_error:
             err_str = str(last_error).lower()
             if "quota" in err_str or "429" in err_str or "rate" in err_str or "resourceexhausted" in err_str:
@@ -134,13 +133,19 @@ class LLMService:
                     "Aapka Gemini API key connect ho chuka hai, lekin Google Gemini ka free tier limit (rate limit) exceed ho gaya hai. "
                     "Kripya 1-2 minute baad dubara try karein, quota jaldi reset ho jata hai."
                 )
+            else:
+                logger.error(f"Gemini generation failed for all models: {last_error}")
+                return (
+                    f"Google Gemini connect hai lekin response generate karte waqt error aaya: {str(last_error)[:120]}. "
+                    "Kripya kuch seconds baad dubara message bhejein."
+                )
 
         # Intelligent local fallback for personal timeline & profile
         lower = user_message.lower()
         if "skill" in lower or "kya skills" in lower:
             if context_memories or user_profile_summary:
                 return f"Aapki profile ke mutabik: {user_profile_summary or context_memories}"
-            return "Aapne abhi tak skills add nahi kiye hain. Aap mujhe bata sakte hain, main yaad rakhunga!"
+            return "Aapne abhi tak skills add nahi kiye hain. Aap mujhe bata sakte hain, main yaad rakhungi!"
         if "kaun hoon" in lower or "who am i" in lower:
             return f"Aap mere dost hain! {user_profile_summary}"
         if "kya kiya" in lower or "what did i do" in lower or "yesterday" in lower or "today" in lower or "aaj kya" in lower:
@@ -155,11 +160,12 @@ class LLMService:
                     return f"Aaj aapne {clean_text} par kaam kiya."
             return "Aaj ki koi specific activity mujhe note nahi mili. Aap batayein aaj aapne kya naya kiya?"
         
-        # When API key is completely missing
+        # When API key is completely missing on this server instance
         return (
-            "Main ChatGPT ki tarah coding, science, poems, math, advice aur duniya bhar ke har sawal ka jawab de sakta hoon! "
-            "Lekin abhi aapka Gemini API Key connect nahi hai, isliye main abhi offline mode mein chal raha hoon.\n\n"
-            "👉 ChatGPT jaisa dimaag unlock karne ke liye: `backend/.env` file mein apni free Google Gemini API Key add kar dijiye (GEMINI_API_KEY=\"AIzaSy...\")."
+            "Main coding, general knowledge, advice aur sawalon ka jawab de sakti hoon! "
+            "Lekin abhi is server par Google Gemini API Key configure nahi hai, isliye main offline mode mein hoon.\n\n"
+            "👉 Agar aap Render Cloud use kar rahe hain: Render Dashboard -> Environment Variables mein `GEMINI_API_KEY` add karke Save karein.\n"
+            "👉 Agar local computer par hain: `backend/.env` file mein `GEMINI_API_KEY` set karein."
         )
 
     def extract_memories_and_entities(self, user_message: str, assistant_response: str) -> List[Dict[str, Any]]:

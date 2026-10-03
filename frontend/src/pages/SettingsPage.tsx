@@ -45,10 +45,14 @@ export const SettingsPage: React.FC = () => {
     setTestMessage('Pinging server...');
     const cleanUrl = serverUrl.trim().replace(/\/+$/, '');
     try {
-      const res = await axios.get(`${cleanUrl}/health`, { timeout: 5000 });
-      if (res.data && res.data.status === 'ok') {
+      const res = await axios.get(`${cleanUrl}/health`, { timeout: 6000 });
+      if (res.data && (res.data.status === 'ok' || res.data.status === 'healthy')) {
         setTestStatus('success');
-        setTestMessage(`Connected! Server responded: "${res.data.app || 'Life Active'}"`);
+        if (res.data.gemini_connected === false) {
+          setTestMessage('Connected to server! ⚠️ Note: GEMINI_API_KEY is missing on Render Environment Variables.');
+        } else {
+          setTestMessage(`Connected! Server: "${res.data.app || 'Life Active'}" | 🤖 Gemini AI Active`);
+        }
       } else {
         setTestStatus('success');
         setTestMessage('Connected to server successfully!');
@@ -56,8 +60,8 @@ export const SettingsPage: React.FC = () => {
     } catch (err: any) {
       setTestStatus('error');
       setTestMessage(err.message?.includes('timeout') 
-        ? 'Connection timed out. Check Wi-Fi or Hotspot.' 
-        : 'Cannot reach server at this URL. Make sure backend is running.');
+        ? 'Connection timed out. Check Wi-Fi or Render spin-up time.' 
+        : 'Cannot reach server at this URL. Make sure backend or Render service is active.');
     }
   };
 

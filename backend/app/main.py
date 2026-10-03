@@ -74,7 +74,13 @@ app.include_router(voice_router, prefix=settings.API_V1_PREFIX)
 # Also expose top-level health
 @app.get("/health")
 def top_health():
-    return {"status": "ok", "app": settings.PROJECT_NAME}
+    from app.services.llm_service import get_gemini_client
+    client = get_gemini_client()
+    return {
+        "status": "ok",
+        "app": settings.PROJECT_NAME,
+        "gemini_connected": client is not None
+    }
 
 @app.get("/download-apk")
 @app.get("/Life-AI.apk")

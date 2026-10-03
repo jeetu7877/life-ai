@@ -105,11 +105,13 @@ class VoiceService:
         """
         Transcribe user's speech audio into text using Gemini multimodal or Whisper.
         """
-        if settings.GEMINI_API_KEY:
+        api_key = (os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY or "").strip().strip('"').strip("'")
+        if api_key:
             try:
                 import google.generativeai as genai
+                genai.configure(api_key=api_key)
                 uploaded_file = genai.upload_file(file_path)
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                model = genai.GenerativeModel("gemini-2.5-flash")
                 prompt = (
                     "Transcribe this spoken audio accurately. The speech may be in English, Hindi, or Hinglish. "
                     "Return ONLY the verbatim transcript without any surrounding markdown or explanation."
