@@ -68,7 +68,26 @@ def _ensure_sqlite_columns(engine):
                 if "source_message_id" not in cols:
                     conn.execute(text("ALTER TABLE memories ADD COLUMN source_message_id VARCHAR(36)"))
                     logger.info("Migrated memories table: added source_message_id column")
-                conn.commit()
+
+            # Check documents table columns
+            doc_result = conn.execute(text("PRAGMA table_info(documents)"))
+            doc_cols = [row[1] for row in doc_result.fetchall()]
+            if doc_cols and "file_hash" not in doc_cols:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN file_hash VARCHAR(64)"))
+                logger.info("Migrated documents table: added file_hash column")
+
+            # Check document_chunks table columns
+            chunk_result = conn.execute(text("PRAGMA table_info(document_chunks)"))
+            chunk_cols = [row[1] for row in chunk_result.fetchall()]
+            if chunk_cols:
+                if "user_id" not in chunk_cols:
+                    conn.execute(text("ALTER TABLE document_chunks ADD COLUMN user_id VARCHAR(36)"))
+                    logger.info("Migrated document_chunks table: added user_id column")
+                if "embedding" not in chunk_cols:
+                    conn.execute(text("ALTER TABLE document_chunks ADD COLUMN embedding JSON"))
+                    logger.info("Migrated document_chunks table: added embedding column")
+
+            conn.commit()
     except Exception as e:
         logger.debug(f"SQLite column migration note: {e}")
 
@@ -81,7 +100,9 @@ def _ensure_indexes(engine):
         "CREATE INDEX IF NOT EXISTS ix_messages_conv_timestamp ON messages (conversation_id, timestamp);",
         "CREATE INDEX IF NOT EXISTS ix_messages_user_timestamp ON messages (user_id, timestamp);",
         "CREATE INDEX IF NOT EXISTS ix_documents_user_cat ON documents (user_id, category);",
-        "CREATE INDEX IF NOT EXISTS ix_docchunks_doc_chunk ON document_chunks (document_id, chunk_index);"
+        "CREATE INDEX IF NOT EXISTS ix_documents_file_hash ON documents (user_id, file_hash);",
+        "CREATE INDEX IF NOT EXISTS ix_docchunks_doc_chunk ON document_chunks (document_id, chunk_index);",
+        "CREATE INDEX IF NOT EXISTS ix_docchunks_user ON document_chunks (user_id);"
     ]
     try:
         with engine.connect() as conn:
@@ -155,11 +176,12 @@ def init_db():
         logger.debug(f"Startup user seed note: {e}")
 
     # Idempotent startup sync: if vector store is clean (e.g. ephemeral container start on Render),
-    # sync active memories from the persistent database into the vector index
+    # sync active memories and documents from the persistent database into the vector index
     try:
         from app.services.rag_service import rag_service
         db = SessionLocal()
         rag_service.sync_active_memories_from_db(db)
+        rag_service.sync_documents_from_db(db)
         db.close()
     except Exception as e:
         logger.debug(f"Startup vector store sync note: {e}")

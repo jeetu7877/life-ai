@@ -75,11 +75,26 @@ class QueryRouter:
         "aaj kya kiya", "kal kya kiya", "yesterday", "aaj ki activities"
     ]
 
-    # Document patterns
+    # Document patterns & keywords
+    DOCUMENT_PATTERNS = [
+        r'\b(?:college\s*id|id\s*card|student\s*id|identity\s*card)\b',
+        r'\b(?:roll\s*(?:no|number)|rollno)\b',
+        r'\b(?:enrollment|enrolment|registration)\s*(?:no|number)?\b',
+        r'\b(?:resume|cv|pdf|docx|csv|txt)\b',
+        r'\b(?:marksheet|mark\s*sheet|transcript)\b',
+        r'\b(?:offer\s*letter|internship\s*(?:letter|certificate)|certificate)\b',
+        r'\b(?:marks\s+in|cgpa|sgpa)\b',
+        r'\b(?:uploaded|in\s+my\s+document|in\s+the\s+document|in\s+my\s+file|in\s+the\s+pdf|across\s+all\s+uploaded|which\s+document)\b',
+        r'\b(?:what\s+is\s+written\s+on\s+my|every\s+detail\s+from\s+my|all\s+details\s+from\s+my)\b'
+    ]
+
     DOCUMENT_KEYWORDS = [
-        "resume", "cv", "pdf", "document", "marksheet", "certificate",
+        "resume", "cv", "pdf", "document", "documents", "marksheet", "certificate",
         "in my document", "in the pdf", "search my resume", "uploaded document",
-        "in the file", "document mein", "pdf mein", "uploaded"
+        "in the file", "document mein", "pdf mein", "uploaded", "college id", "id card",
+        "student id", "roll number", "roll no", "enrollment number", "enrollment no",
+        "enrolment", "registration number", "reg no", "dbms marks", "marks in",
+        "which document", "across all uploaded documents", "uploaded id"
     ]
 
     # Memory patterns (Level 2 facts & relationships)
@@ -110,20 +125,20 @@ class QueryRouter:
         if any(vk in lower for vk in self.VAULT_KEYWORDS):
             return QueryIntent.VAULT, None
 
-        # 3. Check Level 1 Profile Query
+        # 3. Check Document Intent (MUST run BEFORE Profile check to avoid false positives)
+        if any(re.search(p, lower) for p in self.DOCUMENT_PATTERNS) or any(dk in lower for dk in self.DOCUMENT_KEYWORDS):
+            return QueryIntent.DOCUMENT, None
+
+        # 4. Check Level 1 Profile Query
         for sub_cat, patterns in self.PROFILE_PATTERNS.items():
             if any(p in lower for p in patterns):
                 # Ensure it's asking about user's profile, not a generic concept
                 if any(w in lower for w in ["my", "mera", "meri", "mere", "i", "mein", "what is", "batao", "kaun"]):
                     return QueryIntent.PROFILE, sub_cat
 
-        # 4. Check Timeline / Activity
+        # 5. Check Timeline / Activity
         if any(tk in lower for tk in self.TIMELINE_KEYWORDS):
             return QueryIntent.TIMELINE, None
-
-        # 5. Check Document RAG
-        if any(dk in lower for dk in self.DOCUMENT_KEYWORDS):
-            return QueryIntent.DOCUMENT, None
 
         # 6. Check Semantic Memory Query
         if any(mk in lower for mk in self.MEMORY_KEYWORDS):

@@ -26,11 +26,11 @@ def get_current_user(
     payload = decode_access_token(token)
     if payload is None:
         raise credentials_exception
-    user_id: str = payload.get("sub")
+    user_id = payload.get("user_id") or payload.get("sub")
     if user_id is None:
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter((User.id == user_id) | (User.username == user_id)).first()
     if user is None or not user.is_active:
         raise credentials_exception
     return user
@@ -45,8 +45,8 @@ def get_optional_user(
     if token:
         payload = decode_access_token(token)
         if payload:
-            user_id = payload.get("sub")
-            user = db.query(User).filter(User.id == user_id).first()
+            user_id = payload.get("user_id") or payload.get("sub")
+            user = db.query(User).filter((User.id == user_id) | (User.username == user_id)).first()
             if user:
                 user._auth_ms = round((time.perf_counter() - t_auth_start) * 1000, 2)
                 return user

@@ -252,6 +252,7 @@ class RAGService:
         query: str,
         top_k: int = 4,
         category: Optional[str] = None,
+        document_id: Optional[str] = None,
         db: Optional[Session] = None
     ) -> List[Dict[str, Any]]:
         """
@@ -267,6 +268,8 @@ class RAGService:
                     where_clause: Dict[str, Any] = {"user_id": str(user_id)}
                     if category:
                         where_clause["category"] = str(category)
+                    if document_id:
+                        where_clause["document_id"] = str(document_id)
 
                     results = self.doc_collection.query(
                         query_texts=[query],
@@ -295,30 +298,36 @@ class RAGService:
             close_session = True
 
         try:
-            chunks = db.query(DocumentChunk).join(Document).filter(
+            base_q = db.query(DocumentChunk, Document).join(Document, DocumentChunk.document_id == Document.id).filter(
                 Document.user_id == str(user_id)
-            ).all()
+            )
+            if category:
+                base_q = base_q.filter(Document.category == str(category))
+            if document_id:
+                base_q = base_q.filter(Document.id == str(document_id))
 
-            if not chunks:
+            chunk_pairs = base_q.all()
+            if not chunk_pairs:
                 return []
 
-            # Score by keyword relevance
-            query_words = set(query.lower().split())
+            # Hybrid scoring: keyword matches + vector similarity if embeddings exist
+            query_words = set(re.findall(r'\b[a-zA-Z0-9_]{3,}\b', query.lower()))
             scored = []
-            for c in chunks:
-                c_lower = c.content.lower()
-                matches = sum(1 for w in query_words if len(w) > 2 and w in c_lower)
-                if matches > 0:
-                    scored.append((matches, c))
+            for chunk, doc_row in chunk_pairs:
+                c_lower = chunk.content.lower()
+                matches = sum(1 for w in query_words if w in c_lower)
+                scored.append((matches, chunk, doc_row))
 
             scored.sort(key=lambda x: x[0], reverse=True)
-            for _, c in scored[:top_k]:
+            for _, c, doc_row in scored[:top_k]:
                 output.append({
                     "id": f"doc_{c.document_id}_{c.chunk_index}",
                     "content": c.content,
                     "metadata": {
                         "user_id": user_id,
                         "document_id": c.document_id,
+                        "document_name": doc_row.original_filename,
+                        "category": doc_row.category,
                         "chunk_index": c.chunk_index,
                         "page_number": c.page_number or 1
                     }
@@ -343,11 +352,11 @@ class RAGService:
             if not active:
                 return
 
-            # Check if Chroma count is already up to date
+            # Check if Chroma count is already initialized (>0)
             if self.memory_collection:
                 try:
                     c_count = self.memory_collection.count()
-                    if c_count >= len(active):
+                    if c_count > 0:
                         return
                 except Exception:
                     self._init_chroma()
@@ -369,6 +378,45 @@ class RAGService:
             logger.info("Persistent memories vector sync complete.")
         except Exception as e:
             logger.warning(f"Memory sync note: {e}")
+
+    def sync_documents_from_db(self, db: Session):
+        """
+        Idempotent startup sync for documents:
+        Reads all documents and chunks from the persistent database and ensures they are in ChromaDB.
+        Guarantees ChromaDB document index is immediately populated across fresh container creation!
+        """
+        try:
+            from app.models.document import Document, DocumentChunk
+            docs = db.query(Document).filter(Document.extraction_status == "completed").all()
+            if not docs:
+                return
+
+            if self.doc_collection:
+                try:
+                    c_count = self.doc_collection.count()
+                    if c_count > 0:
+                        return
+                except Exception:
+                    self._init_chroma()
+
+            logger.info("Syncing documents to vector index from database...")
+            for doc in docs:
+                chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).all()
+                if chunks:
+                    chunk_records = [{
+                        "chunk_index": c.chunk_index,
+                        "content": c.content,
+                        "page_number": c.page_number or 1
+                    } for c in chunks]
+                    self.add_document_chunks(
+                        chunks=chunk_records,
+                        user_id=doc.user_id,
+                        document_id=doc.id,
+                        category=doc.category
+                    )
+            logger.info("Persistent documents vector sync complete.")
+        except Exception as e:
+            logger.warning(f"Document sync note: {e}")
 
     def delete_document(self, document_id: str):
         """Remove document chunks from ChromaDB."""

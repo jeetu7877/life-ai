@@ -9,6 +9,7 @@ from app.services.llm_service import llm_service
 from app.services.rag_service import rag_service
 from app.services.timeline_service import timeline_service
 from app.services.vault_service import vault_service
+from app.services.document_service import document_service
 from app.services.query_router import query_router, QueryIntent
 
 logger = logging.getLogger("life.agent")
@@ -101,6 +102,29 @@ class AgentService:
                     "timing": timing_metrics
                 }
 
+        # FAST PATH 3B: Document Structured Field / Identification / Full Detail Lookup (<5ms)
+        if intent == QueryIntent.DOCUMENT:
+            t_doc_field_start = time.perf_counter()
+            field_res = document_service.find_structured_field_in_user_documents(db, user_id, user_message)
+            doc_field_ms = round((time.perf_counter() - t_doc_field_start) * 1000, 2)
+            timing_metrics["document_ms"] = doc_field_ms
+            if field_res:
+                ans = field_res.get("summary_text") if field_res.get("is_full_summary") else field_res.get("answer_text")
+                total_ms = round((time.perf_counter() - t0) * 1000, 2)
+                timing_metrics["total_ms"] = total_ms
+                logger.info(f"[DOC_FIELD_LOOKUP] user_id={user_id} intent=DOCUMENT total_ms={total_ms} doc_field_ms={doc_field_ms} doc_id={field_res.get('document_id')}")
+                return {
+                    "response": ans,
+                    "retrieved_sources": [{
+                        "source": "document_field",
+                        "document_id": field_res.get("document_id"),
+                        "document_name": field_res.get("document_name"),
+                        "document_category": field_res.get("document_category"),
+                        "field_name": field_res.get("field_name", "full_summary")
+                    }],
+                    "timing": timing_metrics
+                }
+
         # FAST PATH 4: Timeline & Activity Queries (<100ms)
         lower_msg = user_message.lower()
         now_dt = datetime.utcnow()
@@ -150,12 +174,12 @@ class AgentService:
                 context_memories += f"\nUser activities on {query_date}: {summary_text}"
                 retrieved_sources.append({"source": "timeline", "date": query_date, "count": len(unique_acc)})
 
-        # Fetch Structured Profile Context for personal questions
+        # Fetch Structured Profile Context for personal questions (EXCLUDE DOCUMENT QUERIES)
         t_profile_start = time.perf_counter()
-        has_personal_intent = intent in [QueryIntent.PROFILE, QueryIntent.MEMORY, QueryIntent.TIMELINE, QueryIntent.DOCUMENT] or any(
+        has_personal_intent = (intent in [QueryIntent.PROFILE, QueryIntent.MEMORY, QueryIntent.TIMELINE] or any(
             w in lower_msg for w in ["my", "mera", "meri", "mere", "about me", "who am i", "my name", "my skills", "my college"]
-        )
-        if has_personal_intent and intent != QueryIntent.GENERAL:
+        )) and intent not in [QueryIntent.GENERAL, QueryIntent.DOCUMENT]
+        if has_personal_intent:
             from app.services.profile_cache import profile_cache
             profile = profile_cache.get_profile_dict(db, user_id)
             if profile:

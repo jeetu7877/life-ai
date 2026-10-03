@@ -38,6 +38,26 @@ async def upload_documents(
             content = await file.read()
             await out_file.write(content)
 
+        # Compute SHA-256 file hash for deduplication
+        file_hash = document_service.compute_file_hash(content)
+
+        # Check if identical document already uploaded by this user
+        existing_doc = db.query(Document).filter(
+            Document.user_id == user.id,
+            Document.file_hash == file_hash
+        ).first()
+
+        if existing_doc:
+            existing_doc.file_path = file_path
+            existing_doc.original_filename = file.filename
+            existing_doc.file_size = len(content)
+            existing_doc.extraction_status = "pending"
+            db.commit()
+            db.refresh(existing_doc)
+            document_service.parse_and_process_document(db, existing_doc.id)
+            created_docs.append(existing_doc)
+            continue
+
         doc = Document(
             user_id=user.id,
             filename=unique_filename,
@@ -46,6 +66,7 @@ async def upload_documents(
             category="other",
             file_path=file_path,
             file_size=len(content),
+            file_hash=file_hash,
             extraction_status="pending"
         )
         db.add(doc)
