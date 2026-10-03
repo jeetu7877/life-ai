@@ -139,7 +139,10 @@ class LLMService:
                     
                     contents.append({"role": "user", "parts": [user_message]})
                     
-                    response = model.generate_content(contents)
+                    response = model.generate_content(
+                        contents,
+                        generation_config={"max_output_tokens": 1024, "temperature": 0.7}
+                    )
                     if response and response.text:
                         self.model_name = candidate  # Stick to the working model
                         return response.text.strip()

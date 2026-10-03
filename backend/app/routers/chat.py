@@ -86,8 +86,10 @@ async def send_chat_message(
 
     chat_history = [{"role": m.role, "content": m.content} for m in history_records[-10:]]
 
-    # 4. Agent processing
-    agent_result = agent_service.process_message(
+    # 4. Agent processing (run in worker thread to prevent event-loop starvation)
+    import asyncio
+    agent_result = await asyncio.to_thread(
+        agent_service.process_message,
         db=db,
         user_id=user.id,
         user_message=payload.content,
@@ -98,7 +100,7 @@ async def send_chat_message(
     response_text = agent_result["response"]
     retrieved_sources = agent_result.get("retrieved_sources", [])
 
-    # 5. Audio generation (immediate if in voice mode, async background for text mode)
+    # 5. Audio generation (only if in voice mode)
     audio_url = None
     if payload.voice_mode:
         audio_url = await voice_service.text_to_speech(response_text)
@@ -118,23 +120,6 @@ async def send_chat_message(
     db.add(assistant_msg)
     db.commit()
     db.refresh(assistant_msg)
-
-    # In text mode, synthesize audio asynchronously so Replay works without blocking response
-    if not payload.voice_mode:
-        async def synthesize_text_bg(msg_id: str, text: str):
-            url = await voice_service.text_to_speech(text)
-            if url:
-                bg_db = SessionLocal()
-                try:
-                    m = bg_db.query(Message).filter(Message.id == msg_id).first()
-                    if m:
-                        m.audio_url = url
-                        bg_db.commit()
-                except Exception:
-                    pass
-                finally:
-                    bg_db.close()
-        background_tasks.add_task(synthesize_text_bg, assistant_msg.id, response_text)
 
     # 7. Memory extraction pipeline runs asynchronously in background
     background_tasks.add_task(
