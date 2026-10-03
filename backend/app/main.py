@@ -128,6 +128,7 @@ def download_apk():
     """Serves the compiled Life AI Android APK for direct phone download."""
     apk_paths = [
         os.path.join(settings.UPLOAD_DIRECTORY, "Life-AI.apk"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "Life-AI.apk"),
         os.path.join(os.path.dirname(__file__), "..", "uploads", "Life-AI.apk"),
         os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk")
     ]
