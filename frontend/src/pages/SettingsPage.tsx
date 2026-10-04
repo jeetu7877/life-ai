@@ -5,7 +5,6 @@ import {
   Volume2,
   ShieldCheck,
   Download,
-  Trash2,
   CheckCircle2,
   Smartphone,
   Radio,
@@ -13,7 +12,11 @@ import {
   AlertCircle,
   RefreshCw,
   Sparkles,
-  Lock
+  Lock,
+  Database,
+  FileText,
+  Sliders,
+  ChevronRight
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -63,7 +66,7 @@ export const SettingsPage: React.FC = () => {
         if (res.data.gemini_connected === false) {
           setTestMessage('Connected to server! ⚠️ Note: GEMINI_API_KEY is missing on Render Environment Variables.');
         } else {
-          setTestMessage(`Connected! Server: "${res.data.app || 'Life Active'}" | 🤖 Gemini AI Active`);
+          setTestMessage(`Connected! Server: "${res.data.app || 'Life AI Active'}" | 🤖 Gemini Active`);
         }
       } else {
         setTestStatus('success');
@@ -79,7 +82,7 @@ export const SettingsPage: React.FC = () => {
 
   const handleExportData = () => {
     const backupData = {
-      app: 'Life Personal AI Companion',
+      app: 'Life AI Personal Companion',
       export_date: new Date().toISOString(),
       user: 'Vikash Yadav',
       server_url: serverUrl,
@@ -90,7 +93,7 @@ export const SettingsPage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `life_companion_backup_${Date.now()}.json`;
+    a.download = `life_ai_backup_${Date.now()}.json`;
     a.click();
   };
 
@@ -98,65 +101,65 @@ export const SettingsPage: React.FC = () => {
     <div className="flex-1 overflow-y-auto w-full p-4 sm:p-6 max-w-4xl mx-auto space-y-6 pb-28 md:pb-8 min-h-0">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#00A8FF]/20 via-[#00D9FF]/20 to-[#8B5CF6]/20 border border-[#00D9FF]/30 flex items-center justify-center text-[#00D9FF] shadow-[0_0_15px_rgba(0,217,255,0.2)]">
             <Settings className="w-5 h-5" />
           </div>
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
               Settings & Preferences
             </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Customize hands-free voice mode, wake-word parameters, and phone-to-server connection.
+            <p className="text-xs text-slate-400 mt-0.5">
+              Customize voice assistant, wake-word parameters, server connection, and data vaults.
             </p>
           </div>
         </div>
       </div>
 
       {savedSuccess && (
-        <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2 shadow-lg shadow-emerald-950/20">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" /> All preferences and server settings saved successfully!
+        <div className="p-3.5 rounded-xl bg-[#22C55E]/15 border border-[#22C55E]/30 text-[#22C55E] text-xs font-semibold flex items-center gap-2 shadow-lg shadow-[#22C55E]/10">
+          <CheckCircle2 className="w-4 h-4 text-[#22C55E]" /> All preferences and server settings saved successfully!
         </div>
       )}
 
-      {/* Production Hands-Free Voice Assistant Mode */}
-      <div className="p-5 rounded-2xl border border-orange-500/30 bg-[#14141d]/95 space-y-4 shadow-lg shadow-orange-950/20">
+      {/* Section 1: Voice Assistant */}
+      <div className="p-5 rounded-2xl border border-[#202B3D] bg-[#101722] space-y-4 shadow-sm">
         <div className="flex items-start justify-between">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[10px] font-bold uppercase tracking-wider mb-1.5">
-              <Sparkles className="w-3 h-3" /> Alexa-Style Voice Service
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#00D9FF]/10 border border-[#00D9FF]/30 text-[#00D9FF] text-[10px] font-bold uppercase tracking-wider mb-1.5">
+              <Sparkles className="w-3 h-3" /> Voice Engine
             </div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Radio className="w-4 h-4 text-orange-400" /> Hands-Free Assistant Mode
+              <Radio className="w-4 h-4 text-[#00D9FF]" /> Voice Assistant
             </h3>
-            <p className="text-xs text-gray-400 mt-1 max-w-xl leading-relaxed">
-              Phone lock ho ya app background me ho, bas bolein <strong>"{wakeWord}"</strong>. Life AI kahegi <strong>"Haan, bolo."</strong> aur fir aapke documents aur memories se seedha bolkar jawab degi.
+            <p className="text-xs text-slate-400 mt-1 max-w-xl leading-relaxed">
+              Hands-free wake word recognition and natural text-to-speech engine.
             </p>
           </div>
         </div>
 
-        <div className="space-y-4 pt-2 border-t border-white/[0.08]">
+        <div className="space-y-4 pt-2 border-t border-[#202B3D]">
           {/* Hands-Free Main Toggle */}
-          <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#0a0a0f] border border-white/[0.08]">
+          <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#0A0F18] border border-[#202B3D]">
             <div>
               <p className="text-xs font-bold text-white flex items-center gap-2">
-                Hands-Free Background Service
+                Hands-Free Background Mode
                 {isHandsFreeMode ? (
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold border border-emerald-500/30">Active</span>
+                  <span className="px-2 py-0.5 rounded-md bg-[#22C55E]/20 text-[#22C55E] text-[10px] font-semibold border border-[#22C55E]/30">Active</span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-md bg-gray-800 text-gray-400 text-[10px] font-medium">Off</span>
+                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[10px] font-medium">Off</span>
                 )}
               </p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                Android foreground service keeps listening for wake word even when screen is locked or app is closed.
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Android background service keeps listening for "{wakeWord}" even when screen is locked.
               </p>
             </div>
             <button
               onClick={toggleHandsFreeMode}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 isHandsFreeMode
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-600/30'
-                  : 'bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-750'
+                  ? 'bg-gradient-to-r from-[#22C55E] to-[#10B981] text-white shadow-lg shadow-[#22C55E]/25'
+                  : 'bg-[#141C28] text-slate-300 border border-[#202B3D] hover:bg-[#1A2332]'
               }`}
             >
               {isHandsFreeMode ? 'ENABLED (ON)' : 'TURN ON'}
@@ -166,29 +169,28 @@ export const SettingsPage: React.FC = () => {
           {/* Wake Word Selector & Voice Response */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-300 font-medium">Wake Word Phrase</label>
+              <label className="text-xs text-slate-300 font-medium">Wake Word Phrase</label>
               <select
                 value={wakeWord}
                 onChange={(e) => updateWakeWord(e.target.value)}
-                className="w-full mt-1.5 bg-[#0a0a0f] border border-white/[0.1] rounded-xl p-3 text-xs text-gray-200 focus:outline-none focus:border-orange-500 font-semibold"
+                className="w-full mt-1.5 bg-[#0A0F18] border border-[#202B3D] rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF] font-semibold cursor-pointer"
               >
                 <option value="Hey Life">Hey Life (Default)</option>
                 <option value="Life">Life</option>
                 <option value="Hey Jeet">Hey Jeet</option>
-                <option value="Jeet">Jeet</option>
               </select>
             </div>
 
             <div>
-              <label className="text-xs text-gray-300 font-medium">Spoken Audio Response (TTS)</label>
-              <div className="flex items-center justify-between mt-1.5 p-2.5 rounded-xl bg-[#0a0a0f] border border-white/[0.1]">
-                <span className="text-xs text-gray-300">Voice output</span>
+              <label className="text-xs text-slate-300 font-medium">Spoken Audio Response (TTS)</label>
+              <div className="flex items-center justify-between mt-1.5 p-2.5 rounded-xl bg-[#0A0F18] border border-[#202B3D]">
+                <span className="text-xs text-slate-300">Voice output</span>
                 <button
                   onClick={() => updateVoiceResponse(!voiceResponseEnabled)}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
                     voiceResponseEnabled
-                      ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                      : 'bg-gray-800 text-gray-400'
+                      ? 'bg-[#00D9FF]/20 text-[#00D9FF] border border-[#00D9FF]/40'
+                      : 'bg-[#141C28] text-slate-400 border border-[#202B3D]'
                   }`}
                 >
                   {voiceResponseEnabled ? 'ON' : 'OFF'}
@@ -197,32 +199,13 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Android Battery Advisory Banner */}
-          <div className="p-3 rounded-xl bg-orange-950/20 border border-orange-500/20 text-[11px] text-orange-200/90 leading-relaxed space-y-1">
-            <p className="font-semibold text-orange-300 flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5" /> Android Background & Screen-Lock Note:
-            </p>
-            <p>
-              MIUI/HyperOS, OxygenOS, ya OneUI devices me app background battery optimization ko <strong>"Unrestricted / No Restrictions"</strong> par set karein taaki screen lock hone ke baad bhi microphone background service active rahe.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Voice & Speech Preferences */}
-      <div className="p-5 rounded-2xl border border-white/[0.08] bg-[#121218]/90 space-y-4 shadow-sm">
-        <h3 className="text-sm font-bold text-gray-200 flex items-center gap-2">
-          <Volume2 className="w-4 h-4 text-orange-400" /> Voice & Speech Preferences
-        </h3>
-
-        <div className="space-y-4">
           {/* Assistant Voice Dropdown */}
           <div>
-            <label className="text-xs text-gray-300 font-medium">Assistant Speech Voice</label>
+            <label className="text-xs text-slate-300 font-medium">Assistant Speech Voice</label>
             <select
               value={selectedVoice}
               onChange={(e) => setSelectedVoice(e.target.value)}
-              className="w-full mt-1.5 bg-[#0a0a0f] border border-white/[0.1] rounded-xl p-3 text-xs text-gray-200 focus:outline-none focus:border-orange-500"
+              className="w-full mt-1.5 bg-[#0A0F18] border border-[#202B3D] rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF] cursor-pointer"
             >
               <option value="hi-IN-SwaraNeural">Hindi / Hinglish — Swara (Warm Indian Female Voice)</option>
               <option value="en-IN-NeerjaNeural">Indian English — Neerja (Fluent Indian Female Voice)</option>
@@ -233,9 +216,9 @@ export const SettingsPage: React.FC = () => {
 
           {/* Silence Timeout Slider */}
           <div>
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
+            <div className="flex justify-between text-xs text-slate-400 mb-1">
               <span>Silence Timeout (return to listening)</span>
-              <span className="text-orange-400 font-semibold">{silenceTimeout} seconds</span>
+              <span className="text-[#00D9FF] font-semibold">{silenceTimeout} seconds</span>
             </div>
             <input
               type="range"
@@ -243,31 +226,34 @@ export const SettingsPage: React.FC = () => {
               max="15"
               value={silenceTimeout}
               onChange={(e) => setSilenceTimeout(parseInt(e.target.value))}
-              className="w-full accent-orange-500 cursor-pointer"
+              className="w-full accent-[#00D9FF] cursor-pointer"
             />
           </div>
-        </div>
 
-        <button
-          onClick={handleSaveSettings}
-          className="mt-2 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold shadow-md shadow-orange-500/20 transition-all cursor-pointer"
-        >
-          Save Voice Preferences
-        </button>
+          {/* Android Battery Advisory Banner */}
+          <div className="p-3 rounded-xl bg-[#141C28] border border-[#202B3D] text-[11px] text-slate-300 leading-relaxed space-y-1">
+            <p className="font-semibold text-[#00D9FF] flex items-center gap-1.5">
+              <Smartphone className="w-3.5 h-3.5" /> Android Background & Screen-Lock Note:
+            </p>
+            <p className="text-slate-400">
+              Set app battery usage to <strong>"Unrestricted"</strong> in Android Settings so the hands-free voice service stays active when the screen is locked.
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Mobile App & Remote Server Connection */}
-      <div className="p-5 rounded-2xl border border-white/[0.08] bg-[#121218]/90 space-y-4 shadow-sm">
-        <h3 className="text-sm font-bold text-gray-200 flex items-center gap-2">
-          <Smartphone className="w-4 h-4 text-orange-400" /> Phone App & Server Connection
+      {/* Section 2: Server & Connection */}
+      <div className="p-5 rounded-2xl border border-[#202B3D] bg-[#101722] space-y-4 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+          <Wifi className="w-4 h-4 text-[#00D9FF]" /> Server & Connection
         </h3>
-        <p className="text-xs text-gray-400 leading-relaxed">
-          Jab aap Life AI ko phone me chalayein, toh default cloud URL (Render) ya local LAN IP save karein.
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Default cloud backend hosted on Render, or your custom local server.
         </p>
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-gray-300 font-medium">Backend Server URL</label>
+            <label className="text-xs text-slate-300 font-medium">Backend Server URL</label>
             <div className="flex flex-col sm:flex-row gap-2 mt-1.5">
               <input
                 type="text"
@@ -276,15 +262,15 @@ export const SettingsPage: React.FC = () => {
                   setServerUrl(e.target.value);
                   setTestStatus('idle');
                 }}
-                placeholder="e.g. https://life-ai-daoh.onrender.com"
-                className="flex-1 bg-[#0a0a0f] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-xs text-gray-200 focus:outline-none focus:border-orange-500 font-mono shadow-inner"
+                placeholder="https://life-ai-daoh.onrender.com"
+                className="flex-1 bg-[#0A0F18] border border-[#202B3D] rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF] font-mono shadow-inner"
               />
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={handleTestConnection}
                   disabled={testStatus === 'testing'}
-                  className="px-4 py-2.5 rounded-xl border border-white/[0.1] bg-white/[0.05] hover:bg-white/[0.1] text-xs font-semibold text-gray-200 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2.5 rounded-xl border border-[#202B3D] bg-[#141C28] hover:bg-[#1A2332] text-xs font-semibold text-slate-200 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${testStatus === 'testing' ? 'animate-spin' : ''}`} />
                   Test
@@ -292,7 +278,7 @@ export const SettingsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleSaveSettings}
-                  className="px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-xs font-semibold text-white transition-all shadow-md shadow-orange-500/20 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#00A8FF] to-[#8B5CF6] hover:from-[#00D9FF] hover:to-[#A855F7] text-xs font-semibold text-white transition-all shadow-md shadow-[#00A8FF]/20 cursor-pointer"
                 >
                   Save URL
                 </button>
@@ -305,14 +291,14 @@ export const SettingsPage: React.FC = () => {
             <div
               className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
                 testStatus === 'testing'
-                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                  ? 'bg-[#00D9FF]/10 border-[#00D9FF]/30 text-[#00D9FF]'
                   : testStatus === 'success'
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  ? 'bg-[#22C55E]/10 border-[#22C55E]/30 text-[#22C55E]'
                   : 'bg-red-500/10 border-red-500/30 text-red-300'
               }`}
             >
               {testStatus === 'testing' && <RefreshCw className="w-4 h-4 animate-spin shrink-0" />}
-              {testStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+              {testStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-[#22C55E] shrink-0" />}
               {testStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />}
               <span className="leading-relaxed">{testMessage}</span>
             </div>
@@ -320,21 +306,39 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Security & Data Backup */}
-      <div className="p-5 rounded-2xl border border-white/[0.08] bg-[#121218]/90 space-y-4 shadow-sm">
-        <h3 className="text-sm font-bold text-gray-200 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-orange-400" /> Security & Data Backup
+      {/* Section 3: Data & Memory Vault */}
+      <div className="p-5 rounded-2xl border border-[#202B3D] bg-[#101722] space-y-4 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+          <Database className="w-4 h-4 text-[#8B5CF6]" /> Data & Memory Vault
         </h3>
-        <p className="text-xs text-gray-400 leading-relaxed">
-          Aapki sabhi conversation memories, profile facts, aur documents encryption ke saath secure hain.
+        <p className="text-xs text-slate-400 leading-relaxed">
+          All conversation memories, profile facts, and uploaded documents are encrypted and synchronized.
         </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div className="p-3 rounded-xl bg-[#0A0F18] border border-[#202B3D] flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Database className="w-4 h-4 text-[#00D9FF]" />
+              <span className="text-xs text-slate-300 font-medium">Long-Term Memory</span>
+            </div>
+            <span className="text-xs font-semibold text-[#00D9FF]">Active</span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#0A0F18] border border-[#202B3D] flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <FileText className="w-4 h-4 text-[#8B5CF6]" />
+              <span className="text-xs text-slate-300 font-medium">Document RAG & OCR</span>
+            </div>
+            <span className="text-xs font-semibold text-[#8B5CF6]">Active</span>
+          </div>
+        </div>
 
         <div className="flex flex-wrap gap-3 pt-2">
           <button
             onClick={handleExportData}
-            className="px-4 py-2.5 rounded-xl border border-white/[0.1] bg-white/[0.04] hover:bg-white/[0.08] text-xs font-semibold text-gray-200 transition-all flex items-center gap-2 cursor-pointer"
+            className="px-4 py-2.5 rounded-xl border border-[#202B3D] bg-[#141C28] hover:bg-[#1A2332] text-xs font-semibold text-slate-200 transition-all flex items-center gap-2 cursor-pointer"
           >
-            <Download className="w-4 h-4 text-orange-400" /> Export Profile & Memory Backup
+            <Download className="w-4 h-4 text-[#00D9FF]" /> Export Profile & Memory Backup
           </button>
         </div>
       </div>

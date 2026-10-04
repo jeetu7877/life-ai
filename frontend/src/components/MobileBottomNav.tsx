@@ -11,7 +11,7 @@ const navItems = [
 
 export const MobileBottomNav: React.FC = () => {
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0d0d12]/95 backdrop-blur-lg border-t border-gray-800/80 px-2 py-1.5 flex items-center justify-around shadow-2xl">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0A0F18]/95 backdrop-blur-xl border-t border-[#202B3D] px-3 py-2 flex items-center justify-around shadow-2xl">
       {navItems.map((item) => {
         const Icon = item.icon;
         return (
@@ -19,10 +19,10 @@ export const MobileBottomNav: React.FC = () => {
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all ${
+              `flex flex-col items-center justify-center py-1.5 px-3.5 rounded-xl transition-all ${
                 isActive
-                  ? 'text-orange-400 font-bold bg-orange-500/10 border border-orange-500/20'
-                  : 'text-gray-400 hover:text-gray-200'
+                  ? 'text-white font-semibold bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 border border-[#00D9FF]/40 shadow-[0_0_12px_rgba(0,217,255,0.25)]'
+                  : 'text-[#94A3B8] hover:text-[#F8FAFC]'
               }`
             }
           >

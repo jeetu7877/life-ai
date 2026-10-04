@@ -7,10 +7,10 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0c] text-orange-400">
+      <div className="min-h-screen flex items-center justify-center bg-[#05070B] text-[#00D9FF]">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-sm font-medium">Connecting to Jeet...</span>
+          <div className="w-10 h-10 border-2 border-[#00D9FF] border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-sm font-medium">Connecting to Life AI...</span>
         </div>
       </div>
     );

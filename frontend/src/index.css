@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-[#0a0a0c] text-gray-100 min-h-screen overflow-x-hidden;
+    @apply bg-[#05070B] text-[#F8FAFC] min-h-screen overflow-x-hidden;
   }
 }
 
@@ -15,29 +15,44 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0d0d12;
+  background: #0A0F18;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #272732;
+  background: #202B3D;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #f97316;
+  background: #00D9FF;
 }
 
 .glass-panel {
-  background: rgba(18, 18, 22, 0.7);
+  background: rgba(16, 23, 34, 0.75);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid #202B3D;
 }
 
-.glow-orange {
-  box-shadow: 0 0 35px -5px rgba(249, 115, 22, 0.35);
+.glass-panel-elevated {
+  background: rgba(20, 28, 40, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid #202B3D;
 }
 
-.glow-orange-lg {
-  box-shadow: 0 0 60px 0px rgba(249, 115, 22, 0.45);
+.glow-cyan {
+  box-shadow: 0 0 35px -5px rgba(0, 217, 255, 0.35);
+}
+
+.glow-blue {
+  box-shadow: 0 0 35px -5px rgba(0, 168, 255, 0.35);
+}
+
+.glow-purple {
+  box-shadow: 0 0 35px -5px rgba(139, 92, 246, 0.35);
+}
+
+.glow-orb {
+  box-shadow: 0 0 50px 10px rgba(0, 217, 255, 0.25), 0 0 80px 20px rgba(139, 92, 246, 0.25);
 }

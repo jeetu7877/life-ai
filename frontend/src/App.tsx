@@ -22,7 +22,7 @@ export const App: React.FC = () => {
     <BrowserRouter>
       <AuthProvider>
         <VoiceProvider>
-          <div className="h-[100dvh] max-h-screen bg-[#0a0a0c] text-gray-100 flex flex-col font-['Plus_Jakarta_Sans',sans-serif] overflow-hidden">
+          <div className="h-[100dvh] max-h-screen bg-[#05070B] text-slate-100 flex flex-col font-['Plus_Jakarta_Sans',sans-serif] overflow-hidden">
             <Navbar />
             <div className="flex-1 flex overflow-hidden min-h-0">
               <Sidebar />

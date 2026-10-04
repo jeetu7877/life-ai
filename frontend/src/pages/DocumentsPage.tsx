@@ -87,19 +87,19 @@ export const DocumentsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-6 max-w-6xl mx-auto space-y-6">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-6xl mx-auto space-y-6 pb-28 md:pb-8 min-h-0">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <FileText className="w-6 h-6 text-orange-400" /> Personal Documents & Knowledge
+          <FileText className="w-6 h-6 text-[#00D9FF]" /> Personal Documents & Knowledge
         </h2>
-        <p className="text-xs text-gray-400 mt-1">
-          Upload resumes, ID cards, certificates, and project notes once. Jeet extracts knowledge and indexes them into ChromaDB for instant recall.
+        <p className="text-xs text-slate-400 mt-1">
+          Upload resumes, ID cards, certificates, and marksheets. Life AI extracts knowledge and indexes them into ChromaDB for instant recall.
         </p>
       </div>
 
       {/* Drag & Drop Upload Card */}
-      <div className="border-2 border-dashed border-gray-800 hover:border-orange-500/50 rounded-2xl p-8 bg-[#121217]/50 text-center transition-all">
+      <div className="border-2 border-dashed border-[#202B3D] hover:border-[#00D9FF]/50 rounded-2xl p-8 bg-[#101722]/60 text-center transition-all">
         <input
           type="file"
           id="file-upload"
@@ -110,15 +110,15 @@ export const DocumentsPage: React.FC = () => {
           accept=".pdf,.docx,.doc,.txt,.csv,.jpg,.jpeg,.png"
         />
         <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-3">
-          <div className="w-14 h-14 rounded-2xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400">
+          <div className="w-14 h-14 rounded-2xl bg-[#00D9FF]/10 border border-[#00D9FF]/30 flex items-center justify-center text-[#00D9FF]">
             {isUploading ? <Loader2 className="w-7 h-7 animate-spin" /> : <UploadCloud className="w-7 h-7" />}
           </div>
           <div>
             <p className="text-sm font-semibold text-white">
               {isUploading ? 'Ingesting and indexing documents...' : 'Click or drag files to upload'}
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Supports PDF, DOCX, TXT, CSV, JPG, PNG (PAN, Aadhaar, Resume, Notes)
+            <p className="text-xs text-slate-400 mt-0.5">
+              Supports PDF, DOCX, TXT, CSV, JPG, PNG (PAN, Aadhaar, College ID, Marksheet, Resume)
             </p>
           </div>
         </label>
@@ -129,27 +129,27 @@ export const DocumentsPage: React.FC = () => {
         {documents.map((doc) => (
           <div
             key={doc.id}
-            className="p-4 rounded-2xl border border-gray-800/80 bg-[#121217] hover:border-orange-500/30 transition-all flex flex-col justify-between space-y-3"
+            className="p-4 rounded-2xl border border-[#202B3D] bg-[#101722] hover:border-[#00D9FF]/40 hover:bg-[#141C28] transition-all flex flex-col justify-between space-y-3"
           >
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-gray-800 text-gray-300">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg bg-[#00D9FF]/10 text-[#00D9FF] border border-[#00D9FF]/25">
                   {doc.category.replace('_', ' ')}
                 </span>
                 {getStatusBadge(doc.extraction_status)}
               </div>
-              <h4 className="text-sm font-bold text-gray-100 truncate" title={doc.original_filename}>
+              <h4 className="text-sm font-bold text-slate-100 truncate" title={doc.original_filename}>
                 {doc.original_filename}
               </h4>
-              <p className="text-[11px] text-gray-500">
+              <p className="text-[11px] text-slate-500">
                 {(doc.file_size / 1024).toFixed(1)} KB • {new Date(doc.created_at).toLocaleDateString()}
               </p>
             </div>
 
-            <div className="pt-2 border-t border-gray-800/60 flex items-center justify-between text-xs">
+            <div className="pt-2 border-t border-[#202B3D] flex items-center justify-between text-xs">
               <button
                 onClick={() => setSelectedDoc(doc)}
-                className="text-orange-400 hover:text-orange-300 flex items-center gap-1 font-medium"
+                className="text-[#00D9FF] hover:text-[#00A8FF] flex items-center gap-1 font-medium cursor-pointer"
               >
                 <Eye className="w-3.5 h-3.5" /> View Extracted
               </button>
@@ -157,14 +157,14 @@ export const DocumentsPage: React.FC = () => {
                 <button
                   onClick={() => handleReprocess(doc.id)}
                   title="Reprocess"
-                  className="p-1.5 text-gray-400 hover:text-orange-400 transition-colors"
+                  className="p-1.5 text-slate-400 hover:text-[#00D9FF] transition-colors cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => handleDelete(doc.id)}
                   title="Delete"
-                  className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"
+                  className="p-1.5 text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -176,18 +176,18 @@ export const DocumentsPage: React.FC = () => {
 
       {/* Extracted Detail Drawer / Modal */}
       {selectedDoc && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#14141a] border border-gray-800 rounded-2xl max-w-2xl w-full p-6 space-y-4 max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#101722] border border-[#202B3D] rounded-2xl max-w-2xl w-full p-6 space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-[#202B3D] pb-3">
               <div>
                 <h3 className="text-base font-bold text-white">{selectedDoc.original_filename}</h3>
-                <span className="text-xs text-orange-400 uppercase font-semibold">
+                <span className="text-xs text-[#00D9FF] uppercase font-semibold">
                   Category: {selectedDoc.category}
                 </span>
               </div>
               <button
                 onClick={() => setSelectedDoc(null)}
-                className="text-gray-400 hover:text-white text-xs px-2.5 py-1 rounded-lg border border-gray-800"
+                className="text-slate-400 hover:text-white text-xs px-2.5 py-1 rounded-xl border border-[#202B3D] cursor-pointer"
               >
                 Close
               </button>
@@ -195,17 +195,17 @@ export const DocumentsPage: React.FC = () => {
 
             <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
               {selectedDoc.structured_fields && Object.keys(selectedDoc.structured_fields).length > 0 && (
-                <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/20 space-y-1">
-                  <span className="font-semibold text-orange-300">Extracted Identity Fields:</span>
-                  <pre className="text-gray-300 whitespace-pre-wrap font-mono text-[11px]">
+                <div className="p-3 rounded-xl bg-[#00D9FF]/10 border border-[#00D9FF]/20 space-y-1">
+                  <span className="font-semibold text-[#00D9FF]">Extracted Identity Fields:</span>
+                  <pre className="text-slate-200 whitespace-pre-wrap font-mono text-[11px]">
                     {JSON.stringify(selectedDoc.structured_fields, null, 2)}
                   </pre>
                 </div>
               )}
 
               <div>
-                <span className="font-semibold text-gray-400">Extracted Content Preview:</span>
-                <p className="mt-1 p-3 rounded-xl bg-[#0a0a0c] border border-gray-800/80 text-gray-300 whitespace-pre-wrap leading-relaxed">
+                <span className="font-semibold text-slate-400">Extracted Content Preview:</span>
+                <p className="mt-1 p-3 rounded-xl bg-[#05070B] border border-[#202B3D] text-slate-300 whitespace-pre-wrap leading-relaxed">
                   {selectedDoc.extracted_text || 'No text extracted.'}
                 </p>
               </div>

@@ -8,68 +8,68 @@ export const Navbar: React.FC = () => {
   const { isWakeWordEnabled, toggleWakeWord, voiceState } = useVoice();
 
   return (
-    <header className="h-16 border-b border-white/[0.08] bg-[#09090d]/85 backdrop-blur-xl px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40 shadow-sm shadow-black/20">
+    <header className="h-16 border-b border-[#202B3D] bg-[#05070B]/90 backdrop-blur-xl px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40">
       {/* Brand & Companion Identity */}
       <div className="flex items-center gap-3">
         <div className="relative">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-orange-500 via-amber-500 to-rose-500 flex items-center justify-center shadow-[0_0_24px_rgba(249,115,22,0.35)] transition-transform hover:scale-105">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#00A8FF] via-[#00D9FF] to-[#8B5CF6] flex items-center justify-center shadow-[0_0_20px_rgba(0,217,255,0.4)] transition-transform hover:scale-105">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#09090d]" />
+          <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#22C55E] border-2 border-[#05070B]" />
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">
-              Life
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#F8FAFC]">
+              Life AI
             </h1>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-400 font-semibold border border-orange-500/30">
-              AI Companion
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00D9FF]/10 text-[#00D9FF] font-semibold border border-[#00D9FF]/30 hidden xs:inline-block">
+              Companion
             </span>
           </div>
-          <p className="text-[11px] text-gray-400 hidden sm:block">Private Long-Term Memory & Voice Assistant</p>
+          <p className="text-[11px] text-[#94A3B8] hidden sm:block">Your Personal AI Companion</p>
         </div>
       </div>
 
       {/* Center Voice / Wake-Word Status Pill */}
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/[0.08] bg-[#13131b]/90 backdrop-blur-md shadow-inner">
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#202B3D] bg-[#0A0F18]/90 backdrop-blur-md shadow-inner">
         <div className="flex items-center gap-1.5">
           <span
             className={`w-2 h-2 rounded-full transition-all ${
               voiceState === 'listening'
-                ? 'bg-emerald-400 animate-ping'
+                ? 'bg-[#00D9FF] animate-ping'
                 : voiceState === 'speaking'
-                ? 'bg-orange-400 animate-pulse'
+                ? 'bg-[#8B5CF6] animate-pulse'
                 : voiceState === 'thinking'
-                ? 'bg-amber-400 animate-bounce'
+                ? 'bg-[#00A8FF] animate-bounce'
                 : isWakeWordEnabled
-                ? 'bg-emerald-500'
-                : 'bg-gray-500'
+                ? 'bg-[#22C55E]'
+                : 'bg-slate-600'
             }`}
           />
-          <Radio className={`w-3.5 h-3.5 ${voiceState !== 'idle' ? 'text-orange-400 animate-pulse' : 'text-gray-400'}`} />
+          <Radio className={`w-3.5 h-3.5 ${voiceState !== 'idle' ? 'text-[#00D9FF] animate-pulse' : 'text-slate-400'}`} />
         </div>
 
-        <span className="text-xs text-gray-300 hidden sm:inline">
-          Wake word <span className="font-semibold text-orange-400">"Life"</span>
+        <span className="text-xs text-slate-300 hidden sm:inline">
+          Wake word <span className="font-semibold text-[#00D9FF]">"Hey Life"</span>
         </span>
 
         <button
           onClick={toggleWakeWord}
           className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full transition-all flex items-center gap-1 cursor-pointer ${
             isWakeWordEnabled
-              ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40 hover:bg-orange-500/30'
-              : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700'
+              ? 'bg-[#00D9FF]/15 text-[#00D9FF] border border-[#00D9FF]/40 hover:bg-[#00D9FF]/25'
+              : 'bg-[#141C28] text-slate-400 border border-[#202B3D] hover:bg-[#1A2332]'
           }`}
           title={isWakeWordEnabled ? 'Wake word active - Click to mute' : 'Wake word muted - Click to activate'}
         >
           {isWakeWordEnabled ? (
             <>
-              <Mic className="w-3 h-3 text-orange-400" />
+              <Mic className="w-3 h-3 text-[#00D9FF]" />
               <span>Active</span>
             </>
           ) : (
             <>
-              <MicOff className="w-3 h-3 text-gray-400" />
+              <MicOff className="w-3 h-3 text-slate-400" />
               <span>Muted</span>
             </>
           )}
@@ -78,18 +78,18 @@ export const Navbar: React.FC = () => {
 
       {/* User Info & Sign Out */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-orange-600 to-amber-600 border border-orange-400/30 flex items-center justify-center text-white font-bold text-xs shadow-sm">
-            {user?.preferred_name?.[0] || user?.username?.[0] || 'U'}
+        <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#101722] border border-[#202B3D]">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#00A8FF] to-[#8B5CF6] border border-[#00D9FF]/30 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+            {user?.preferred_name?.[0] || user?.username?.[0] || 'J'}
           </div>
-          <span className="hidden md:inline text-xs font-medium text-gray-200">
+          <span className="hidden md:inline text-xs font-medium text-slate-200">
             {user?.preferred_name || user?.username || 'Vikash'}
           </span>
         </div>
 
         <button
           onClick={logout}
-          className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-white/[0.08] text-gray-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all flex items-center gap-1.5 text-xs cursor-pointer"
+          className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-[#202B3D] text-slate-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all flex items-center gap-1.5 text-xs cursor-pointer"
           title="Sign Out"
         >
           <LogOut className="w-3.5 h-3.5" />

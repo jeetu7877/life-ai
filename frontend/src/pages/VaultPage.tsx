@@ -77,7 +77,7 @@ export const VaultPage: React.FC = () => {
       case 'pan':
       case 'aadhaar':
       case 'passport':
-        return <FileCheck className="w-5 h-5 text-orange-400" />;
+        return <FileCheck className="w-5 h-5 text-[#00D9FF]" />;
       case 'bank':
         return <CreditCard className="w-5 h-5 text-amber-400" />;
       default:
@@ -86,30 +86,30 @@ export const VaultPage: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-6 max-w-4xl mx-auto space-y-6">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-4xl mx-auto space-y-6 pb-28 md:pb-8 min-h-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Shield className="w-6 h-6 text-orange-400" /> Secure Sensitive Vault
+            <Shield className="w-6 h-6 text-[#00D9FF]" /> Secure Sensitive Vault
           </h2>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-slate-400 mt-1">
             Fernet AES-128 encrypted storage for PAN, Aadhaar, Passport, and Credentials. Never stored plain in vector databases or casual prompts.
           </p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold flex items-center gap-2 shadow-[0_0_20px_rgba(249,115,22,0.3)] transition-all shrink-0 cursor-pointer"
+          className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#00A8FF] to-[#8B5CF6] hover:from-[#00D9FF] hover:to-[#A855F7] text-white text-xs font-semibold flex items-center gap-2 shadow-[0_0_20px_rgba(0,168,255,0.3)] transition-all shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4" /> Add Secret Item
         </button>
       </div>
 
       {/* Security Info Banner */}
-      <div className="p-4 rounded-2xl border border-gray-800/80 bg-[#121217] flex items-center gap-3">
-        <Lock className="w-5 h-5 text-orange-400 shrink-0" />
-        <p className="text-xs text-gray-300 leading-relaxed">
-          <strong className="text-white">Zero Plaintext Leakage:</strong> Document uploads with PAN, Aadhaar, or Passport numbers are automatically routed here into AES-128 ciphertext. Jeet will only access them when you specifically ask for them.
+      <div className="p-4 rounded-2xl border border-[#202B3D] bg-[#101722] flex items-center gap-3">
+        <Lock className="w-5 h-5 text-[#00D9FF] shrink-0" />
+        <p className="text-xs text-slate-300 leading-relaxed">
+          <strong className="text-white">Zero Plaintext Leakage:</strong> Document uploads with PAN, Aadhaar, or Passport numbers are automatically routed here into AES-128 ciphertext. Life AI will only access them when you specifically ask for them.
         </p>
       </div>
 
@@ -118,21 +118,21 @@ export const VaultPage: React.FC = () => {
         {items.map((item) => (
           <div
             key={item.id}
-            className="p-4 rounded-2xl border border-gray-800/80 bg-[#121217] hover:border-orange-500/30 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+            className="p-4 rounded-2xl border border-[#202B3D] bg-[#101722] hover:border-[#00D9FF]/40 hover:bg-[#141C28] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#181822] border border-gray-800 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-[#0A0F18] border border-[#202B3D] flex items-center justify-center shrink-0">
                 {getItemIcon(item.item_type)}
               </div>
               <div>
                 <h4 className="text-sm font-bold text-white">{item.key_name}</h4>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-gray-800 text-gray-400">
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-lg bg-[#00D9FF]/10 text-[#00D9FF] border border-[#00D9FF]/20">
                     {item.item_type}
                   </span>
-                  <span className="text-xs font-mono text-gray-400">
+                  <span className="text-xs font-mono text-slate-400">
                     {revealedValues[item.id] ? (
-                      <span className="text-orange-300 font-bold">{revealedValues[item.id]}</span>
+                      <span className="text-[#00D9FF] font-bold">{revealedValues[item.id]}</span>
                     ) : (
                       item.masked_hint || '••••••••••••'
                     )}
@@ -144,7 +144,7 @@ export const VaultPage: React.FC = () => {
             <div className="flex items-center gap-2 self-end sm:self-center">
               <button
                 onClick={() => handleReveal(item.id)}
-                className="px-3 py-1.5 rounded-lg border border-gray-800 hover:border-orange-500/40 text-xs text-gray-300 hover:text-orange-400 flex items-center gap-1.5 transition-colors"
+                className="px-3 py-1.5 rounded-xl border border-[#202B3D] hover:border-[#00D9FF]/40 text-xs text-slate-300 hover:text-[#00D9FF] flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 {revealedValues[item.id] ? (
                   <>
@@ -158,7 +158,7 @@ export const VaultPage: React.FC = () => {
               </button>
               <button
                 onClick={() => handleDelete(item.id)}
-                className="p-2 text-gray-500 hover:text-red-400 rounded-lg transition-colors"
+                className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -167,7 +167,7 @@ export const VaultPage: React.FC = () => {
         ))}
 
         {items.length === 0 && (
-          <div className="p-12 text-center text-xs text-gray-500 border border-dashed border-gray-800 rounded-2xl">
+          <div className="p-12 text-center text-xs text-slate-400 border border-dashed border-[#202B3D] rounded-2xl bg-[#101722]/40">
             No sensitive items stored yet. Upload your PAN card, Aadhaar, or add credentials manually.
           </div>
         )}
@@ -175,31 +175,31 @@ export const VaultPage: React.FC = () => {
 
       {/* Add Secret Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#14141a] border border-gray-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#101722] border border-[#202B3D] rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <Lock className="w-5 h-5 text-orange-400" /> Add to Encrypted Vault
+              <Lock className="w-5 h-5 text-[#00D9FF]" /> Add to Encrypted Vault
             </h3>
             <form onSubmit={handleCreate} className="space-y-3">
               <div>
-                <label className="text-xs text-gray-400">Key Name</label>
+                <label className="text-xs text-slate-400">Key Name</label>
                 <input
                   type="text"
                   value={newKey}
                   onChange={(e) => setNewKey(e.target.value)}
                   placeholder="e.g. Personal PAN Card Number"
-                  className="w-full mt-1 bg-[#0a0a0c] border border-gray-800 rounded-xl p-2.5 text-xs text-gray-200 focus:outline-none focus:border-orange-500"
+                  className="w-full mt-1 bg-[#0A0F18] border border-[#202B3D] rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF]"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400">Type</label>
+                  <label className="text-xs text-slate-400">Type</label>
                   <select
                     value={newType}
                     onChange={(e) => setNewType(e.target.value)}
-                    className="w-full mt-1 bg-[#0a0a0c] border border-gray-800 rounded-xl p-2.5 text-xs text-gray-200 focus:outline-none focus:border-orange-500 uppercase"
+                    className="w-full mt-1 bg-[#0A0F18] border border-[#202B3D] rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF] uppercase cursor-pointer"
                   >
                     <option value="pan">PAN Card</option>
                     <option value="aadhaar">Aadhaar Card</option>
@@ -210,26 +210,26 @@ export const VaultPage: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400">Secret Value</label>
+                  <label className="text-xs text-slate-400">Secret Value</label>
                   <input
                     type="password"
                     value={newRawVal}
                     onChange={(e) => setNewRawVal(e.target.value)}
                     placeholder="Raw confidential value"
-                    className="w-full mt-1 bg-[#0a0a0c] border border-gray-800 rounded-xl p-2.5 text-xs text-gray-200 focus:outline-none focus:border-orange-500 font-mono"
+                    className="w-full mt-1 bg-[#0A0F18] border border-[#202B3D] rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF] font-mono"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs text-gray-400">Notes (Optional)</label>
+                <label className="text-xs text-slate-400">Notes (Optional)</label>
                 <input
                   type="text"
                   value={newNotes}
                   onChange={(e) => setNewNotes(e.target.value)}
                   placeholder="Optional context"
-                  className="w-full mt-1 bg-[#0a0a0c] border border-gray-800 rounded-xl p-2.5 text-xs text-gray-200 focus:outline-none focus:border-orange-500"
+                  className="w-full mt-1 bg-[#0A0F18] border border-[#202B3D] rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF]"
                 />
               </div>
 
@@ -237,13 +237,13 @@ export const VaultPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl border border-gray-800 text-xs text-gray-400 hover:text-white"
+                  className="px-4 py-2 rounded-xl border border-[#202B3D] text-xs text-slate-400 hover:text-white cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold"
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#00A8FF] to-[#8B5CF6] hover:from-[#00D9FF] hover:to-[#A855F7] text-white text-xs font-semibold cursor-pointer shadow-md shadow-[#00A8FF]/20"
                 >
                   Encrypt & Save
                 </button>

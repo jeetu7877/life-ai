@@ -24,10 +24,10 @@ const navItems = [
 
 export const Sidebar: React.FC = () => {
   return (
-    <aside className="w-64 border-r border-gray-800/80 bg-[#0d0d12]/50 flex flex-col justify-between p-4 shrink-0 hidden md:flex min-h-[calc(100vh-4rem)]">
+    <aside className="w-64 border-r border-[#202B3D] bg-[#0A0F18]/60 flex flex-col justify-between p-4 shrink-0 hidden md:flex min-h-[calc(100vh-4rem)]">
       <div className="space-y-1">
-        <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
-          Companion Navigation
+        <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#94A3B8]">
+          Navigation
         </div>
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -38,8 +38,8 @@ export const Sidebar: React.FC = () => {
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   isActive
-                    ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.15)] font-semibold'
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
+                    ? 'bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-[0_0_15px_rgba(0,217,255,0.15)] font-semibold'
+                    : 'text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#101722]'
                 }`
               }
             >
@@ -51,13 +51,13 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Companion Status Card at bottom */}
-      <div className="p-3.5 rounded-2xl border border-gray-800/80 bg-[#121217] space-y-2">
+      <div className="p-3.5 rounded-2xl border border-[#202B3D] bg-[#101722] space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-300">Life Engine</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span className="text-xs font-semibold text-slate-200">Life AI Engine</span>
+          <span className="w-2 h-2 rounded-full bg-[#22C55E]"></span>
         </div>
-        <p className="text-[11px] text-gray-400 leading-relaxed">
-          Gemini LLM + ChromaDB RAG + Encrypted Vault Active.
+        <p className="text-[11px] text-[#94A3B8] leading-relaxed">
+          Gemini 2.5 Flash + ChromaDB RAG + Structured Memory Active.
         </p>
       </div>
     </aside>

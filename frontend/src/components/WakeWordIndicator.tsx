@@ -24,14 +24,14 @@ export const WakeWordIndicator: React.FC<WakeWordIndicatorProps> = ({
   const getOrbStyles = () => {
     switch (state) {
       case 'listening':
-        return 'border-orange-500 bg-orange-500/25 shadow-[0_0_55px_rgba(249,115,22,0.85)] scale-110';
+        return 'scale-110 shadow-[0_0_60px_rgba(0,217,255,0.7),0_0_100px_rgba(139,92,246,0.6)] border-[#00D9FF] animate-pulse';
       case 'thinking':
-        return 'border-amber-400 bg-amber-500/20 shadow-[0_0_45px_rgba(251,191,36,0.65)] animate-pulse';
+        return 'scale-105 shadow-[0_0_55px_rgba(139,92,246,0.7),0_0_90px_rgba(0,168,255,0.5)] border-[#8B5CF6]';
       case 'speaking':
-        return 'border-orange-400 bg-gradient-to-r from-orange-600/35 to-amber-600/35 shadow-[0_0_65px_rgba(249,115,22,0.75)] animate-bounce';
+        return 'scale-108 shadow-[0_0_65px_rgba(0,217,255,0.6),0_0_90px_rgba(192,38,211,0.5)] border-[#00D9FF] animate-bounce';
       case 'idle':
       default:
-        return 'border-gray-700 bg-gray-900/60 shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:border-orange-500/50';
+        return 'shadow-[0_0_40px_rgba(0,168,255,0.35),0_0_70px_rgba(139,92,246,0.25)] border-[#00D9FF]/40 hover:scale-105 hover:shadow-[0_0_55px_rgba(0,217,255,0.5)]';
     }
   };
 
@@ -40,99 +40,123 @@ export const WakeWordIndicator: React.FC<WakeWordIndicatorProps> = ({
       case 'listening':
         return 'Listening to you...';
       case 'thinking':
-        return 'Thinking & searching memories...';
+        return 'Thinking & retrieving knowledge...';
       case 'speaking':
         return 'Life is speaking...';
       case 'idle':
       default:
         if (isHandsFreeMode) {
-          return `Say "${wakeWord}" anytime (Screen locked or background)`;
+          return `Active · Listening for "${wakeWord}"`;
         }
-        return wakeWordEnabled ? `Say "${wakeWord}" to wake me` : 'Wake word paused';
+        return wakeWordEnabled ? `Ready · Say "${wakeWord}" anytime` : 'Wake word paused';
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center p-6 text-center select-none">
-      {/* Hands-Free Background Mode Badge */}
-      <div className="mb-4">
-        {isHandsFreeMode ? (
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Hands-Free Background Service Active</span>
-          </div>
-        ) : (
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-800/60 border border-gray-700/60 text-gray-400 text-[11px] font-medium">
-            <Radio className="w-3 h-3 text-gray-500" />
-            <span>Hands-Free Mode: Standby</span>
-          </div>
-        )}
+    <div className="flex flex-col items-center justify-center p-4 text-center select-none w-full">
+      {/* Top Status Pill: Active · Listening for 'Hey Life' */}
+      <div className="mb-6">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#101722] border border-[#202B3D] text-[#F8FAFC] text-xs font-medium shadow-sm">
+          <span
+            className={`w-2.5 h-2.5 rounded-full transition-all ${
+              state === 'listening'
+                ? 'bg-[#00D9FF] animate-ping'
+                : isHandsFreeMode || wakeWordEnabled
+                ? 'bg-[#22C55E] animate-pulse'
+                : 'bg-slate-500'
+            }`}
+          />
+          <span className="text-slate-300">
+            {state === 'idle' ? (
+              <>
+                <span className="text-[#22C55E] font-semibold">Active</span> · Listening for <span className="text-[#00D9FF] font-semibold">'{wakeWord}'</span>
+              </>
+            ) : (
+              <span className="text-[#00D9FF] font-semibold">{getStatusText()}</span>
+            )}
+          </span>
+        </div>
       </div>
 
-      {/* Outer Pulse Rings */}
-      <div className="relative flex items-center justify-center">
+      {/* Futuristic Glowing Orb Visualizer */}
+      <div className="relative flex items-center justify-center my-2">
+        {/* Ambient Glow Rays / Rings */}
+        <div className="absolute w-56 h-56 rounded-full bg-gradient-to-r from-[#00A8FF]/20 via-[#00D9FF]/20 to-[#8B5CF6]/20 blur-2xl pointer-events-none" />
+
         {state === 'listening' && (
           <>
-            <span className="absolute w-44 h-44 rounded-full bg-orange-500/20 animate-ping" />
-            <span className="absolute w-52 h-52 rounded-full border border-orange-500/30 animate-pulse" />
+            <span className="absolute w-48 h-48 rounded-full bg-[#00D9FF]/20 animate-ping pointer-events-none" />
+            <span className="absolute w-56 h-56 rounded-full border border-[#00D9FF]/30 animate-pulse pointer-events-none" />
           </>
         )}
 
-        {/* Central Orb / Button */}
+        {/* Central Futuristic Sphere */}
         <button
           onClick={onManualTrigger}
-          title="Click to talk directly to Life"
-          className={`relative z-10 w-32 h-32 rounded-full border-2 transition-all duration-500 flex flex-col items-center justify-center cursor-pointer ${getOrbStyles()}`}
+          title="Tap to speak directly to Life AI"
+          className={`relative z-10 w-36 h-36 rounded-full border-2 bg-gradient-to-tr from-[#00A8FF] via-[#0066FF] to-[#8B5CF6] transition-all duration-500 flex flex-col items-center justify-center cursor-pointer ${getOrbStyles()}`}
         >
-          {state === 'idle' && <Mic className="w-10 h-10 text-orange-400 mb-1" />}
-          {state === 'listening' && <Mic className="w-12 h-12 text-orange-300 animate-pulse mb-1" />}
-          {state === 'thinking' && <Loader2 className="w-10 h-10 text-amber-300 animate-spin mb-1" />}
-          {state === 'speaking' && <Volume2 className="w-12 h-12 text-orange-200 animate-pulse mb-1" />}
-          
-          <span className="text-xs font-semibold tracking-wider uppercase text-orange-200/90">
-            {state === 'idle' ? 'Life' : state}
+          {/* Inner Gloss Overlay */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/25 via-transparent to-black/20 pointer-events-none" />
+
+          {state === 'idle' && <Mic className="w-12 h-12 text-white mb-0.5 filter drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]" />}
+          {state === 'listening' && <Mic className="w-13 h-13 text-white animate-pulse mb-0.5 filter drop-shadow-[0_0_12px_rgba(255,255,255,0.8)]" />}
+          {state === 'thinking' && <Loader2 className="w-12 h-12 text-white animate-spin mb-0.5" />}
+          {state === 'speaking' && <Volume2 className="w-12 h-12 text-white animate-pulse mb-0.5" />}
+
+          <span className="text-[11px] font-bold tracking-widest uppercase text-white/90 drop-shadow">
+            {state === 'idle' ? 'LIFE AI' : state}
           </span>
         </button>
       </div>
 
-      {/* Status Label */}
-      <div className="mt-5 flex items-center gap-2">
-        {state === 'listening' && <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping" />}
-        <p className="text-sm font-medium text-gray-300 tracking-wide">{getStatusText()}</p>
-      </div>
+      {/* Status Description */}
+      <p className="mt-5 text-sm font-medium text-slate-300 tracking-wide">
+        {getStatusText()}
+      </p>
 
-      {/* Wake Word Subtitle / Toggle */}
-      <div className="mt-3 flex items-center gap-2.5">
-        <button
+      {/* Quick Control Cards: Wake phrase & Hands-Free */}
+      <div className="mt-5 grid grid-cols-2 gap-3 w-full max-w-sm">
+        {/* Card 1: Wake phrase */}
+        <div
           onClick={onToggleWakeWord}
-          className="text-xs px-3 py-1 rounded-full border border-gray-800 bg-[#16161c] hover:border-orange-500/40 text-gray-400 hover:text-orange-400 transition-all flex items-center gap-1.5 cursor-pointer"
+          className="p-3 rounded-2xl bg-[#101722] border border-[#202B3D] flex items-center justify-between cursor-pointer hover:border-[#00D9FF]/40 transition-all text-left"
         >
-          {wakeWordEnabled ? (
-            <>
-              <Sparkles className="w-3 h-3 text-orange-400" />
-              Wake phrase: <span className="font-semibold text-orange-300">"{wakeWord}"</span>
-            </>
-          ) : (
-            <>
-              <MicOff className="w-3 h-3 text-red-400" />
-              Wake word paused
-            </>
-          )}
-        </button>
+          <div>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Wake phrase</span>
+            <span className="text-xs font-semibold text-[#00D9FF] flex items-center gap-1 mt-0.5">
+              <Sparkles className="w-3 h-3 text-[#00D9FF]" /> {wakeWord}
+            </span>
+          </div>
+          <div className="text-[10px] px-2 py-0.5 rounded-md bg-[#00D9FF]/10 text-[#00D9FF] border border-[#00D9FF]/30 font-semibold">
+            {wakeWordEnabled ? 'ON' : 'OFF'}
+          </div>
+        </div>
 
-        {onToggleHandsFree && (
+        {/* Card 2: Hands-Free */}
+        <div
+          onClick={onToggleHandsFree}
+          className="p-3 rounded-2xl bg-[#101722] border border-[#202B3D] flex items-center justify-between cursor-pointer hover:border-[#8B5CF6]/40 transition-all text-left"
+        >
+          <div>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Hands-Free</span>
+            <span className="text-xs font-semibold text-[#8B5CF6] flex items-center gap-1 mt-0.5">
+              <Radio className="w-3 h-3 text-[#8B5CF6]" /> Screen Lock
+            </span>
+          </div>
           <button
-            onClick={onToggleHandsFree}
-            className={`text-xs px-3 py-1 rounded-full border transition-all flex items-center gap-1.5 cursor-pointer ${
-              isHandsFreeMode
-                ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-900/40'
-                : 'border-gray-800 bg-[#16161c] text-gray-400 hover:text-white hover:border-gray-700'
+            type="button"
+            className={`w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 cursor-pointer ${
+              isHandsFreeMode ? 'bg-[#22C55E]' : 'bg-slate-700'
             }`}
           >
-            <Radio className={`w-3 h-3 ${isHandsFreeMode ? 'text-emerald-400' : 'text-gray-500'}`} />
-            Hands-Free: <span className="font-semibold">{isHandsFreeMode ? 'ON' : 'OFF'}</span>
+            <span
+              className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                isHandsFreeMode ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
           </button>
-        )}
+        </div>
       </div>
     </div>
   );

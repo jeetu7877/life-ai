@@ -8,21 +8,26 @@ export default {
   theme: {
     extend: {
       colors: {
-        jeet: {
-          50: '#fff7ed',
-          100: '#ffedd5',
-          200: '#fed7aa',
-          300: '#fdba74',
-          400: '#fb923c',
-          500: '#f97316', // Primary Accent Orange
-          600: '#ea580c',
-          700: '#c2410c',
-          800: '#9a3412',
-          900: '#7c2d12',
-          dark: '#0a0a0c',
-          card: '#121216',
-          border: '#24242e',
-          muted: '#8e8ea0'
+        life: {
+          50: '#f0f9ff',
+          100: '#e0f2fe',
+          200: '#bae6fd',
+          300: '#7dd3fc',
+          400: '#38bdf8',
+          500: '#00A8FF', // Primary Futuristic Blue
+          600: '#0284c7',
+          700: '#0369a1',
+          800: '#075985',
+          900: '#0c4a6e',
+          cyan: '#00D9FF',
+          purple: '#8B5CF6',
+          pink: '#C026D3',
+          bg: '#05070B',
+          bgSecondary: '#0A0F18',
+          card: '#101722',
+          cardElevated: '#141C28',
+          border: '#202B3D',
+          muted: '#94A3B8'
         }
       },
       animation: {
@@ -32,8 +37,8 @@ export default {
       },
       keyframes: {
         pulseGlow: {
-          '0%, 100%': { transform: 'scale(1)', boxShadow: '0 0 25px rgba(249, 115, 22, 0.4)' },
-          '50%': { transform: 'scale(1.06)', boxShadow: '0 0 45px rgba(249, 115, 22, 0.75)' },
+          '0%, 100%': { transform: 'scale(1)', boxShadow: '0 0 30px rgba(0, 217, 255, 0.35)' },
+          '50%': { transform: 'scale(1.05)', boxShadow: '0 0 55px rgba(139, 92, 246, 0.6)' },
         },
         ripple: {
           '0%': { transform: 'scale(0.8)', opacity: '1' },
