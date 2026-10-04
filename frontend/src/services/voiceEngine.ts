@@ -976,6 +976,7 @@ class VoiceEngine {
         analyser.connect(ctx.destination);
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        let lastNotifyTime = 0;
         const sampleAudio = () => {
           if (!this.isSpeaking) {
             this.stopOutputAudioAnalysis();
@@ -987,9 +988,15 @@ class VoiceEngine {
             sum += dataArray[i];
           }
           const avg = sum / dataArray.length;
-          this.audioEnergy = Math.min(1.0, avg / 100);
-          this.isAudioSpeaking = avg > 10;
-          this.notify();
+          this.audioEnergy = Math.min(1.0, Math.max(0, avg / 75));
+          this.isAudioSpeaking = avg > 6;
+
+          const now = performance.now();
+          if (now - lastNotifyTime > 80) {
+            lastNotifyTime = now;
+            this.notify();
+          }
+
           this.outputAnimFrame = requestAnimationFrame(sampleAudio);
         };
         this.outputAnimFrame = requestAnimationFrame(sampleAudio);
@@ -1379,6 +1386,18 @@ class VoiceEngine {
     } catch (err) {
       console.warn('Native listener setup note:', err);
     }
+  }
+
+  public getAudioEnergy(): number {
+    return this.audioEnergy;
+  }
+
+  public getIsAudioSpeaking(): boolean {
+    return this.isAudioSpeaking;
+  }
+
+  public getInputVolume(): number {
+    return this.inputVolume;
   }
 }
 

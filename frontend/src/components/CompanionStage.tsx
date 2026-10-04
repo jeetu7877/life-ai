@@ -11,8 +11,7 @@ import {
   Activity,
   AlertCircle
 } from 'lucide-react';
-import idleImage from '../assets/companion/companion-idle.jpg';
-import speakingImage from '../assets/companion/companion-speaking.jpg';
+import { LivingAvatar } from './LivingAvatar';
 
 interface CompanionStageProps {
   onOpenChat?: () => void;
@@ -219,17 +218,15 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
             onClick={triggerManualListen}
             title="Tap companion to speak"
           >
-            {/* Single DOM Avatar Image (Never duplicated or layered) */}
-            <img
-              src={isMouthOpen ? speakingImage : idleImage}
-              alt="Life AI Companion"
-              className={`w-full h-full object-cover object-top transition-transform duration-200 transform scale-100 group-hover:scale-[1.02] ${
-                voiceState === 'idle' ? 'animate-breathe' : ''
-              }`}
+            {/* Living, Audio-Synchronized AI Companion Avatar */}
+            <LivingAvatar
+              voiceState={voiceState}
+              detailedVoiceState={detailedVoiceState}
+              isConversationActive={isConversationActive}
+              isWakeWordEnabled={isWakeWordEnabled}
+              inputVolume={inputVolume}
+              onClick={triggerManualListen}
             />
-
-            {/* Subtle tech scanline overlay on companion */}
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80 pointer-events-none" />
 
             {/* Interactive Pulse Ring when active */}
             {voiceState !== 'idle' && (

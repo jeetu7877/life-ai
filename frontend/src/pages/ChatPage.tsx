@@ -41,6 +41,7 @@ export const ChatPage: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
   const [showScrollBottomBtn, setShowScrollBottomBtn] = useState<boolean>(false);
+  const [showQuickActions, setShowQuickActions] = useState<boolean>(false);
 
   // Dialogs
   const [convToDelete, setConvToDelete] = useState<string | null>(null);
@@ -660,14 +661,83 @@ export const ChatPage: React.FC = () => {
         )}
 
         {/* Pinned Bottom Glassmorphic Input Bar */}
-        <div className="shrink-0 p-2 sm:p-4 pb-20 md:pb-4 border-t border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl z-20 w-full max-w-full min-w-0 box-border safe-bottom">
-          <form onSubmit={handleSend} className="max-w-4xl mx-auto flex items-center gap-1.5 sm:gap-2 w-full min-w-0">
+        <div className="shrink-0 p-2 sm:p-3.5 pb-20 md:pb-4 border-t border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl z-20 w-full max-w-full min-w-0 box-border safe-bottom">
+          {/* Quick Suggestions Bar horizontally scrollable directly above composer */}
+          <div className="max-w-4xl mx-auto mb-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 px-0.5 min-w-0 w-full">
+            {[
+              "Mera roll number kya hai?",
+              "What is my college?",
+              "Meri bestie ka naam kya hai?",
+              "What are my DBMS marks in semester 5?"
+            ].map((prompt, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  setInputMessage(prompt);
+                }}
+                className="text-[11px] whitespace-nowrap px-3 py-1 rounded-full border border-[#202B3D] bg-[#101722]/90 hover:border-[#00D9FF]/40 hover:bg-[#141C28] text-slate-300 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-sm"
+              >
+                <span className="text-[#00D9FF] text-xs font-bold leading-none">"</span>
+                <span className="truncate">{prompt}</span>
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleSend} className="max-w-4xl mx-auto flex items-center gap-1.5 sm:gap-2 w-full min-w-0 relative">
+            {/* [+] Quick Action Button */}
+            <button
+              type="button"
+              onClick={() => setShowQuickActions(prev => !prev)}
+              title="Quick Shortcuts"
+              className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-[#101722] border border-[#202B3D] hover:border-[#00D9FF]/40 text-slate-400 hover:text-[#00D9FF] flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-sm"
+            >
+              <Plus className={`w-4 h-4 transition-transform ${showQuickActions ? 'rotate-45 text-[#00D9FF]' : ''}`} />
+            </button>
+
+            {/* Quick Actions Popup Menu */}
+            {showQuickActions && (
+              <div className="absolute bottom-12 left-0 z-30 p-2 bg-[#0F1722] border border-[#223147] rounded-2xl shadow-2xl flex flex-col gap-1 w-52 animate-fadeIn backdrop-blur-md">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputMessage("Check my documents and summarize key details.");
+                    setShowQuickActions(false);
+                  }}
+                  className="px-3 py-2 rounded-xl text-left text-xs text-slate-200 hover:bg-[#162232] hover:text-[#00D9FF] flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-[#00D9FF]" /> Document Summary
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputMessage("What are my current goals and milestones?");
+                    setShowQuickActions(false);
+                  }}
+                  className="px-3 py-2 rounded-xl text-left text-xs text-slate-200 hover:bg-[#162232] hover:text-[#00D9FF] flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <CheckSquare className="w-3.5 h-3.5 text-amber-400" /> Goal Check-in
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputMessage("What memories do you have about me?");
+                    setShowQuickActions(false);
+                  }}
+                  className="px-3 py-2 rounded-xl text-left text-xs text-slate-200 hover:bg-[#162232] hover:text-[#00D9FF] flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Brain className="w-3.5 h-3.5 text-purple-400" /> Memory Recall
+                </button>
+              </div>
+            )}
+
+            {/* Message Input with Integrated Mic */}
             <div className="flex-1 min-w-0 relative flex items-center">
               <input
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Ask Life anything or tap mic..."
+                placeholder="Message Life AI or speak..."
                 className="w-full min-w-0 bg-[#101722] border border-[#202B3D] rounded-xl sm:rounded-2xl pl-3 sm:pl-4 pr-10 py-2.5 sm:py-3 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#00D9FF] focus:ring-1 focus:ring-[#00D9FF]/30 transition-all shadow-inner"
               />
               <button
@@ -683,9 +753,12 @@ export const ChatPage: React.FC = () => {
                 <Mic className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Send Button */}
             <button
               type="submit"
               disabled={!inputMessage.trim() || isSending}
+              title="Send message"
               className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-[#00A8FF] to-[#8B5CF6] hover:from-[#00D9FF] hover:to-[#A855F7] disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center shadow-[0_0_16px_rgba(0,168,255,0.4)] transition-all shrink-0 cursor-pointer"
             >
               <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
