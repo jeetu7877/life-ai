@@ -114,7 +114,7 @@ export const Navbar: React.FC = () => {
 
         {/* Center: Voice / Wake-Word Status Pill */}
         {isAuthenticated && (
-          <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1 rounded-full border border-[#202B3D] bg-[#0A0F18]/90 backdrop-blur-md shadow-inner">
+          <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 rounded-full border border-[#202B3D] bg-[#0A0F18]/90 backdrop-blur-md shadow-inner shrink-0">
             <div className="flex items-center gap-1.5">
               <span
                 className={`w-2 h-2 rounded-full transition-all ${
@@ -162,11 +162,11 @@ export const Navbar: React.FC = () => {
 
         {/* Right: Profile, Settings & Sign Out */}
         {isAuthenticated ? (
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* Clickable Profile Avatar Button */}
             <Link
               to="/profile"
-              className="flex items-center gap-2 px-2 py-1 rounded-xl bg-[#101722] hover:bg-[#16202E] border border-[#202B3D] hover:border-[#00D9FF]/40 transition-all cursor-pointer group"
+              className="flex items-center gap-2 px-2 py-1 rounded-xl bg-[#101722] hover:bg-[#16202E] border border-[#202B3D] hover:border-[#00D9FF]/40 transition-all cursor-pointer group shrink-0"
               title="View & Edit Profile"
             >
               <div className="w-7 h-7 rounded-lg overflow-hidden border border-[#00D9FF]/30 bg-[#0A0F18] flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm">
@@ -184,7 +184,7 @@ export const Navbar: React.FC = () => {
             {/* Direct Settings Link Button */}
             <Link
               to="/settings"
-              className="p-2 rounded-xl border border-[#202B3D] bg-[#101722] hover:bg-[#16202E] text-slate-300 hover:text-[#00D9FF] hover:border-[#00D9FF]/40 transition-all flex items-center justify-center cursor-pointer"
+              className="p-2 rounded-xl border border-[#202B3D] bg-[#101722] hover:bg-[#16202E] text-slate-300 hover:text-[#00D9FF] hover:border-[#00D9FF]/40 transition-all flex items-center justify-center cursor-pointer shrink-0"
               title="System Settings"
             >
               <Settings className="w-4 h-4" />
@@ -193,7 +193,7 @@ export const Navbar: React.FC = () => {
             {/* Sign Out Button */}
             <button
               onClick={logout}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#202B3D] bg-[#101722] text-slate-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all flex items-center gap-1.5 text-xs cursor-pointer"
+              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#202B3D] bg-[#101722] text-slate-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all flex items-center gap-1.5 text-xs cursor-pointer shrink-0"
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />

@@ -346,19 +346,19 @@ export const SettingsPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-5xl mx-auto space-y-6 pb-28 md:pb-8 min-h-0">
+    <div className="flex-1 overflow-y-auto overflow-x-hidden w-full max-w-5xl mx-auto p-3.5 sm:p-6 space-y-5 pb-36 md:pb-12 min-h-0 min-w-0">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-          <Settings className="w-6 h-6 text-[#00D9FF]" /> System Settings
+      <div className="min-w-0">
+        <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+          <Settings className="w-5 h-5 sm:w-6 sm:h-6 text-[#00D9FF] shrink-0" /> System Settings
         </h2>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs text-slate-400 mt-1 leading-relaxed">
           Configure your personal AI assistant, account security, voice triggers, model routing, and storage.
         </p>
       </div>
 
-      {/* Tabs Bar */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-[#202B3D] scrollbar-thin">
+      {/* Tabs Bar with smooth horizontal scrolling */}
+      <div className="w-full min-w-0 overflow-x-auto pb-2 border-b border-[#202B3D] flex items-center gap-1.5 scrollbar-thin select-none">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -366,7 +366,7 @@ export const SettingsPage: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                 isActive
                   ? 'bg-gradient-to-r from-[#00A8FF]/20 to-[#00D9FF]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-[#141C28]'
@@ -381,62 +381,62 @@ export const SettingsPage: React.FC = () => {
 
       {/* TAB 1: ACCOUNT */}
       {activeTab === 'account' && (
-        <div className="space-y-4">
-          <div className="p-5 rounded-2xl border border-[#202B3D] bg-[#101722] space-y-4">
+        <div className="space-y-4 min-w-0">
+          <div className="p-4 sm:p-5 rounded-2xl border border-[#202B3D] bg-[#101722] space-y-4 min-w-0 overflow-hidden">
             <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <User className="w-4 h-4 text-[#00D9FF]" /> Account Overview
+              <User className="w-4 h-4 text-[#00D9FF] shrink-0" /> Account Overview
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-3.5 rounded-xl bg-[#0A0F18] border border-[#202B3D]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 min-w-0">
+              <div className="p-3.5 rounded-xl bg-[#0A0F18] border border-[#202B3D] min-w-0">
                 <span className="text-[11px] text-slate-400 block">Username</span>
-                <span className="text-xs font-semibold text-slate-200 mt-0.5 block">
+                <span className="text-xs font-semibold text-slate-200 mt-0.5 block truncate">
                   @{user?.username || 'anonymous'}
                 </span>
               </div>
-              <div className="p-3.5 rounded-xl bg-[#0A0F18] border border-[#202B3D]">
+              <div className="p-3.5 rounded-xl bg-[#0A0F18] border border-[#202B3D] min-w-0">
                 <span className="text-[11px] text-slate-400 block">Email Address</span>
-                <span className="text-xs font-semibold text-slate-200 mt-0.5 block">
+                <span className="text-xs font-semibold text-slate-200 mt-0.5 block truncate" title={user?.email}>
                   {user?.email || 'user@example.com'}
                 </span>
               </div>
             </div>
 
             {/* Email Verification Section */}
-            <div className="p-4 rounded-xl bg-[#0A0F18] border border-[#202B3D] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
+            <div className="p-3.5 sm:p-4 rounded-xl bg-[#0A0F18] border border-[#202B3D] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 min-w-0">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-bold text-slate-200">Email Verification Status</span>
                   {user?.is_verified ? (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1 shrink-0">
                       <CheckCircle2 className="w-3 h-3" /> Verified
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1 shrink-0">
                       <AlertCircle className="w-3 h-3" /> Unverified
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed break-words">
                   {user?.is_verified
                     ? 'Your email address is verified. Full account security features are unlocked.'
                     : 'Verify your email to guarantee permanent cloud sync and account recovery.'}
                 </p>
                 {verifyMessage && (
-                  <p className="text-[11px] text-[#00D9FF] font-medium mt-1">{verifyMessage}</p>
+                  <p className="text-[11px] text-[#00D9FF] font-medium mt-1 break-words">{verifyMessage}</p>
                 )}
               </div>
               {!user?.is_verified && (
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                   <button
                     onClick={handleResendVerification}
                     disabled={isResendingVerify}
-                    className="px-3 py-1.5 rounded-xl bg-[#16202E] hover:bg-[#1E2D40] border border-[#202B3D] text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+                    className="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl bg-[#16202E] hover:bg-[#1E2D40] border border-[#202B3D] text-xs font-semibold text-slate-200 transition-colors cursor-pointer text-center"
                   >
                     {isResendingVerify ? 'Sending...' : 'Resend Link'}
                   </button>
                   <Link
                     to="/verify-email"
-                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#00A8FF] to-[#00D9FF] text-black text-xs font-bold cursor-pointer"
+                    className="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#00A8FF] to-[#00D9FF] text-black text-xs font-bold cursor-pointer text-center"
                   >
                     Enter Token
                   </Link>
@@ -445,19 +445,19 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             {/* Danger Zone: Delete Account */}
-            <div className="pt-4 border-t border-[#202B3D]">
+            <div className="pt-4 border-t border-[#202B3D] min-w-0">
               <h4 className="text-xs font-bold text-red-400 mb-1 flex items-center gap-1.5">
-                <Trash2 className="w-4 h-4" /> Danger Zone
+                <Trash2 className="w-4 h-4 shrink-0" /> Danger Zone
               </h4>
-              <p className="text-[11px] text-slate-400 mb-3">
+              <p className="text-[11px] text-slate-400 mb-3 leading-relaxed break-words">
                 Permanently delete your Life AI account, long-term memory graph, uploaded documents, and conversations. This action cannot be undone.
               </p>
               <button
                 type="button"
                 onClick={() => setShowDeleteAccountDialog(true)}
-                className="px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs font-bold text-red-400 transition-all cursor-pointer flex items-center gap-2"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs font-bold text-red-400 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                <Trash2 className="w-3.5 h-3.5" /> Delete Account & Wipe Data
+                <Trash2 className="w-3.5 h-3.5 shrink-0" /> Delete Account & Wipe Data
               </button>
             </div>
           </div>
