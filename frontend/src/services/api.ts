@@ -157,6 +157,8 @@ export const api = {
     apiClient.get<{ repositories: any[] }>('/github/repos').then(r => r.data),
   indexGitHubRepo: (repo_name: string, owner?: string, branch?: string) =>
     apiClient.post<{ success: boolean; repository: string; files_count: number; chunks_indexed: number }>('/github/index', { repo_name, owner, branch }).then(r => r.data),
+  indexAllGitHubRepos: () =>
+    apiClient.post<{ success: boolean; total_repos_found: number; repos_indexed: number; total_chunks_indexed: number; details: any[] }>('/github/index-all').then(r => r.data),
   searchGitHubCode: (query: string, repo_name?: string, top_k: number = 5) =>
     apiClient.post<{ results: any[]; count: number }>('/github/search', { query, repo_name, top_k }).then(r => r.data),
 

@@ -131,6 +131,23 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const handleIndexAllRepos = async () => {
+    setGhLoading(true);
+    setGhMessage({ type: 'info', text: '⚡ Auto-indexing all your GitHub repositories into Code Brain... This may take a minute.' });
+    try {
+      const res = await api.indexAllGitHubRepos();
+      setGhMessage({
+        type: 'success',
+        text: `⚡ All Repositories Indexed! (${res.repos_indexed} of ${res.total_repos_found} repos indexed, ${res.total_chunks_indexed} code chunks embedded)`
+      });
+      await fetchGitHubStatus();
+    } catch (err: any) {
+      setGhMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to auto-index all repositories.' });
+    } finally {
+      setGhLoading(false);
+    }
+  };
+
   const handleSaveSettings = () => {
     const cleanUrl = serverUrl.trim().replace(/\/+$/, '');
     localStorage.setItem('life_server_url', cleanUrl);
@@ -595,8 +612,22 @@ export const SettingsPage: React.FC = () => {
 
               {/* Remote GitHub Repos List for 1-Click Indexing */}
               {remoteRepos.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <div className="text-[11px] text-slate-400 font-medium">Your GitHub Repositories (1-click to index):</div>
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-slate-300 font-semibold flex items-center gap-1.5">
+                      <GitBranch className="w-3.5 h-3.5 text-[#00D9FF]" />
+                      Your Repositories ({remoteRepos.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleIndexAllRepos}
+                      disabled={ghLoading}
+                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#8B5CF6] to-[#00A8FF] hover:from-[#A855F7] hover:to-[#00D9FF] text-white text-[11px] font-bold shadow-md shadow-[#8B5CF6]/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {ghLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                      ⚡ Auto-Index All Repos
+                    </button>
+                  </div>
                   <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
                     {remoteRepos.map((repo) => {
                       const isAlreadyIndexed = ghIndexedRepos.some((ir) => ir.repo_name.toLowerCase() === repo.name.toLowerCase());

@@ -382,4 +382,92 @@ class GitHubService:
             return None
         return "\n".join(c.content for c in chunks)
 
+    async def index_all_repositories(
+        self,
+        db: Session,
+        user_id: str,
+        max_repos: int = 15
+    ) -> Dict[str, Any]:
+        """Automatically index all remote repositories accessible by the user."""
+        token = self.get_user_token(db, user_id)
+        if not token:
+            return {"success": False, "error": "No connected GitHub account found."}
+
+        remote_repos = await self.list_remote_repositories(token)
+        if not remote_repos:
+            return {"success": False, "error": "No repositories found on GitHub account."}
+
+        indexed_count = 0
+        total_chunks = 0
+        repo_results = []
+
+        for r in remote_repos[:max_repos]:
+            repo_name = r["name"]
+            try:
+                res = await self.index_repository(db, user_id, repo_name)
+                if res.get("success"):
+                    indexed_count += 1
+                    total_chunks += res.get("chunks_indexed", 0)
+                    repo_results.append({"repo": repo_name, "status": "success", "chunks": res.get("chunks_indexed", 0)})
+                else:
+                    repo_results.append({"repo": repo_name, "status": "failed", "error": res.get("error")})
+            except Exception as e:
+                repo_results.append({"repo": repo_name, "status": "error", "error": str(e)})
+
+        return {
+            "success": True,
+            "total_repos_found": len(remote_repos),
+            "repos_indexed": indexed_count,
+            "total_chunks_indexed": total_chunks,
+            "details": repo_results
+        }
+
+    async def auto_index_matching_repo_for_query(
+        self,
+        db: Session,
+        user_id: str,
+        query: str
+    ) -> Optional[str]:
+        """
+        Dynamically finds if any remote repo matches the query, indexes it if not yet indexed,
+        and returns the repo_name.
+        """
+        token = self.get_user_token(db, user_id)
+        if not token:
+            return None
+
+        remote_repos = await self.list_remote_repositories(token)
+        if not remote_repos:
+            return None
+
+        q_lower = query.lower()
+        matched_repo = None
+        for r in remote_repos:
+            r_name_clean = r["name"].lower().replace("-", " ").replace("_", " ")
+            r_tokens = [t for t in re.split(r'[-_\s]+', r["name"].lower()) if len(t) > 2]
+            if r["name"].lower() in q_lower or r_name_clean in q_lower:
+                matched_repo = r["name"]
+                break
+            if any(t in q_lower for t in r_tokens if t not in ["app", "web", "system", "clone"]):
+                matched_repo = r["name"]
+                break
+
+        if not matched_repo:
+            return None
+
+        existing = db.query(GitHubRepository).filter(
+            GitHubRepository.user_id == user_id,
+            GitHubRepository.repo_name.ilike(matched_repo),
+            GitHubRepository.indexing_status == "ready"
+        ).first()
+
+        if existing:
+            return existing.repo_name
+
+        res = await self.index_repository(db, user_id, matched_repo)
+        if res.get("success"):
+            return matched_repo
+        return None
+
 github_service = GitHubService()
+

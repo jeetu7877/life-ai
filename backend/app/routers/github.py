@@ -108,6 +108,21 @@ async def index_repository(
         raise HTTPException(status_code=400, detail=res.get("error", "Indexing failed"))
     return res
 
+@router.post("/index-all")
+async def index_all_repositories(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_optional_user)
+):
+    """Automatically index all repositories accessible by the user's connected GitHub account."""
+    res = await github_service.index_all_repositories(
+        db=db,
+        user_id=user.id,
+        max_repos=20
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Auto-indexing failed"))
+    return res
+
 @router.post("/search")
 def search_repository_code(
     payload: GitHubSearchRequest,
