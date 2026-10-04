@@ -94,8 +94,9 @@ export const VerifyEmailPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#05070B]">
-      <div className="w-full max-w-md p-8 rounded-3xl border border-[#202B3D] bg-[#101722] space-y-6 shadow-2xl relative">
+    <div className="min-h-[100dvh] w-full flex-1 flex flex-col items-center justify-start sm:justify-center p-4 sm:p-6 lg:p-8 bg-[#05070B] overflow-y-auto overflow-x-hidden font-['Plus_Jakarta_Sans',sans-serif]">
+      <div className="w-full max-w-md my-auto py-6 sm:py-8">
+        <div className="w-full p-6 sm:p-8 rounded-3xl border border-[#202B3D] bg-[#101722] space-y-6 shadow-2xl relative">
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#00A8FF] via-[#00D9FF] to-[#8B5CF6] flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(0,217,255,0.3)]">
@@ -222,5 +223,6 @@ export const VerifyEmailPage: React.FC = () => {
         )}
       </div>
     </div>
-  );
+  </div>
+);
 };
