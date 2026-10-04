@@ -352,17 +352,20 @@ class RAGService:
             if not active:
                 return
 
-            # Check if Chroma count is already initialized (>0)
+            to_sync = active
             if self.memory_collection:
                 try:
-                    c_count = self.memory_collection.count()
-                    if c_count > 0:
-                        return
+                    existing = self.memory_collection.get()
+                    existing_ids = set(existing.get("ids", [])) if existing else set()
+                    to_sync = [m for m in active if f"mem_{m.id}" not in existing_ids]
                 except Exception:
-                    self._init_chroma()
+                    to_sync = active
 
-            logger.info(f"Syncing {len(active)} persistent memories to vector index...")
-            for m in active:
+            if not to_sync:
+                return
+
+            logger.info(f"Syncing {len(to_sync)} persistent memories to vector index...")
+            for m in to_sync:
                 if not m.embedding:
                     m.embedding = embedding_service._deterministic_vector(m.content)
                     m.embedding_status = "ready"
@@ -370,14 +373,14 @@ class RAGService:
 
             if self.memory_collection:
                 try:
-                    batch_ids = [f"mem_{m.id}" for m in active]
-                    batch_docs = [redact_sensitive_strings(m.content) for m in active]
+                    batch_ids = [f"mem_{m.id}" for m in to_sync]
+                    batch_docs = [redact_sensitive_strings(m.content) for m in to_sync]
                     batch_metas = [{
                         "user_id": str(m.user_id),
                         "memory_id": str(m.id),
                         "memory_type": str(m.memory_type),
                         "event_date": str(m.event_date or "")
-                    } for m in active]
+                    } for m in to_sync]
                     self.memory_collection.upsert(
                         ids=batch_ids,
                         documents=batch_docs,

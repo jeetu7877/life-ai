@@ -32,6 +32,20 @@ export interface Message {
       date?: string;
       records_found?: number;
     }>;
+    timing?: {
+      router_ms?: number;
+      cache_ms?: number;
+      profile_ms?: number;
+      tools_ms?: number;
+      memory_ms?: number;
+      document_ms?: number;
+      llm_ms?: number;
+      total_ms?: number;
+      llm_used?: boolean;
+      cache_hit?: boolean;
+      provider?: string;
+      route?: string;
+    };
   };
 }
 

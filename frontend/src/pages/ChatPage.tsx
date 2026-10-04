@@ -129,7 +129,10 @@ export const ChatPage: React.FC = () => {
         timestamp: new Date().toISOString(),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         local_time_str: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        metadata_json: { sources: res.retrieved_sources }
+        metadata_json: {
+          sources: res.retrieved_sources,
+          timing: res.timing
+        }
       };
 
       setMessages(prev => [...prev, assistantMsg]);
@@ -437,6 +440,27 @@ export const ChatPage: React.FC = () => {
                               </span>
                             );
                           })}
+                        </div>
+                      )}
+
+                      {!isUser && msg.metadata_json?.timing && (
+                        <div
+                          title={`Execution: ${msg.metadata_json.timing.total_ms}ms (Router: ${msg.metadata_json.timing.router_ms || 0}ms, Cache: ${msg.metadata_json.timing.cache_ms || 0}ms, LLM: ${msg.metadata_json.timing.llm_ms || 0}ms) | Intent: ${msg.metadata_json.timing.route || 'GENERAL'}`}
+                          className={`text-[10px] px-2 py-0.5 rounded-lg flex items-center gap-1 font-mono transition-all ${
+                            !msg.metadata_json.timing.llm_used
+                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/25'
+                          }`}
+                        >
+                          <Sparkles className="w-2.5 h-2.5 text-yellow-400" />
+                          <span>{msg.metadata_json.timing.total_ms}ms</span>
+                          {!msg.metadata_json.timing.llm_used ? (
+                            <span className="text-[9px] font-semibold text-emerald-400 uppercase tracking-wider">Zero-LLM</span>
+                          ) : msg.metadata_json.timing.cache_hit ? (
+                            <span className="text-[9px] font-semibold text-sky-400 uppercase tracking-wider">Cache</span>
+                          ) : (
+                            <span className="text-[9px] text-slate-400 uppercase">{msg.metadata_json.timing.provider || 'AI'}</span>
+                          )}
                         </div>
                       )}
                     </div>

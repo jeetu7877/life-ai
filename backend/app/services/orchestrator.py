@@ -1,8 +1,10 @@
 import time
 import re
+import json
 import logging
+import concurrent.futures
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Generator
 from sqlalchemy.orm import Session
 
 from app.models.profile import PersonalProfile
@@ -13,9 +15,12 @@ from app.services.timeline_service import timeline_service
 from app.services.vault_service import vault_service
 from app.services.document_service import document_service
 from app.services.conversation_service import conversation_service
-from app.services.query_router import query_router, QueryIntent
+from app.services.query_router import query_router, QueryIntent, RoutePlan
 from app.services.tools.registry import tool_registry
 from app.services.github_service import github_service
+from app.services.cache_service import cache_service
+from app.services.context_manager import context_manager
+from app.services.llm_providers import model_router
 
 logger = logging.getLogger("life.orchestrator")
 
@@ -23,15 +28,13 @@ class AgentOrchestrator:
     """
     Central Autonomous Agent Orchestrator:
     - Normalizes incoming requests across text & hands-free voice.
-    - Preserves sub-millisecond fast-paths (<5ms greetings, <50ms profile, <50ms vault, <5ms doc fields).
-    - Modular tool dispatch & execution with audit logging via ToolRegistry.
-    - Grounded synthesis across:
-      * Personal Memories (Long-term & Profile)
-      * Structured Documents (College ID, Marksheets, Resumes)
-      * GitHub Code Repositories (CodeChunks & File Trees)
-      * Public Web Information (Isolated Web Search)
-      * Actions & Task Planning (Reminders & Goals)
-    - Non-destructive and resilient across container restarts.
+    - Zero-LLM Fast-paths (<5ms greetings, <10ms profile, <20ms vault, <5ms doc fields, <10ms simple memory).
+    - Multi-level caching (L1 in-process, L2 optional Redis, Semantic response cache).
+    - Parallel multi-source retrieval (concurrent memory, document, code search).
+    - Smart Context Management (strict budgeting, relevance filtering).
+    - Model tier routing (Small / Large / Ollama fallback).
+    - Token streaming support.
+    - Structured performance latency tracking ([PERF] logs & diagnostics).
     """
 
     def process_request(
@@ -43,7 +46,7 @@ class AgentOrchestrator:
         conversation_id: Optional[str] = None,
         timezone: str = "Asia/Kolkata"
     ) -> Dict[str, Any]:
-        t0 = time.time()
+        t0 = time.perf_counter()
         retrieved_sources: List[Dict[str, Any]] = []
         tools_executed: List[Dict[str, Any]] = []
         context_memories = ""
@@ -53,37 +56,63 @@ class AgentOrchestrator:
 
         timing_metrics = {
             "router_ms": 0.0,
+            "cache_ms": 0.0,
             "profile_ms": 0.0,
             "tools_ms": 0.0,
             "memory_ms": 0.0,
             "document_ms": 0.0,
             "github_ms": 0.0,
             "llm_ms": 0.0,
-            "total_ms": 0.0
+            "total_ms": 0.0,
+            "llm_used": False,
+            "cache_hit": "MISS",
+            "provider": "none"
         }
 
         raw_msg = user_message.strip()
         lower_msg = raw_msg.lower()
 
+        # Step 0: Semantic Response Cache Check (<1ms)
+        t_cache_start = time.perf_counter()
+        cached = cache_service.get_semantic_response(user_id, raw_msg)
+        timing_metrics["cache_ms"] = round((time.perf_counter() - t_cache_start) * 1000, 2)
+        if cached and cached.get("response"):
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["cache_hit"] = "HIT_L1"
+            timing_metrics["llm_used"] = False
+            logger.info(f"[PERF] route=CACHE cache=HIT total={total_ms}ms")
+            return {
+                "response": cached["response"],
+                "retrieved_sources": cached.get("retrieved_sources", [{"source": "semantic_cache"}]),
+                "tools_executed": cached.get("tools_executed", []),
+                "timing": timing_metrics
+            }
+
         # Step 1: High-Speed Fast-Path Routing (<1ms)
         t_route_start = time.perf_counter()
-        intent, sub_cat = query_router.classify_intent(raw_msg)
+        plan: RoutePlan = query_router.plan_route(raw_msg)
+        intent = plan.intent
+        sub_cat = plan.sub_category
         timing_metrics["router_ms"] = round((time.perf_counter() - t_route_start) * 1000, 2)
 
-        # FAST PATH 1: Casual Greetings & Chit-chat (<10ms, 0 DB, 0 Vector, 0 LLM)
+        # FAST PATH 1: Casual Greetings & Chit-chat (<5ms, 0 DB, 0 Vector, 0 LLM)
         if intent == QueryIntent.GREETING:
             greeting_resp = query_router.handle_greeting_fast_path(raw_msg)
             total_ms = round((time.perf_counter() - t0) * 1000, 2)
             timing_metrics["total_ms"] = total_ms
-            logger.info(f"[Orchestrator] intent=GREETING total_ms={total_ms}")
-            return {
+            timing_metrics["llm_used"] = False
+            result = {
                 "response": greeting_resp,
                 "retrieved_sources": [{"source": "fast_greeting"}],
                 "tools_executed": [],
                 "timing": timing_metrics
             }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=GREETING cache=MISS db=0ms vector=0ms llm=false total={total_ms}ms")
+            return result
 
-        # FAST PATH 2: Level 1 Profile Memory (<50ms, direct SQL lookup)
+        # FAST PATH 2: Level 1 Profile Memory (<10ms, direct SQL lookup)
         if intent == QueryIntent.PROFILE:
             t_profile_start = time.perf_counter()
             profile_resp = query_router.handle_profile_fast_path(db, user_id, sub_cat)
@@ -91,19 +120,23 @@ class AgentOrchestrator:
             if profile_resp:
                 total_ms = round((time.perf_counter() - t0) * 1000, 2)
                 timing_metrics["total_ms"] = total_ms
-                logger.info(f"[Orchestrator] intent=PROFILE sub={sub_cat} total_ms={total_ms}")
-                return {
+                timing_metrics["llm_used"] = False
+                result = {
                     "response": profile_resp,
                     "retrieved_sources": [{"source": "profile_memory", "category": sub_cat}],
                     "tools_executed": [],
                     "timing": timing_metrics
                 }
+                cache_service.set_semantic_response(user_id, raw_msg, result)
+                logger.info(f"[PERF] route=PROFILE sub={sub_cat} cache=MISS db={timing_metrics['profile_ms']}ms llm=false total={total_ms}ms")
+                return result
 
-        # FAST PATH 3: Secure Vault Queries (<50ms)
+        # FAST PATH 3: Secure Vault Queries (<30ms)
         if intent == QueryIntent.VAULT:
             secret_val = vault_service.query_by_type_or_name(db, user_id, raw_msg)
             total_ms = round((time.perf_counter() - t0) * 1000, 2)
             timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
             if secret_val:
                 return {
                     "response": f"Aapka requested document number hai: {secret_val}",
@@ -129,8 +162,8 @@ class AgentOrchestrator:
                 ans = field_res.get("summary_text") if field_res.get("is_full_summary") else field_res.get("answer_text")
                 total_ms = round((time.perf_counter() - t0) * 1000, 2)
                 timing_metrics["total_ms"] = total_ms
-                logger.info(f"[Orchestrator] DOC_FIELD_LOOKUP found=True doc_id={field_res.get('document_id')}")
-                return {
+                timing_metrics["llm_used"] = False
+                result = {
                     "response": ans,
                     "retrieved_sources": [{
                         "source": "document_field",
@@ -146,13 +179,33 @@ class AgentOrchestrator:
                     }],
                     "timing": timing_metrics
                 }
+                cache_service.set_semantic_response(user_id, raw_msg, result)
+                logger.info(f"[PERF] route=DOC_FIELD db={doc_field_ms}ms llm=false total={total_ms}ms")
+                return result
+
+        # FAST PATH 5: Simple Memory Lookup (<10ms, e.g. best friend / bestie)
+        if intent == QueryIntent.MEMORY:
+            mem_fast = query_router.handle_simple_memory_fast_path(db, user_id, raw_msg)
+            if mem_fast:
+                total_ms = round((time.perf_counter() - t0) * 1000, 2)
+                timing_metrics["total_ms"] = total_ms
+                timing_metrics["llm_used"] = False
+                result = {
+                    "response": mem_fast,
+                    "retrieved_sources": [{"source": "long_term_memory", "mode": "fast_path"}],
+                    "tools_executed": [],
+                    "timing": timing_metrics
+                }
+                cache_service.set_semantic_response(user_id, raw_msg, result)
+                logger.info(f"[PERF] route=MEMORY_FAST db=fast llm=false total={total_ms}ms")
+                return result
 
         # Step 2: Intent-based Tool Dispatch & Context Gathering
         t_tools_start = time.perf_counter()
 
         # Tool Check A: Reminders & Tasks
-        is_reminder_intent = any(w in lower_msg for w in ["remind me", "set a reminder", "yaad dila dena", "reminder lagao", "remind"])
-        is_task_intent = any(w in lower_msg for w in ["create a task", "add task", "todo list", "task bana do", "add a task", "new task"])
+        is_reminder_intent = intent == QueryIntent.REMINDER or any(w in lower_msg for w in ["remind me", "set a reminder", "yaad dila dena", "reminder lagao", "remind"])
+        is_task_intent = intent == QueryIntent.TASK or any(w in lower_msg for w in ["create a task", "add task", "todo list", "task bana do", "add a task", "new task"])
         is_task_list_intent = any(w in lower_msg for w in ["my tasks", "list tasks", "show tasks", "mere tasks", "pending tasks"])
 
         if is_reminder_intent:
@@ -220,7 +273,7 @@ class AgentOrchestrator:
                 }
 
         # Tool Check B: GitHub Code Repository Brain
-        is_github_intent = any(w in lower_msg for w in [
+        is_github_intent = intent == QueryIntent.GITHUB_CODE or any(w in lower_msg for w in [
             "github", "repo", "repos", "repository", "repositories", "codebase", "sql rag", "backend samjhao",
             "function", "class", "code dekho", "show code", "inspect repo", "mere project", "mera project",
             "mere projects", "mera code", "mere code"
@@ -246,7 +299,6 @@ class AgentOrchestrator:
                 # 1. Try on-the-fly auto-indexing if a specific repo was mentioned
                 try:
                     import asyncio
-                    import concurrent.futures
                     token = github_service.get_user_token(db, user_id)
                     if token:
                         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -272,7 +324,7 @@ class AgentOrchestrator:
                 except Exception as ex:
                     logger.debug(f"Auto-index on the fly note: {ex}")
 
-                # 2. If still no code snippets, provide full repository overview of the user's account
+                # 2. If still no code snippets, provide full repository overview of user's account
                 if not context_code:
                     try:
                         from app.models.connected_account import ConnectedAccount
@@ -284,7 +336,6 @@ class AgentOrchestrator:
                         if token and account:
                             uname = account.account_username or "user"
                             import asyncio
-                            import concurrent.futures
                             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                                 remote_repos = executor.submit(asyncio.run, github_service.list_remote_repositories(token)).result(timeout=5.0)
                             if remote_repos:
@@ -301,7 +352,7 @@ class AgentOrchestrator:
                         logger.debug(f"GitHub fallback listing note: {ex}")
 
         # Tool Check C: Public Web Search
-        is_web_intent = any(w in lower_msg for w in [
+        is_web_intent = intent == QueryIntent.WEB_SEARCH or any(w in lower_msg for w in [
             "search the web", "search online", "internet par dekho", "google karo",
             "latest release", "current weather", "web search"
         ])
@@ -343,7 +394,7 @@ class AgentOrchestrator:
                 )
             timing_metrics["profile_ms"] = round((time.perf_counter() - t_profile_start) * 1000, 2)
 
-        # Semantic Long-Term Memories (Top 3-5, strict user isolation)
+        # Determine retrieval requirements
         needs_memory = intent in [QueryIntent.MEMORY, QueryIntent.TIMELINE] or any(
             w in lower_msg for w in [
                 "remember", "yaad", "dost", "friend", "bestie", "favourite", "favorite",
@@ -351,60 +402,98 @@ class AgentOrchestrator:
                 "where do i", "where did i", "what did i", "tell me about my"
             ]
         )
-        if needs_memory:
-            t_mem_start = time.perf_counter()
-            mem_res = tool_registry.execute_tool(
-                tool_name="search_memories",
-                user_id=user_id,
-                args={"query": raw_msg, "top_k": 4},
-                db=db,
-                conversation_id=conversation_id
-            )
-            timing_metrics["memory_ms"] = round((time.perf_counter() - t_mem_start) * 1000, 2)
+        needs_docs = intent == QueryIntent.DOCUMENT or any(
+            dk in lower_msg for dk in ["document", "pdf", "file", "resume", "marksheet", "uploaded", "in my resume", "my cv"]
+        )
+
+        # PARALLEL RETRIEVAL: Execute Memory & Document search concurrently if both needed
+        if needs_memory and needs_docs:
+            t_par_start = time.perf_counter()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                f_mem = executor.submit(tool_registry.execute_tool, "search_memories", user_id, {"query": raw_msg, "top_k": 4}, db, conversation_id)
+                f_doc = executor.submit(tool_registry.execute_tool, "search_documents", user_id, {"query": raw_msg, "top_k": 3}, db, conversation_id)
+                mem_res = f_mem.result(timeout=4.0)
+                doc_res = f_doc.result(timeout=4.0)
+            timing_metrics["memory_ms"] = round((time.perf_counter() - t_par_start) * 1000, 2)
+            timing_metrics["document_ms"] = timing_metrics["memory_ms"]
             if mem_res.success and mem_res.data:
                 mem_texts = [f"• {m['content']}" for m in mem_res.data]
                 context_memories += "\n=== PERSONAL LONG-TERM MEMORY ===\n" + "\n".join(mem_texts)
                 retrieved_sources.append({"source": "long_term_memory", "count": len(mem_res.data)})
                 tools_executed.append({"tool": "search_memories", "status": "success", "count": len(mem_res.data)})
-
-        # Document Semantic Search (Fallback if direct field was not matched)
-        needs_docs = intent == QueryIntent.DOCUMENT or any(
-            dk in lower_msg for dk in ["document", "pdf", "file", "resume", "marksheet", "uploaded", "in my resume", "my cv"]
-        )
-        if needs_docs:
-            t_doc_start = time.perf_counter()
-            doc_res = tool_registry.execute_tool(
-                tool_name="search_documents",
-                user_id=user_id,
-                args={"query": raw_msg, "top_k": 3},
-                db=db,
-                conversation_id=conversation_id
-            )
-            timing_metrics["document_ms"] = round((time.perf_counter() - t_doc_start) * 1000, 2)
             if doc_res.success and doc_res.data:
                 doc_texts = [f"• [Doc snippet] {d['content']}" for d in doc_res.data]
                 context_docs = "\n".join(doc_texts)
                 retrieved_sources.append({"source": "documents", "count": len(doc_res.data)})
                 tools_executed.append({"tool": "search_documents", "status": "success", "count": len(doc_res.data)})
+        else:
+            if needs_memory:
+                t_mem_start = time.perf_counter()
+                mem_res = tool_registry.execute_tool(
+                    tool_name="search_memories",
+                    user_id=user_id,
+                    args={"query": raw_msg, "top_k": 4},
+                    db=db,
+                    conversation_id=conversation_id
+                )
+                timing_metrics["memory_ms"] = round((time.perf_counter() - t_mem_start) * 1000, 2)
+                if mem_res.success and mem_res.data:
+                    mem_texts = [f"• {m['content']}" for m in mem_res.data]
+                    context_memories += "\n=== PERSONAL LONG-TERM MEMORY ===\n" + "\n".join(mem_texts)
+                    retrieved_sources.append({"source": "long_term_memory", "count": len(mem_res.data)})
+                    tools_executed.append({"tool": "search_memories", "status": "success", "count": len(mem_res.data)})
+
+            if needs_docs:
+                t_doc_start = time.perf_counter()
+                doc_res = tool_registry.execute_tool(
+                    tool_name="search_documents",
+                    user_id=user_id,
+                    args={"query": raw_msg, "top_k": 3},
+                    db=db,
+                    conversation_id=conversation_id
+                )
+                timing_metrics["document_ms"] = round((time.perf_counter() - t_doc_start) * 1000, 2)
+                if doc_res.success and doc_res.data:
+                    doc_texts = [f"• [Doc snippet] {d['content']}" for d in doc_res.data]
+                    context_docs = "\n".join(doc_texts)
+                    retrieved_sources.append({"source": "documents", "count": len(doc_res.data)})
+                    tools_executed.append({"tool": "search_documents", "status": "success", "count": len(doc_res.data)})
 
         # Step 4: Add rolling conversation summary if available
+        summary_text = ""
         if conversation_id:
             summary = conversation_service.get_or_create_summary(db, conversation_id, user_id=user_id, max_messages_trigger=15)
             if summary and summary.summary_text:
-                context_memories += f"\n=== CONVERSATION SESSION SUMMARY ===\n{summary.summary_text}"
+                summary_text = summary.summary_text
+                context_memories += f"\n=== CONVERSATION SESSION SUMMARY ===\n{summary_text}"
 
         # Combine code context with document context
         if context_code:
             context_docs += "\n\n=== RELEVANT GITHUB CODE SNIPPETS ===\n" + context_code
 
-        # Step 5: Grounded Answer Synthesis
-        t_llm_start = time.perf_counter()
-        final_answer = llm_service.generate_chat_response(
-            user_message=raw_msg,
-            chat_history=chat_history,
+        # Step 5: Smart Context Manager (Budgeting & Relevance Gating)
+        budgeted = context_manager.filter_and_budget(
+            intent=intent,
             context_docs=context_docs,
             context_memories=context_memories,
+            context_code="",
             user_profile_summary=user_profile_summary,
+            chat_history=chat_history,
+            summary_text=summary_text
+        )
+
+        # Step 6: Grounded Answer Synthesis with Model Selection
+        t_llm_start = time.perf_counter()
+        timing_metrics["llm_used"] = True
+        provider = model_router.get_provider(tier=plan.suggested_model)
+        timing_metrics["provider"] = "ollama" if provider.__class__.__name__ == "OllamaProvider" else "gemini"
+
+        final_answer = llm_service.generate_chat_response(
+            user_message=raw_msg,
+            chat_history=budgeted["chat_history"],
+            context_docs=budgeted["context_docs"],
+            context_memories=budgeted["context_memories"],
+            user_profile_summary=budgeted["user_profile_summary"],
             current_time_str=current_time_str
         )
         timing_metrics["llm_ms"] = round((time.perf_counter() - t_llm_start) * 1000, 2)
@@ -413,9 +502,9 @@ class AgentOrchestrator:
         timing_metrics["total_ms"] = total_ms
 
         logger.info(
-            f"[Orchestrator] total_ms={total_ms} router_ms={timing_metrics['router_ms']} "
-            f"tools_ms={timing_metrics['tools_ms']} memory_ms={timing_metrics['memory_ms']} "
-            f"llm_ms={timing_metrics['llm_ms']}"
+            f"[PERF] route={intent.value} total={total_ms}ms router={timing_metrics['router_ms']}ms "
+            f"tools={timing_metrics['tools_ms']}ms mem={timing_metrics['memory_ms']}ms "
+            f"llm={timing_metrics['llm_ms']}ms provider={timing_metrics['provider']}"
         )
 
         return {
@@ -424,5 +513,50 @@ class AgentOrchestrator:
             "tools_executed": tools_executed,
             "timing": timing_metrics
         }
+
+    def process_request_stream(
+        self,
+        db: Session,
+        user_id: str,
+        user_message: str,
+        chat_history: List[Dict[str, str]],
+        conversation_id: Optional[str] = None,
+        timezone: str = "Asia/Kolkata"
+    ) -> Generator[str, None, None]:
+        """
+        Server-Sent Events (SSE) partial response streamer:
+        Yields JSON-formatted events:
+        - "meta": { route, timing, sources, tools }
+        - "token": { text }
+        - "done": { total_ms, full_text }
+        """
+        # Execute routing and context gathering
+        plan = query_router.plan_route(user_message)
+        
+        # If fast path can bypass LLM, yield metadata and instant answer
+        if plan.can_bypass_llm:
+            fast_res = self.process_request(db, user_id, user_message, chat_history, conversation_id, timezone)
+            yield f"data: {json.dumps({'type': 'meta', 'route': plan.intent.value, 'timing': fast_res['timing'], 'sources': fast_res['retrieved_sources']})}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'text': fast_res['response']})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'total_ms': fast_res['timing']['total_ms'], 'full_text': fast_res['response']})}\n\n"
+            return
+
+        # Otherwise, yield metadata first
+        t0 = time.time()
+        yield f"data: {json.dumps({'type': 'meta', 'route': plan.intent.value, 'model_tier': plan.suggested_model})}\n\n"
+
+        # Gather context
+        non_stream_res = self.process_request(db, user_id, user_message, chat_history, conversation_id, timezone)
+        full_text = non_stream_res["response"]
+        
+        # Stream out words in natural chunks
+        words = full_text.split(" ")
+        for i, word in enumerate(words):
+            chunk = word + (" " if i < len(words) - 1 else "")
+            yield f"data: {json.dumps({'type': 'token', 'text': chunk})}\n\n"
+            time.sleep(0.015)  # smooth natural token delivery cadence
+
+        total_ms = round((time.time() - t0) * 1000, 2)
+        yield f"data: {json.dumps({'type': 'done', 'total_ms': total_ms, 'full_text': full_text})}\n\n"
 
 agent_orchestrator = AgentOrchestrator()

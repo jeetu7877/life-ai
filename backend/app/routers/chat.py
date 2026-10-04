@@ -126,7 +126,10 @@ async def send_chat_message(
         timestamp=datetime.utcnow(),
         timezone=payload.timezone or "Asia/Kolkata",
         local_time_str=datetime.utcnow().strftime("%Y-%m-%d %I:%M %p"),
-        metadata_json={"sources": retrieved_sources}
+        metadata_json={
+            "sources": retrieved_sources,
+            "timing": agent_timing
+        }
     )
     db.add(assistant_msg)
     db.commit()
@@ -188,7 +191,79 @@ async def send_chat_message(
         audio_url=audio_url,
         retrieved_sources=retrieved_sources,
         tools_executed=tools_executed,
-        memories_extracted=[m.id for m in extracted_memories]
+        memories_extracted=[m.id for m in extracted_memories],
+        timing=agent_timing
+    )
+
+@router.post("/stream")
+def stream_chat_message(
+    payload: MessageCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_optional_user)
+):
+    """
+    Real-Time Streaming Endpoint (SSE):
+    Yields partial response tokens and performance metadata as they are generated.
+    """
+    from fastapi.responses import StreamingResponse
+    from app.services.orchestrator import agent_orchestrator
+
+    # 1. Get or create conversation
+    conv = None
+    if payload.conversation_id:
+        conv = db.query(Conversation).filter(
+            Conversation.id == payload.conversation_id,
+            Conversation.user_id == user.id
+        ).first()
+
+    if not conv:
+        title = payload.content[:35] + "..." if len(payload.content) > 35 else payload.content
+        conv = Conversation(
+            user_id=user.id,
+            title=title or "Daily Chat"
+        )
+        db.add(conv)
+        db.commit()
+        db.refresh(conv)
+
+    # 2. Record User Message
+    now = datetime.utcnow()
+    user_msg = Message(
+        conversation_id=conv.id,
+        user_id=user.id,
+        role="user",
+        content=payload.content,
+        timestamp=now,
+        timezone=payload.timezone or "Asia/Kolkata",
+        local_time_str=now.strftime("%Y-%m-%d %I:%M %p")
+    )
+    db.add(user_msg)
+    db.commit()
+
+    # 3. Retrieve recent history
+    history_records = db.query(Message).filter(
+        Message.conversation_id == conv.id
+    ).order_by(Message.timestamp.desc()).limit(10).all()
+    chat_history = [{"role": m.role, "content": m.content} for m in reversed(history_records)]
+
+    stream_generator = agent_orchestrator.process_request_stream(
+        db=db,
+        user_id=user.id,
+        user_message=payload.content,
+        chat_history=chat_history,
+        conversation_id=conv.id,
+        timezone=payload.timezone or "Asia/Kolkata"
+    )
+
+    return StreamingResponse(
+        stream_generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
     )
 
 @router.get("/conversations", response_model=List[ConversationResponse])

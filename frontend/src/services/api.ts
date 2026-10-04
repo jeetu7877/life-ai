@@ -83,6 +83,7 @@ export const api = {
       audio_url?: string;
       retrieved_sources: any[];
       memories_extracted: string[];
+      timing?: Record<string, any>;
     }>('/chat', data).then(r => r.data),
 
   getConversations: () =>

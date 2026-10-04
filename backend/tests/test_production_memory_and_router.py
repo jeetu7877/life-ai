@@ -83,8 +83,18 @@ def test_level2_memory_semantic_retrieval_and_user_isolation():
     2. Strict User Isolation: User B NEVER sees User A's private memory.
     """
     db = SessionLocal()
-    # Get user 1
-    user1 = db.query(User).first()
+    # Create user 1 for isolation test
+    user1 = db.query(User).filter(User.username == "user_one_isolation_test").first()
+    if not user1:
+        from app.security.jwt import get_password_hash
+        user1 = User(
+            email="user1_iso@test.com",
+            username="user_one_isolation_test",
+            hashed_password=get_password_hash("pass123")
+        )
+        db.add(user1)
+        db.commit()
+        db.refresh(user1)
 
     # Create user 2 for isolation test
     user2 = db.query(User).filter(User.username == "user_two_test").first()

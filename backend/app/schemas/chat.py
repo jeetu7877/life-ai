@@ -42,3 +42,4 @@ class ChatAnswerResponse(BaseModel):
     retrieved_sources: List[Dict[str, Any]] = []
     tools_executed: List[Dict[str, Any]] = []
     memories_extracted: List[str] = []
+    timing: Optional[Dict[str, Any]] = None

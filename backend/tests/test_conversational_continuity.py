@@ -97,6 +97,15 @@ def test_2_backend_restart_survival():
     user = get_or_create_test_user(db)
 
     user_id = user.id
+    # Clean any prior language memories to start fresh
+    db.query(Memory).filter(Memory.user_id == user.id, Memory.topic == "fav_language").delete()
+    db.commit()
+    if rag_service.memory_collection:
+        try:
+            rag_service.memory_collection.delete(where={"user_id": str(user_id)})
+        except Exception:
+            pass
+
     # Ensure a known memory exists in DB
     test_fact = f"User preferred programming language is Rust_{int(time.time())}"
     mem = Memory(
