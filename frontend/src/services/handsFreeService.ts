@@ -28,6 +28,14 @@ export interface HandsFreeVoicePlugin {
 
   isHandsFreeRunning(): Promise<{ running: boolean; state: string }>;
 
+  triggerListen(): Promise<{ success: boolean }>;
+
+  checkPermissions(): Promise<{ microphone: boolean; notifications: boolean }>;
+
+  requestMicPermission(): Promise<{ granted: boolean }>;
+
+  openAppSettings(): Promise<{ success: boolean }>;
+
   updateAuth(options: { token?: string; serverUrl?: string }): Promise<{ success: boolean }>;
 
   checkBatteryOptimization(): Promise<{ isIgnoringBatteryOptimizations: boolean }>;
@@ -47,6 +55,11 @@ export interface HandsFreeVoicePlugin {
   addListener(
     eventName: 'assistantResponse',
     listenerFunc: (data: { response: string; conversationId?: string }) => void
+  ): Promise<any>;
+
+  addListener(
+    eventName: 'rmsUpdate',
+    listenerFunc: (data: { rmsdB: number }) => void
   ): Promise<any>;
 
   addListener(
@@ -118,6 +131,54 @@ class HandsFreeService {
       // In web browser, mark enabled locally
       this.setEnabledLocally(true);
       return true;
+    }
+  }
+
+  public async triggerListen(): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.triggerListen();
+        return res.success;
+      } catch (err) {
+        console.error('Failed to trigger native listen:', err);
+        throw err;
+      }
+    }
+    return false;
+  }
+
+  public async checkPermissions(): Promise<{ microphone: boolean; notifications: boolean }> {
+    if (this.isNative) {
+      try {
+        return await NativeHandsFree.checkPermissions();
+      } catch (err) {
+        console.warn('Failed to check native permissions:', err);
+        return { microphone: false, notifications: false };
+      }
+    }
+    return { microphone: true, notifications: true };
+  }
+
+  public async requestMicPermission(): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.requestMicPermission();
+        return res.granted;
+      } catch (err) {
+        console.warn('Failed to request mic permission:', err);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public async openAppSettings(): Promise<void> {
+    if (this.isNative) {
+      try {
+        await NativeHandsFree.openAppSettings();
+      } catch (err) {
+        console.warn('Failed to open app settings:', err);
+      }
     }
   }
 
@@ -195,7 +256,7 @@ class HandsFreeService {
   }
 
   public addListener(
-    eventName: 'voiceStateChanged' | 'transcriptUpdate' | 'assistantResponse' | 'voiceError',
+    eventName: 'voiceStateChanged' | 'transcriptUpdate' | 'assistantResponse' | 'rmsUpdate' | 'voiceError',
     callback: (data: any) => void
   ) {
     if (this.isNative) {

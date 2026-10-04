@@ -53,6 +53,7 @@ interface VoiceContextType {
   stopVoice: () => void;
   playAudioResponse: (url: string, fallbackText?: string) => void;
   requestMicPermission: () => Promise<boolean>;
+  openAppSettings: () => Promise<void>;
   checkBatteryOptimization: () => Promise<boolean>;
   requestBatteryOptimizationExemption: () => Promise<void>;
   testMicrophoneInput: (seconds?: number) => Promise<Blob | null>;
@@ -125,6 +126,10 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return await voiceEngine.requestMicPermission();
   };
 
+  const openAppSettings = async (): Promise<void> => {
+    await voiceEngine.openNativeAppSettings();
+  };
+
   const checkBatteryOptimization = async (): Promise<boolean> => {
     if (snapshot.isNativePlatform) {
       return await handsFreeService.checkBatteryOptimization();
@@ -147,7 +152,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const diagnostics: VoiceDiagnosticsState = {
-    micAvailable: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+    micAvailable: snapshot.isNativePlatform || !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
     permissionGranted: snapshot.micPermissionGranted,
     permissionDenied: snapshot.micPermissionError,
     streamActive: snapshot.streamActive,
@@ -155,8 +160,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     channels: snapshot.audioChannels,
     inputVolume: snapshot.inputVolume,
     sttEngine: snapshot.sttEngine,
-    sttSupported: !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition),
-    wakeWordListening: snapshot.isVoiceModeEnabled && snapshot.detailedVoiceState === 'wake_listening',
+    sttSupported: !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) || snapshot.isNativePlatform,
+    wakeWordListening: snapshot.isVoiceModeEnabled && (snapshot.detailedVoiceState === 'wake_listening' || (snapshot.isNativePlatform && snapshot.isHandsFreeMode)),
     backendConnected: snapshot.isBackendOnline,
     ttsReady: !!(window.speechSynthesis || snapshot.isNativePlatform),
     lastError: snapshot.voiceError
@@ -198,6 +203,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         stopVoice,
         playAudioResponse,
         requestMicPermission,
+        openAppSettings,
         checkBatteryOptimization,
         requestBatteryOptimizationExemption,
         testMicrophoneInput,

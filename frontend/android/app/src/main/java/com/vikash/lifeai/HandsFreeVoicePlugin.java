@@ -61,6 +61,13 @@ public class HandsFreeVoicePlugin extends Plugin {
             }
 
             @Override
+            public void onRmsChanged(float rmsdB) {
+                JSObject ret = new JSObject();
+                ret.put("rmsdB", rmsdB);
+                notifyListeners("rmsUpdate", ret);
+            }
+
+            @Override
             public void onError(String errorMessage) {
                 JSObject ret = new JSObject();
                 ret.put("error", errorMessage);
@@ -70,10 +77,67 @@ public class HandsFreeVoicePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void checkPermissions(PluginCall call) {
+        boolean micGranted = getPermissionState("microphone") == PermissionState.GRANTED;
+        boolean notifGranted = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notifGranted = getPermissionState("notifications") == PermissionState.GRANTED;
+        }
+        JSObject ret = new JSObject();
+        ret.put("microphone", micGranted);
+        ret.put("notifications", notifGranted);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void requestMicPermission(PluginCall call) {
+        if (getPermissionState("microphone") == PermissionState.GRANTED) {
+            JSObject ret = new JSObject();
+            ret.put("granted", true);
+            call.resolve(ret);
+        } else {
+            requestPermissionForAlias("microphone", call, "microphonePermCallbackSimple");
+        }
+    }
+
+    @PermissionCallback
+    private void microphonePermCallbackSimple(PluginCall call) {
+        boolean granted = getPermissionState("microphone") == PermissionState.GRANTED;
+        JSObject ret = new JSObject();
+        ret.put("granted", granted);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            Uri uri = Uri.fromParts("package", getContext().getPackageName(), null);
+            intent.setData(uri);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to open app settings: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
     public void startHandsFree(PluginCall call) {
         if (getPermissionState("microphone") != PermissionState.GRANTED) {
             requestPermissionForAlias("microphone", call, "microphonePermCallback");
             return;
+        }
+
+        // On Android 13+, check notifications permission too
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (getPermissionState("notifications") != PermissionState.GRANTED) {
+                requestPermissionForAlias("notifications", call, "notificationsPermCallback");
+                return;
+            }
         }
 
         startServiceInternal(call);
@@ -82,10 +146,21 @@ public class HandsFreeVoicePlugin extends Plugin {
     @PermissionCallback
     private void microphonePermCallback(PluginCall call) {
         if (getPermissionState("microphone") == PermissionState.GRANTED) {
-            startServiceInternal(call);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                getPermissionState("notifications") != PermissionState.GRANTED) {
+                requestPermissionForAlias("notifications", call, "notificationsPermCallback");
+            } else {
+                startServiceInternal(call);
+            }
         } else {
-            call.reject("Microphone permission is required for Hey Life.");
+            call.reject("Microphone permission is required for Life AI voice.");
         }
+    }
+
+    @PermissionCallback
+    private void notificationsPermCallback(PluginCall call) {
+        // Start service regardless of notification result (notification permission is optional on older, but good for foreground)
+        startServiceInternal(call);
     }
 
     private void startServiceInternal(PluginCall call) {
@@ -120,6 +195,31 @@ public class HandsFreeVoicePlugin extends Plugin {
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("Failed to start Hands-Free Voice service: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void triggerListen(PluginCall call) {
+        if (getPermissionState("microphone") != PermissionState.GRANTED) {
+            requestPermissionForAlias("microphone", call, "microphonePermCallbackTriggerListen");
+            return;
+        }
+
+        HandsFreeVoiceService.triggerListen(getContext());
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PermissionCallback
+    private void microphonePermCallbackTriggerListen(PluginCall call) {
+        if (getPermissionState("microphone") == PermissionState.GRANTED) {
+            HandsFreeVoiceService.triggerListen(getContext());
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } else {
+            call.reject("Microphone permission is required for voice conversation.");
         }
     }
 

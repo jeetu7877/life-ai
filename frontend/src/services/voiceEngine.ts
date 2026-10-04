@@ -185,6 +185,12 @@ class VoiceEngine {
     // Hook up native Android listeners if on native platform
     if (this.isNative) {
       this.setupNativeListeners();
+      if (this.isVoiceModeEnabled) {
+        console.log('[VOICE] Native platform: starting HandsFreeVoiceService automatically');
+        handsFreeService.start().catch((err) => {
+          console.warn('[VOICE] Automatic native start note:', err);
+        });
+      }
     } else {
       if (this.isVoiceModeEnabled) {
         console.log('[VOICE] mode enabled');
@@ -580,13 +586,23 @@ class VoiceEngine {
 
     if (this.isNative) {
       try {
-        await handsFreeService.start();
+        console.log('[VOICE] Triggering native speech listener...');
+        await handsFreeService.triggerListen();
+        this.isConversationActive = true;
         this.isHandsFreeMode = true;
         this.micPermissionError = false;
+        this.setDetailedState('user_listening');
       } catch (err: any) {
         console.error('[VOICE ERROR] Failed to trigger native listen:', err);
-        this.micPermissionError = true;
+        try {
+          await handsFreeService.start();
+          await handsFreeService.triggerListen();
+        } catch (inner: any) {
+          this.micPermissionError = true;
+          this.voiceError = inner.message || 'Microphone access required';
+        }
       }
+      this.notify();
       return;
     }
 
@@ -1183,6 +1199,14 @@ class VoiceEngine {
     this.stopTTSOutput();
     this.stopCurrentRecognition();
 
+    if (this.isNative) {
+      handsFreeService.stop().catch(() => {});
+      this.isHandsFreeMode = false;
+      this.setDetailedState('stopped');
+      this.notify();
+      return;
+    }
+
     if (this.isVoiceModeEnabled) {
       this.setDetailedState('wake_listening');
       this.startWakeWordListening();
@@ -1200,6 +1224,17 @@ class VoiceEngine {
     this.isVoiceModeEnabled = enabled;
     localStorage.setItem('life_voice_mode_enabled', enabled ? 'true' : 'false');
     console.log(`[VOICE] mode set to: ${enabled}`);
+
+    if (this.isNative) {
+      if (enabled) {
+        handsFreeService.start().catch(() => {});
+      } else {
+        handsFreeService.stop().catch(() => {});
+        this.setDetailedState('disabled');
+      }
+      this.notify();
+      return;
+    }
 
     if (enabled) {
       this.setDetailedState('wake_listening');
@@ -1245,11 +1280,24 @@ class VoiceEngine {
   }
 
   public async requestMicPermission(): Promise<boolean> {
+    if (this.isNative) {
+      const granted = await handsFreeService.requestMicPermission();
+      this.micPermissionGranted = granted;
+      this.micPermissionError = !granted;
+      this.notify();
+      return granted;
+    }
     try {
       await this.ensureLiveMicrophoneStream();
       return true;
     } catch {
       return false;
+    }
+  }
+
+  public async openNativeAppSettings(): Promise<void> {
+    if (this.isNative) {
+      await handsFreeService.openAppSettings();
     }
   }
 
@@ -1300,6 +1348,13 @@ class VoiceEngine {
       handsFreeService.addListener('assistantResponse', (data: { response: string; conversationId?: string }) => {
         this.assistantResponse = data.response;
         if (data.conversationId) this.activeConversationId = data.conversationId;
+        this.notify();
+      });
+
+      handsFreeService.addListener('rmsUpdate', (data: { rmsdB: number }) => {
+        // Map native speech recognizer RMS dB into normalized [0.0, 1.0]
+        const normalized = Math.max(0, Math.min(1.0, (data.rmsdB + 2) / 12));
+        this.inputVolume = normalized;
         this.notify();
       });
 

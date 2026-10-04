@@ -21,6 +21,12 @@ export const VoiceDiagnosticsModal: React.FC = () => {
     isDiagnosticsOpen,
     setIsDiagnosticsOpen,
     inputVolume,
+    isNativePlatform,
+    isBatteryOptimizedExempt,
+    requestBatteryOptimizationExemption,
+    openAppSettings,
+    requestMicPermission,
+    triggerManualListen,
     testMicrophoneInput,
     testBackendTranscription,
     playAudioResponse
@@ -136,23 +142,34 @@ export const VoiceDiagnosticsModal: React.FC = () => {
           </div>
 
           {/* Permission */}
-          <div className="p-3 rounded-xl bg-[#141C2B] border border-[#202B3D] flex items-center justify-between">
-            <div>
-              <span className="text-xs font-bold text-white block">Permission</span>
-              <span className="text-[10px] text-slate-400">Browser/OS mic access</span>
+          <div className="p-3 rounded-xl bg-[#141C2B] border border-[#202B3D] flex flex-col justify-between gap-1.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-white block">Permission</span>
+                <span className="text-[10px] text-slate-400">Browser/OS mic access</span>
+              </div>
+              {diagnostics.permissionGranted ? (
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Granted
+                </span>
+              ) : diagnostics.permissionDenied ? (
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-rose-400">
+                  <XCircle className="w-3.5 h-3.5" /> Denied
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-400">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Pending
+                </span>
+              )}
             </div>
-            {diagnostics.permissionGranted ? (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Granted
-              </span>
-            ) : diagnostics.permissionDenied ? (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-rose-400">
-                <XCircle className="w-3.5 h-3.5" /> Denied
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-400">
-                <AlertTriangle className="w-3.5 h-3.5" /> Pending
-              </span>
+            {diagnostics.permissionDenied && (
+              <button
+                type="button"
+                onClick={openAppSettings}
+                className="mt-1 w-full py-1 px-2 rounded-lg bg-rose-500/20 text-rose-300 text-[10px] font-bold border border-rose-500/40 hover:bg-rose-500/30 transition-colors"
+              >
+                Open App Settings & Grant Mic
+              </button>
             )}
           </div>
 
@@ -223,6 +240,37 @@ export const VoiceDiagnosticsModal: React.FC = () => {
           </div>
         </div>
 
+        {/* Android Native Foreground & Battery Status (Visible on Mobile) */}
+        {isNativePlatform && (
+          <div className="mt-3.5 p-3.5 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-indigo-300 block">Android Background Service</span>
+                <span className="text-[10px] text-slate-400">Continuous Hands-Free Assistant</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                Native Bridge Active
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-slate-300">Battery Optimization:</span>
+              {isBatteryOptimizedExempt ? (
+                <span className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Unrestricted
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={requestBatteryOptimizationExemption}
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30"
+                >
+                  Disable Optimization
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Interactive Diagnostic Actions */}
         <div className="mt-5 p-4 rounded-2xl bg-black/40 border border-[#202B3D] space-y-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
@@ -230,6 +278,16 @@ export const VoiceDiagnosticsModal: React.FC = () => {
           </h3>
 
           <div className="flex flex-wrap gap-2.5">
+            {isNativePlatform && (
+              <button
+                type="button"
+                onClick={triggerManualListen}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 bg-[#00D9FF]/20 hover:bg-[#00D9FF]/30 text-[#00D9FF] border border-[#00D9FF]/40 transition-all cursor-pointer"
+              >
+                <Mic className="w-3.5 h-3.5" /> Test Native Speech Listener
+              </button>
+            )}
+
             {/* Record 3s Test */}
             <button
               type="button"
