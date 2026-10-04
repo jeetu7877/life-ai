@@ -16,7 +16,9 @@ from app.routers import (
     timeline_router,
     vault_router,
     voice_router,
-    health_router
+    health_router,
+    github_router,
+    tasks_router
 )
 
 # Setup structured logging
@@ -103,6 +105,8 @@ app.include_router(profile_router, prefix=settings.API_V1_PREFIX)
 app.include_router(timeline_router, prefix=settings.API_V1_PREFIX)
 app.include_router(vault_router, prefix=settings.API_V1_PREFIX)
 app.include_router(voice_router, prefix=settings.API_V1_PREFIX)
+app.include_router(github_router, prefix=settings.API_V1_PREFIX)
+app.include_router(tasks_router, prefix=settings.API_V1_PREFIX)
 
 # Also expose top-level health
 @app.get("/health")

@@ -86,6 +86,30 @@ def _ensure_sqlite_columns(engine):
                 if "embedding" not in chunk_cols:
                     conn.execute(text("ALTER TABLE document_chunks ADD COLUMN embedding JSON"))
                     logger.info("Migrated document_chunks table: added embedding column")
+            # Check github_repositories table columns
+            gh_result = conn.execute(text("PRAGMA table_info(github_repositories)"))
+            gh_cols = [row[1] for row in gh_result.fetchall()]
+            if gh_cols:
+                if "repo_owner" not in gh_cols:
+                    conn.execute(text("ALTER TABLE github_repositories ADD COLUMN repo_owner VARCHAR(100)"))
+                    logger.info("Migrated github_repositories table: added repo_owner column")
+                if "indexing_status" not in gh_cols:
+                    conn.execute(text("ALTER TABLE github_repositories ADD COLUMN indexing_status VARCHAR(50) DEFAULT 'ready'"))
+                    logger.info("Migrated github_repositories table: added indexing_status column")
+
+            # Check code_chunks table columns
+            cc_result = conn.execute(text("PRAGMA table_info(code_chunks)"))
+            cc_cols = [row[1] for row in cc_result.fetchall()]
+            if cc_cols:
+                if "chunk_type" not in cc_cols:
+                    conn.execute(text("ALTER TABLE code_chunks ADD COLUMN chunk_type VARCHAR(50) DEFAULT 'block'"))
+                    logger.info("Migrated code_chunks table: added chunk_type column")
+                if "start_line" not in cc_cols:
+                    conn.execute(text("ALTER TABLE code_chunks ADD COLUMN start_line INTEGER"))
+                    logger.info("Migrated code_chunks table: added start_line column")
+                if "end_line" not in cc_cols:
+                    conn.execute(text("ALTER TABLE code_chunks ADD COLUMN end_line INTEGER"))
+                    logger.info("Migrated code_chunks table: added end_line column")
 
             conn.commit()
     except Exception as e:
@@ -102,7 +126,14 @@ def _ensure_indexes(engine):
         "CREATE INDEX IF NOT EXISTS ix_documents_user_cat ON documents (user_id, category);",
         "CREATE INDEX IF NOT EXISTS ix_documents_file_hash ON documents (user_id, file_hash);",
         "CREATE INDEX IF NOT EXISTS ix_docchunks_doc_chunk ON document_chunks (document_id, chunk_index);",
-        "CREATE INDEX IF NOT EXISTS ix_docchunks_user ON document_chunks (user_id);"
+        "CREATE INDEX IF NOT EXISTS ix_docchunks_user ON document_chunks (user_id);",
+        "CREATE INDEX IF NOT EXISTS ix_connected_accounts_user_provider ON connected_accounts (user_id, provider);",
+        "CREATE INDEX IF NOT EXISTS ix_github_repos_user ON github_repositories (user_id, repo_name);",
+        "CREATE INDEX IF NOT EXISTS ix_code_chunks_repo_file ON code_chunks (repository_id, file_path);",
+        "CREATE INDEX IF NOT EXISTS ix_agent_tasks_user_status ON agent_tasks (user_id, status);",
+        "CREATE INDEX IF NOT EXISTS ix_agent_reminders_remind ON agent_reminders (user_id, is_triggered, remind_at);",
+        "CREATE INDEX IF NOT EXISTS ix_tool_logs_user_tool ON agent_tool_logs (user_id, tool_name);",
+        "CREATE INDEX IF NOT EXISTS ix_conv_summary_conv ON conversation_summaries (conversation_id);"
     ]
     try:
         with engine.connect() as conn:

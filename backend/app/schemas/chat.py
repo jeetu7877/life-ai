@@ -40,4 +40,5 @@ class ChatAnswerResponse(BaseModel):
     message_id: str
     audio_url: Optional[str] = None
     retrieved_sources: List[Dict[str, Any]] = []
+    tools_executed: List[Dict[str, Any]] = []
     memories_extracted: List[str] = []

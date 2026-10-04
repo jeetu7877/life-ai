@@ -1,8 +1,12 @@
 package com.vikash.lifeai;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -162,5 +166,43 @@ public class HandsFreeVoicePlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("success", true);
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void checkBatteryOptimization(PluginCall call) {
+        try {
+            boolean isIgnoring = true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    isIgnoring = pm.isIgnoringBatteryOptimizations(getContext().getPackageName());
+                }
+            }
+            JSObject ret = new JSObject();
+            ret.put("isIgnoringBatteryOptimizations", isIgnoring);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to check battery optimization: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void requestIgnoreBatteryOptimization(PluginCall call) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+                if (pm != null && !pm.isIgnoringBatteryOptimizations(getContext().getPackageName())) {
+                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                    intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getContext().startActivity(intent);
+                }
+            }
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to request battery optimization: " + e.getMessage(), e);
+        }
     }
 }

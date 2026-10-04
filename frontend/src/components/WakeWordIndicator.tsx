@@ -1,9 +1,10 @@
 import React from 'react';
-import { Mic, MicOff, Volume2, Sparkles, Loader2, Radio } from 'lucide-react';
-import { VoiceState } from '../types';
+import { Mic, MicOff, Volume2, Sparkles, Loader2, Radio, AlertTriangle } from 'lucide-react';
+import { VoiceState, DetailedVoiceState } from '../types';
 
 interface WakeWordIndicatorProps {
   state: VoiceState;
+  detailedState?: DetailedVoiceState;
   wakeWordEnabled: boolean;
   isHandsFreeMode?: boolean;
   wakeWord?: string;
@@ -14,6 +15,7 @@ interface WakeWordIndicatorProps {
 
 export const WakeWordIndicator: React.FC<WakeWordIndicatorProps> = ({
   state,
+  detailedState,
   wakeWordEnabled,
   isHandsFreeMode = false,
   wakeWord = 'Hey Life',
@@ -21,59 +23,118 @@ export const WakeWordIndicator: React.FC<WakeWordIndicatorProps> = ({
   onToggleHandsFree,
   onManualTrigger
 }) => {
-  const getOrbStyles = () => {
-    switch (state) {
-      case 'listening':
-        return 'scale-110 shadow-[0_0_60px_rgba(0,217,255,0.7),0_0_100px_rgba(139,92,246,0.6)] border-[#00D9FF] animate-pulse';
-      case 'thinking':
-        return 'scale-105 shadow-[0_0_55px_rgba(139,92,246,0.7),0_0_90px_rgba(0,168,255,0.5)] border-[#8B5CF6]';
-      case 'speaking':
-        return 'scale-108 shadow-[0_0_65px_rgba(0,217,255,0.6),0_0_90px_rgba(192,38,211,0.5)] border-[#00D9FF] animate-bounce';
-      case 'idle':
+  // Determine effective status config
+  const getStatusConfig = () => {
+    // If detailedState is available, use it for precise status
+    const effective = detailedState || (
+      state === 'speaking' ? 'tts' :
+      state === 'thinking' ? 'processing' :
+      state === 'listening' ? 'user_listening' :
+      isHandsFreeMode || wakeWordEnabled ? 'wake_listening' : 'stopped'
+    );
+
+    switch (effective) {
+      case 'wake_listening':
+        return {
+          dotColor: 'bg-[#22C55E]', // 🟢
+          ringColor: 'ring-[#22C55E]/40',
+          textColor: 'text-[#22C55E]',
+          label: `Listening for "${wakeWord}"`,
+          pillText: `Listening for "${wakeWord}"`,
+          badge: '🟢 Ready',
+          pulse: true
+        };
+      case 'user_listening':
+      case 'cooldown':
+        return {
+          dotColor: 'bg-[#F97316]', // 🟠
+          ringColor: 'ring-[#F97316]/40',
+          textColor: 'text-[#F97316]',
+          label: 'Listening to you...',
+          pillText: 'Listening to you',
+          badge: '🟠 User Speech',
+          pulse: true
+        };
+      case 'processing':
+        return {
+          dotColor: 'bg-[#00D9FF]', // 🔵
+          ringColor: 'ring-[#00D9FF]/40',
+          textColor: 'text-[#00D9FF]',
+          label: 'Thinking & retrieving knowledge...',
+          pillText: 'Thinking',
+          badge: '🔵 Processing',
+          pulse: true
+        };
+      case 'greeting':
+      case 'tts':
+        return {
+          dotColor: 'bg-[#C026D3]', // 🟣
+          ringColor: 'ring-[#C026D3]/40',
+          textColor: 'text-[#C026D3]',
+          label: 'Life is speaking...',
+          pillText: 'Speaking',
+          badge: '🟣 Speaking',
+          pulse: true
+        };
+      case 'error':
+        return {
+          dotColor: 'bg-[#EF4444]', // 🔴
+          ringColor: 'ring-[#EF4444]/40',
+          textColor: 'text-[#EF4444]',
+          label: 'Voice service error',
+          pillText: 'Error',
+          badge: '🔴 Error',
+          pulse: false
+        };
+      case 'stopped':
       default:
-        return 'shadow-[0_0_40px_rgba(0,168,255,0.35),0_0_70px_rgba(139,92,246,0.25)] border-[#00D9FF]/40 hover:scale-105 hover:shadow-[0_0_55px_rgba(0,217,255,0.5)]';
+        return {
+          dotColor: 'bg-[#94A3B8]', // ⚪
+          ringColor: 'ring-[#94A3B8]/20',
+          textColor: 'text-[#94A3B8]',
+          label: 'Service stopped',
+          pillText: 'Service stopped',
+          badge: '⚪ Inactive',
+          pulse: false
+        };
     }
   };
 
-  const getStatusText = () => {
-    switch (state) {
+  const statusConfig = getStatusConfig();
+
+  const getOrbStyles = () => {
+    switch (detailedState || state) {
+      case 'user_listening':
       case 'listening':
-        return 'Listening to you...';
+        return 'scale-110 shadow-[0_0_60px_rgba(249,115,22,0.6),0_0_100px_rgba(0,217,255,0.5)] border-[#F97316] animate-pulse';
+      case 'processing':
       case 'thinking':
-        return 'Thinking & retrieving knowledge...';
+        return 'scale-105 shadow-[0_0_55px_rgba(0,217,255,0.7),0_0_90px_rgba(139,92,246,0.6)] border-[#00D9FF]';
+      case 'greeting':
+      case 'tts':
       case 'speaking':
-        return 'Life is speaking...';
+        return 'scale-108 shadow-[0_0_65px_rgba(192,38,211,0.6),0_0_90px_rgba(0,217,255,0.5)] border-[#C026D3] animate-bounce';
+      case 'error':
+        return 'shadow-[0_0_40px_rgba(239,68,68,0.5)] border-[#EF4444]';
+      case 'wake_listening':
       case 'idle':
       default:
-        if (isHandsFreeMode) {
-          return `Active · Listening for "${wakeWord}"`;
-        }
-        return wakeWordEnabled ? `Ready · Say "${wakeWord}" anytime` : 'Wake word paused';
+        return 'shadow-[0_0_40px_rgba(34,197,94,0.35),0_0_70px_rgba(0,217,255,0.25)] border-[#22C55E]/40 hover:scale-105 hover:shadow-[0_0_55px_rgba(0,217,255,0.5)]';
     }
   };
 
   return (
     <div className="flex flex-col items-center justify-center p-4 text-center select-none w-full">
-      {/* Top Status Pill: Active · Listening for 'Hey Life' */}
+      {/* Top Status Pill: Exact real status with color indicator */}
       <div className="mb-6">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#101722] border border-[#202B3D] text-[#F8FAFC] text-xs font-medium shadow-sm">
+        <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-[#101722] border border-[#202B3D] text-[#F8FAFC] text-xs font-medium shadow-md">
           <span
-            className={`w-2.5 h-2.5 rounded-full transition-all ${
-              state === 'listening'
-                ? 'bg-[#00D9FF] animate-ping'
-                : isHandsFreeMode || wakeWordEnabled
-                ? 'bg-[#22C55E] animate-pulse'
-                : 'bg-slate-500'
+            className={`w-3 h-3 rounded-full ring-2 ${statusConfig.ringColor} ${statusConfig.dotColor} ${
+              statusConfig.pulse ? 'animate-pulse' : ''
             }`}
           />
-          <span className="text-slate-300">
-            {state === 'idle' ? (
-              <>
-                <span className="text-[#22C55E] font-semibold">Active</span> · Listening for <span className="text-[#00D9FF] font-semibold">'{wakeWord}'</span>
-              </>
-            ) : (
-              <span className="text-[#00D9FF] font-semibold">{getStatusText()}</span>
-            )}
+          <span className="font-semibold text-slate-200">
+            {statusConfig.pillText}
           </span>
         </div>
       </div>
@@ -105,14 +166,14 @@ export const WakeWordIndicator: React.FC<WakeWordIndicatorProps> = ({
           {state === 'speaking' && <Volume2 className="w-12 h-12 text-white animate-pulse mb-0.5" />}
 
           <span className="text-[11px] font-bold tracking-widest uppercase text-white/90 drop-shadow">
-            {state === 'idle' ? 'LIFE AI' : state}
+            {state === 'idle' ? 'LIFE AI' : statusConfig.pillText}
           </span>
         </button>
       </div>
 
       {/* Status Description */}
       <p className="mt-5 text-sm font-medium text-slate-300 tracking-wide">
-        {getStatusText()}
+        {statusConfig.label}
       </p>
 
       {/* Quick Control Cards: Wake phrase & Hands-Free */}

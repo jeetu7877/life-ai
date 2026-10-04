@@ -129,4 +129,15 @@ export interface VaultItem {
   updated_at: string;
 }
 
-export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking';
+export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
+
+export type DetailedVoiceState =
+  | 'stopped'
+  | 'wake_listening'
+  | 'wake_detected'
+  | 'greeting'
+  | 'user_listening'
+  | 'processing'
+  | 'tts'
+  | 'cooldown'
+  | 'error';

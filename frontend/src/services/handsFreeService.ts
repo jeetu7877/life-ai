@@ -1,7 +1,19 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import { getServerHostUrl } from './api';
 
-export type NativeVoiceState = 'idle' | 'wake_detected' | 'listening' | 'processing' | 'speaking' | 'cooldown';
+export type NativeVoiceState = 
+  | 'stopped' 
+  | 'wake_listening' 
+  | 'wake_detected' 
+  | 'greeting' 
+  | 'user_listening' 
+  | 'processing' 
+  | 'tts' 
+  | 'cooldown' 
+  | 'error' 
+  | 'idle' 
+  | 'listening' 
+  | 'speaking';
 
 export interface HandsFreeVoicePlugin {
   startHandsFree(options: {
@@ -9,6 +21,7 @@ export interface HandsFreeVoicePlugin {
     token?: string;
     wakeWord?: string;
     voiceResponse?: boolean;
+    silenceTimeout?: number;
   }): Promise<{ success: boolean; running: boolean; wakeWord?: string }>;
 
   stopHandsFree(): Promise<{ success: boolean; running: boolean }>;
@@ -17,9 +30,13 @@ export interface HandsFreeVoicePlugin {
 
   updateAuth(options: { token?: string; serverUrl?: string }): Promise<{ success: boolean }>;
 
+  checkBatteryOptimization(): Promise<{ isIgnoringBatteryOptimizations: boolean }>;
+
+  requestIgnoreBatteryOptimization(): Promise<{ success: boolean }>;
+
   addListener(
     eventName: 'voiceStateChanged',
-    listenerFunc: (data: { state: NativeVoiceState }) => void
+    listenerFunc: (data: { state: string }) => void
   ): Promise<any>;
 
   addListener(
@@ -138,6 +155,41 @@ class HandsFreeService {
         await NativeHandsFree.updateAuth({ token, serverUrl });
       } catch (e) {
         console.warn('updateAuth failed:', e);
+      }
+    }
+  }
+
+  public async getState(): Promise<string> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.isHandsFreeRunning();
+        return res.state || (res.running ? 'wake_listening' : 'stopped');
+      } catch (_) {
+        return 'stopped';
+      }
+    }
+    return this.isEnabledLocally() ? 'wake_listening' : 'stopped';
+  }
+
+  public async checkBatteryOptimization(): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.checkBatteryOptimization();
+        return res.isIgnoringBatteryOptimizations;
+      } catch (e) {
+        console.warn('checkBatteryOptimization failed:', e);
+        return true;
+      }
+    }
+    return true;
+  }
+
+  public async requestIgnoreBatteryOptimization(): Promise<void> {
+    if (this.isNative) {
+      try {
+        await NativeHandsFree.requestIgnoreBatteryOptimization();
+      } catch (e) {
+        console.warn('requestIgnoreBatteryOptimization failed:', e);
       }
     }
   }

@@ -100,11 +100,13 @@ async def send_chat_message(
         user_id=user.id,
         user_message=payload.content,
         chat_history=chat_history,
-        timezone=payload.timezone or "Asia/Kolkata"
+        timezone=payload.timezone or "Asia/Kolkata",
+        conversation_id=conv.id
     )
 
     response_text = agent_result["response"]
     retrieved_sources = agent_result.get("retrieved_sources", [])
+    tools_executed = agent_result.get("tools_executed", [])
     agent_timing = agent_result.get("timing", {})
 
     # 5. Audio generation (only if in voice mode)
@@ -185,6 +187,7 @@ async def send_chat_message(
         message_id=assistant_msg.id,
         audio_url=audio_url,
         retrieved_sources=retrieved_sources,
+        tools_executed=tools_executed,
         memories_extracted=[m.id for m in extracted_memories]
     )
 

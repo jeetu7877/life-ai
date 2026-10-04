@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Boolean, JSON
+from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Boolean, Integer, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -16,6 +16,7 @@ class Conversation(Base):
 
     user = relationship("User", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan", order_by="Message.timestamp")
+    summary = relationship("ConversationSummary", back_populates="conversation", uselist=False, cascade="all, delete-orphan")
 
 class Message(Base):
     __tablename__ = "messages"
@@ -37,3 +38,25 @@ class Message(Base):
     metadata_json = Column(JSON, default=dict)
 
     conversation = relationship("Conversation", back_populates="messages")
+
+
+class ConversationSummary(Base):
+    """
+    Rolling semantic summary of long conversations.
+    Enables cross-session dialogue recall without blowing context window limits.
+    """
+    __tablename__ = "conversation_summaries"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    conversation_id = Column(String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    summary_text = Column(Text, nullable=False)
+    key_points = Column(JSON, default=list)  # List[str] key decisions or topics
+    message_count = Column(Integer, default=0)
+    last_summarized_message_id = Column(String(36), nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    conversation = relationship("Conversation", back_populates="summary")

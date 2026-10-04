@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { VoiceState } from '../types';
+import { VoiceState, DetailedVoiceState } from '../types';
 import { api, getServerHostUrl } from '../services/api';
 import { handsFreeService } from '../services/handsFreeService';
 
 interface VoiceContextType {
   voiceState: VoiceState;
+  detailedVoiceState: DetailedVoiceState;
   transcript: string;
   assistantResponse: string;
   isWakeWordEnabled: boolean;
@@ -14,6 +15,7 @@ interface VoiceContextType {
   wakeWord: string;
   voiceResponseEnabled: boolean;
   isNativePlatform: boolean;
+  isBatteryOptimizedExempt: boolean;
   toggleWakeWord: () => void;
   toggleHandsFreeMode: () => Promise<void>;
   updateWakeWord: (word: string) => void;
@@ -22,6 +24,8 @@ interface VoiceContextType {
   stopVoice: () => void;
   playAudioResponse: (url: string) => void;
   requestMicPermission: () => Promise<void>;
+  checkBatteryOptimization: () => Promise<boolean>;
+  requestBatteryOptimizationExemption: () => Promise<void>;
 }
 
 const VoiceContext = createContext<VoiceContextType | undefined>(undefined);
@@ -33,6 +37,7 @@ interface IWindow extends Window {
 
 export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
+  const [detailedVoiceState, setDetailedVoiceState] = useState<DetailedVoiceState>('stopped');
   const [transcript, setTranscript] = useState<string>('');
   const [assistantResponse, setAssistantResponse] = useState<string>('');
   const [isWakeWordEnabled, setIsWakeWordEnabled] = useState<boolean>(true);
@@ -41,6 +46,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [voiceResponseEnabled, setVoiceResponseState] = useState<boolean>(handsFreeService.isVoiceResponseEnabled());
   const [micPermissionError, setMicPermissionError] = useState<boolean>(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [isBatteryOptimizedExempt, setIsBatteryOptimizedExempt] = useState<boolean>(true);
 
   const isNative = handsFreeService.isNativeAvailable();
 
@@ -56,7 +62,10 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Sync with native Android HandsFreeVoice service events when running inside Android APK
   useEffect(() => {
-    if (!isNative) return;
+    if (!isNative) {
+      setDetailedVoiceState(isWakeWordEnabled ? 'wake_listening' : 'stopped');
+      return;
+    }
 
     let subState: any;
     let subTranscript: any;
@@ -66,14 +75,34 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const setupNativeListeners = async () => {
       try {
         subState = await handsFreeService.addListener('voiceStateChanged', (data: { state: string }) => {
-          if (data.state === 'idle') {
-            setVoiceState('idle');
-          } else if (data.state === 'wake_detected' || data.state === 'speaking') {
-            setVoiceState('speaking');
-          } else if (data.state === 'listening' || data.state === 'cooldown') {
-            setVoiceState('listening');
-          } else if (data.state === 'processing') {
-            setVoiceState('thinking');
+          const s = (data.state || '').toLowerCase();
+          setDetailedVoiceState(s as DetailedVoiceState);
+
+          switch (s) {
+            case 'wake_listening':
+              setVoiceState('idle');
+              break;
+            case 'wake_detected':
+            case 'greeting':
+            case 'tts':
+            case 'speaking':
+              setVoiceState('speaking');
+              break;
+            case 'user_listening':
+            case 'listening':
+            case 'cooldown':
+              setVoiceState('listening');
+              break;
+            case 'processing':
+              setVoiceState('thinking');
+              break;
+            case 'error':
+              setVoiceState('error');
+              break;
+            case 'stopped':
+            default:
+              setVoiceState('idle');
+              break;
           }
         });
 
@@ -96,6 +125,10 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         const running = await handsFreeService.isRunning();
         setIsHandsFreeMode(running);
+        const curState = await handsFreeService.getState();
+        setDetailedVoiceState(curState as DetailedVoiceState);
+        const isExempt = await handsFreeService.checkBatteryOptimization();
+        setIsBatteryOptimizedExempt(isExempt);
       } catch (err) {
         console.warn('Native listener setup note:', err);
       }
@@ -110,6 +143,25 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (subError?.remove) subError.remove();
     };
   }, [isNative]);
+
+  const checkBatteryOptimization = async (): Promise<boolean> => {
+    if (isNative) {
+      const isExempt = await handsFreeService.checkBatteryOptimization();
+      setIsBatteryOptimizedExempt(isExempt);
+      return isExempt;
+    }
+    return true;
+  };
+
+  const requestBatteryOptimizationExemption = async (): Promise<void> => {
+    if (isNative) {
+      await handsFreeService.requestIgnoreBatteryOptimization();
+      setTimeout(async () => {
+        const isExempt = await handsFreeService.checkBatteryOptimization();
+        setIsBatteryOptimizedExempt(isExempt);
+      }, 1500);
+    }
+  };
 
   // Request microphone permission explicitly
   const requestMicPermission = async () => {
@@ -131,8 +183,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const startRecognition = () => {
-    // If native hands-free service is active, it handles background audio capture
-    if (isNative && isHandsFreeMode) return;
+    // If running on native Android, native HandsFreeVoiceService manages audio capture exclusively
+    if (isNative) return;
     if (!recognitionRef.current || isListeningRef.current || isSpeakingRef.current) return;
     try {
       recognitionRef.current.start();
@@ -153,10 +205,11 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     isListeningRef.current = false;
   };
 
-  // Initialize Web Speech Recognition for Web / Browser Mode
+  // Initialize Web Speech Recognition for Web / Browser Mode ONLY
   useEffect(() => {
-    if (isNative && isHandsFreeMode) {
-      // In native hands-free mode, native service manages mic
+    if (isNative) {
+      // In native Android APK, HandsFreeVoiceService handles ALL mic input and speech recognition.
+      // Running Web Speech Recognition in WebView causes AudioRecord collisions (ERROR_CLIENT / ERROR_RECOGNIZER_BUSY).
       stopRecognitionGracefully();
       return;
     }
@@ -273,19 +326,12 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     console.log(`Wake word '${wakeWord}' detected!`);
     isInActiveConversationRef.current = true;
     setVoiceState('listening');
+    setDetailedVoiceState('user_listening');
     setTranscript('');
     lastSpokenTextRef.current = '';
 
-    try {
-      const res = await api.synthesizeSpeech("Haan, bolo.");
-      if (res.audio_url) {
-        playAudioResponse(res.audio_url, "Haan, bolo.");
-      } else {
-        speakText("Haan, bolo.");
-      }
-    } catch (_) {
-      speakText("Haan, bolo.");
-    }
+    // Fast local greeting with 0ms network latency
+    speakText("Haan, bolo.");
     resetSilenceTimer();
   };
 
@@ -435,12 +481,26 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, 8000);
   };
 
-  const triggerManualListen = () => {
-    requestMicPermission();
+  const triggerManualListen = async () => {
     isInActiveConversationRef.current = true;
     setVoiceState('listening');
     setTranscript('');
     lastSpokenTextRef.current = '';
+
+    if (isNative) {
+      try {
+        await handsFreeService.start();
+        setIsHandsFreeMode(true);
+        setMicPermissionError(false);
+      } catch (err: any) {
+        console.error('Failed to trigger native listen:', err);
+        setMicPermissionError(true);
+      }
+      return;
+    }
+
+    requestMicPermission();
+    setDetailedVoiceState('user_listening');
     resetSilenceTimer();
     startRecognition();
   };
@@ -454,6 +514,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     stopRecognitionGracefully();
     setVoiceState('idle');
+    setDetailedVoiceState(isHandsFreeMode ? 'wake_listening' : 'stopped');
   };
 
   const toggleWakeWord = () => {
@@ -465,11 +526,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await handsFreeService.stop();
       setIsHandsFreeMode(false);
       setVoiceState('idle');
+      setDetailedVoiceState('stopped');
     } else {
       try {
         await handsFreeService.start();
         setIsHandsFreeMode(true);
         setMicPermissionError(false);
+        setDetailedVoiceState('wake_listening');
       } catch (err: any) {
         console.error('Hands-Free mode activation error:', err);
         setMicPermissionError(true);
@@ -497,6 +560,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <VoiceContext.Provider
       value={{
         voiceState,
+        detailedVoiceState,
         transcript,
         assistantResponse,
         isWakeWordEnabled,
@@ -506,6 +570,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         wakeWord,
         voiceResponseEnabled,
         isNativePlatform: isNative,
+        isBatteryOptimizedExempt,
         toggleWakeWord,
         toggleHandsFreeMode,
         updateWakeWord,
@@ -513,7 +578,9 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         triggerManualListen,
         stopVoice,
         playAudioResponse,
-        requestMicPermission
+        requestMicPermission,
+        checkBatteryOptimization,
+        requestBatteryOptimizationExemption
       }}
     >
       {children}

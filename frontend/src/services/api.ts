@@ -148,6 +148,18 @@ export const api = {
   synthesizeSpeech: (text: string, voice?: string) =>
     apiClient.post<{ audio_url: string }>('/voice/synthesize', { text, voice }).then(r => r.data),
 
+  // GitHub
+  getGitHubStatus: () =>
+    apiClient.get<{ is_connected: boolean; username?: string; indexed_repositories_count: number; indexed_repositories: any[] }>('/github/status').then(r => r.data),
+  connectGitHub: (token: string, username?: string) =>
+    apiClient.post<{ status: string; provider: string; username?: string; is_active: boolean }>('/github/connect', { token, username }).then(r => r.data),
+  listGitHubRepos: () =>
+    apiClient.get<{ repositories: any[] }>('/github/repos').then(r => r.data),
+  indexGitHubRepo: (repo_name: string, owner?: string, branch?: string) =>
+    apiClient.post<{ success: boolean; repository: string; files_count: number; chunks_indexed: number }>('/github/index', { repo_name, owner, branch }).then(r => r.data),
+  searchGitHubCode: (query: string, repo_name?: string, top_k: number = 5) =>
+    apiClient.post<{ results: any[]; count: number }>('/github/search', { query, repo_name, top_k }).then(r => r.data),
+
   // Health
   checkHealth: () =>
     apiClient.get('/health').then(r => r.data)

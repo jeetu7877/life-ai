@@ -24,3 +24,8 @@ class User(Base):
     vault_items = relationship("SecureVaultItem", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("DailyActivity", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+    connected_accounts = relationship("ConnectedAccount", back_populates="user", cascade="all, delete-orphan")
+    github_repositories = relationship("GitHubRepository", back_populates="user", cascade="all, delete-orphan")
+    agent_tasks = relationship("AgentTask", back_populates="user", cascade="all, delete-orphan")
+    agent_reminders = relationship("AgentReminder", back_populates="user", cascade="all, delete-orphan")
+    tool_logs = relationship("AgentToolLog", back_populates="user", cascade="all, delete-orphan")

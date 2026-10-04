@@ -7,6 +7,8 @@ from app.routers.timeline import router as timeline_router
 from app.routers.vault import router as vault_router
 from app.routers.voice import router as voice_router
 from app.routers.health import router as health_router
+from app.routers.github import router as github_router
+from app.routers.tasks import router as tasks_router
 
 __all__ = [
     "auth_router",
@@ -17,5 +19,7 @@ __all__ = [
     "timeline_router",
     "vault_router",
     "voice_router",
-    "health_router"
+    "health_router",
+    "github_router",
+    "tasks_router"
 ]

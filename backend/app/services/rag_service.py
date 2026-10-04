@@ -363,18 +363,28 @@ class RAGService:
 
             logger.info(f"Syncing {len(active)} persistent memories to vector index...")
             for m in active:
-                # Ensure embedding exists in DB instantly
                 if not m.embedding:
                     m.embedding = embedding_service._deterministic_vector(m.content)
                     m.embedding_status = "ready"
-                self.add_memory(
-                    memory_id=m.id,
-                    user_id=m.user_id,
-                    content=m.content,
-                    memory_type=m.memory_type,
-                    event_date=m.event_date
-                )
             db.commit()
+
+            if self.memory_collection:
+                try:
+                    batch_ids = [f"mem_{m.id}" for m in active]
+                    batch_docs = [redact_sensitive_strings(m.content) for m in active]
+                    batch_metas = [{
+                        "user_id": str(m.user_id),
+                        "memory_id": str(m.id),
+                        "memory_type": str(m.memory_type),
+                        "event_date": str(m.event_date or "")
+                    } for m in active]
+                    self.memory_collection.upsert(
+                        ids=batch_ids,
+                        documents=batch_docs,
+                        metadatas=batch_metas
+                    )
+                except Exception as e:
+                    logger.warning(f"Batch upsert to ChromaDB note: {e}")
             logger.info("Persistent memories vector sync complete.")
         except Exception as e:
             logger.warning(f"Memory sync note: {e}")

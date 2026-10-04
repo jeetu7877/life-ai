@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useVoice } from '../context/VoiceContext';
 import {
   Settings,
@@ -16,9 +16,12 @@ import {
   Database,
   FileText,
   Sliders,
-  ChevronRight
+  ChevronRight,
+  Code2,
+  GitBranch
 } from 'lucide-react';
 import axios from 'axios';
+import { api } from '../services/api';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -30,7 +33,11 @@ export const SettingsPage: React.FC = () => {
     updateWakeWord,
     voiceResponseEnabled,
     updateVoiceResponse,
-    isNativePlatform
+    isNativePlatform,
+    detailedVoiceState,
+    isBatteryOptimizedExempt,
+    checkBatteryOptimization,
+    requestBatteryOptimizationExemption
   } = useVoice();
 
   const [selectedVoice, setSelectedVoice] = useState<string>(() => localStorage.getItem('life_voice_preference') || 'hi-IN-SwaraNeural');
@@ -45,6 +52,71 @@ export const SettingsPage: React.FC = () => {
   // Test Connection state
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState<string>('');
+
+  // GitHub Integration state
+  const [ghConnected, setGhConnected] = useState<boolean>(false);
+  const [ghUsername, setGhUsername] = useState<string>('');
+  const [ghTokenInput, setGhTokenInput] = useState<string>('');
+  const [ghUsernameInput, setGhUsernameInput] = useState<string>('');
+  const [ghRepoInput, setGhRepoInput] = useState<string>('');
+  const [ghLoading, setGhLoading] = useState<boolean>(false);
+  const [ghMessage, setGhMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [ghIndexedRepos, setGhIndexedRepos] = useState<any[]>([]);
+
+  const fetchGitHubStatus = async () => {
+    try {
+      const data = await api.getGitHubStatus();
+      setGhConnected(data.is_connected);
+      if (data.username) setGhUsername(data.username);
+      setGhIndexedRepos(data.indexed_repositories || []);
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    fetchGitHubStatus();
+  }, []);
+
+  const handleConnectGitHub = async () => {
+    if (!ghTokenInput.trim()) {
+      setGhMessage({ type: 'error', text: 'Please enter a valid GitHub token (PAT).' });
+      return;
+    }
+    setGhLoading(true);
+    setGhMessage(null);
+    try {
+      const res = await api.connectGitHub(ghTokenInput.trim(), ghUsernameInput.trim() || undefined);
+      setGhConnected(true);
+      if (res.username) setGhUsername(res.username);
+      setGhTokenInput('');
+      setGhMessage({ type: 'success', text: `GitHub connected successfully as @${res.username || 'user'}!` });
+      await fetchGitHubStatus();
+    } catch (err: any) {
+      setGhMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to connect GitHub account.' });
+    } finally {
+      setGhLoading(false);
+    }
+  };
+
+  const handleIndexRepo = async () => {
+    if (!ghRepoInput.trim()) {
+      setGhMessage({ type: 'error', text: 'Please enter repository name (e.g. vikashyadav/sql-rag).' });
+      return;
+    }
+    setGhLoading(true);
+    setGhMessage({ type: 'info', text: `Indexing repository ${ghRepoInput.trim()}... (fetching tree and AST chunking)` });
+    try {
+      const res = await api.indexGitHubRepo(ghRepoInput.trim());
+      setGhMessage({ type: 'success', text: `Repository ${res.repository} indexed! ${res.chunks_indexed} code chunks embedded.` });
+      setGhRepoInput('');
+      await fetchGitHubStatus();
+    } catch (err: any) {
+      setGhMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to index repository.' });
+    } finally {
+      setGhLoading(false);
+    }
+  };
 
   const handleSaveSettings = () => {
     const cleanUrl = serverUrl.trim().replace(/\/+$/, '');
@@ -230,14 +302,111 @@ export const SettingsPage: React.FC = () => {
             />
           </div>
 
-          {/* Android Battery Advisory Banner */}
-          <div className="p-3 rounded-xl bg-[#141C28] border border-[#202B3D] text-[11px] text-slate-300 leading-relaxed space-y-1">
-            <p className="font-semibold text-[#00D9FF] flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5" /> Android Background & Screen-Lock Note:
+          {/* Live Voice Service State Indicator Panel */}
+          <div className="p-3.5 rounded-xl bg-[#0A0F18] border border-[#202B3D] space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+                <Radio className="w-3.5 h-3.5 text-[#00D9FF]" /> Live Service Status
+              </span>
+              <span className="text-[10px] uppercase font-bold text-slate-400">Current: {detailedVoiceState}</span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+              <div className={`p-2 rounded-lg border flex items-center gap-2 transition-all ${
+                detailedVoiceState === 'wake_listening'
+                  ? 'bg-[#22C55E]/15 border-[#22C55E]/50 text-white shadow-sm shadow-[#22C55E]/20'
+                  : 'bg-[#141C28]/60 border-[#202B3D] text-slate-400 opacity-60'
+              }`}>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#22C55E] shrink-0" />
+                <span className="text-[11px] font-medium truncate">🟢 Listening for "{wakeWord}"</span>
+              </div>
+
+              <div className={`p-2 rounded-lg border flex items-center gap-2 transition-all ${
+                detailedVoiceState === 'user_listening' || detailedVoiceState === 'cooldown'
+                  ? 'bg-[#F97316]/15 border-[#F97316]/50 text-white shadow-sm shadow-[#F97316]/20'
+                  : 'bg-[#141C28]/60 border-[#202B3D] text-slate-400 opacity-60'
+              }`}>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#F97316] shrink-0" />
+                <span className="text-[11px] font-medium truncate">🟠 Listening to you</span>
+              </div>
+
+              <div className={`p-2 rounded-lg border flex items-center gap-2 transition-all ${
+                detailedVoiceState === 'processing'
+                  ? 'bg-[#00D9FF]/15 border-[#00D9FF]/50 text-white shadow-sm shadow-[#00D9FF]/20'
+                  : 'bg-[#141C28]/60 border-[#202B3D] text-slate-400 opacity-60'
+              }`}>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#00D9FF] shrink-0" />
+                <span className="text-[11px] font-medium truncate">🔵 Thinking</span>
+              </div>
+
+              <div className={`p-2 rounded-lg border flex items-center gap-2 transition-all ${
+                detailedVoiceState === 'greeting' || detailedVoiceState === 'tts'
+                  ? 'bg-[#C026D3]/15 border-[#C026D3]/50 text-white shadow-sm shadow-[#C026D3]/20'
+                  : 'bg-[#141C28]/60 border-[#202B3D] text-slate-400 opacity-60'
+              }`}>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#C026D3] shrink-0" />
+                <span className="text-[11px] font-medium truncate">🟣 Speaking</span>
+              </div>
+
+              <div className={`p-2 rounded-lg border flex items-center gap-2 transition-all ${
+                detailedVoiceState === 'error'
+                  ? 'bg-[#EF4444]/15 border-[#EF4444]/50 text-white shadow-sm shadow-[#EF4444]/20'
+                  : 'bg-[#141C28]/60 border-[#202B3D] text-slate-400 opacity-60'
+              }`}>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444] shrink-0" />
+                <span className="text-[11px] font-medium truncate">🔴 Error</span>
+              </div>
+
+              <div className={`p-2 rounded-lg border flex items-center gap-2 transition-all ${
+                detailedVoiceState === 'stopped'
+                  ? 'bg-slate-700/20 border-slate-600 text-slate-200'
+                  : 'bg-[#141C28]/60 border-[#202B3D] text-slate-400 opacity-60'
+              }`}>
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0" />
+                <span className="text-[11px] font-medium truncate">⚪ Service stopped</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Android Battery Optimization Card */}
+          <div className="p-4 rounded-xl bg-[#141C28] border border-[#202B3D] space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-[#00D9FF]" /> Android Battery Optimization
+              </span>
+              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                isBatteryOptimizedExempt
+                  ? 'bg-[#22C55E]/15 border border-[#22C55E]/30 text-[#22C55E]'
+                  : 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+              }`}>
+                {isBatteryOptimizedExempt ? 'Unrestricted (Protected)' : 'Optimization Active'}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              {isBatteryOptimizedExempt
+                ? 'App is unrestricted. Android will not kill the hands-free voice service when the screen is locked or during long deep-sleep periods.'
+                : 'Battery optimization may silence "Hey Life" after several minutes of screen lock. Exempt the app from optimization for seamless always-on wake-word support.'}
             </p>
-            <p className="text-slate-400">
-              Set app battery usage to <strong>"Unrestricted"</strong> in Android Settings so the hands-free voice service stays active when the screen is locked.
-            </p>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              {!isBatteryOptimizedExempt && (
+                <button
+                  type="button"
+                  onClick={requestBatteryOptimizationExemption}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#00A8FF] to-[#00D9FF] text-black font-bold text-xs hover:opacity-90 transition-all cursor-pointer shadow"
+                >
+                  Exempt from Battery Optimization
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={checkBatteryOptimization}
+                className="px-3 py-1.5 rounded-lg bg-[#0A0F18] border border-[#202B3D] text-slate-300 text-xs hover:bg-[#101722] transition-all cursor-pointer"
+              >
+                Re-check Status
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -301,6 +470,135 @@ export const SettingsPage: React.FC = () => {
               {testStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-[#22C55E] shrink-0" />}
               {testStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />}
               <span className="leading-relaxed">{testMessage}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section 2.5: GitHub Code Brain */}
+      <div className="p-5 rounded-2xl border border-[#202B3D] bg-[#101722] space-y-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <Code2 className="w-4 h-4 text-[#00D9FF]" /> GitHub Code Brain
+          </h3>
+          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+            ghConnected
+              ? 'bg-[#22C55E]/15 border border-[#22C55E]/30 text-[#22C55E]'
+              : 'bg-slate-800 text-slate-400 border border-[#202B3D]'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${ghConnected ? 'bg-[#22C55E]' : 'bg-slate-500'}`} />
+            {ghConnected ? `Connected (@${ghUsername || 'user'})` : 'Not Connected'}
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Connect your GitHub account with a Personal Access Token (PAT). Life AI will index your repositories, understand code architecture, classes, and functions, and answer technical questions via text and "Hey Life".
+        </p>
+
+        {/* GitHub Token Connection Inputs */}
+        <div className="space-y-3 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="sm:col-span-2">
+              <label className="text-[11px] text-slate-300 font-medium">Personal Access Token (PAT)</label>
+              <input
+                type="password"
+                value={ghTokenInput}
+                onChange={(e) => setGhTokenInput(e.target.value)}
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                className="w-full mt-1 bg-[#0A0F18] border border-[#202B3D] rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF] font-mono shadow-inner"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-300 font-medium">GitHub Username (optional)</label>
+              <input
+                type="text"
+                value={ghUsernameInput}
+                onChange={(e) => setGhUsernameInput(e.target.value)}
+                placeholder="e.g. vikashyadav"
+                className="w-full mt-1 bg-[#0A0F18] border border-[#202B3D] rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF] shadow-inner"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleConnectGitHub}
+              disabled={ghLoading}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#00A8FF] to-[#8B5CF6] hover:from-[#00D9FF] hover:to-[#A855F7] text-xs font-semibold text-white transition-all shadow-md shadow-[#00A8FF]/20 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {ghLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <GitBranch className="w-3.5 h-3.5" />}
+              {ghConnected ? 'Update GitHub Token' : 'Connect GitHub'}
+            </button>
+            <button
+              type="button"
+              onClick={fetchGitHubStatus}
+              className="px-3 py-2 rounded-xl border border-[#202B3D] bg-[#141C28] text-xs text-slate-300 hover:bg-[#1A2332] transition-all cursor-pointer"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {/* GitHub Status Banner */}
+          {ghMessage && (
+            <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+              ghMessage.type === 'success'
+                ? 'bg-[#22C55E]/10 border-[#22C55E]/30 text-[#22C55E]'
+                : ghMessage.type === 'info'
+                ? 'bg-[#00D9FF]/10 border-[#00D9FF]/30 text-[#00D9FF]'
+                : 'bg-red-500/10 border-red-500/30 text-red-300'
+            }`}>
+              {ghMessage.type === 'info' && <RefreshCw className="w-4 h-4 animate-spin shrink-0" />}
+              {ghMessage.type === 'success' && <CheckCircle2 className="w-4 h-4 text-[#22C55E] shrink-0" />}
+              {ghMessage.type === 'error' && <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />}
+              <span className="leading-relaxed">{ghMessage.text}</span>
+            </div>
+          )}
+
+          {/* Repository Indexing Box */}
+          {ghConnected && (
+            <div className="pt-3 border-t border-[#202B3D] space-y-3">
+              <label className="text-xs text-slate-300 font-semibold flex items-center gap-2">
+                <GitBranch className="w-3.5 h-3.5 text-[#00D9FF]" /> Index a Repository into Code Brain
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={ghRepoInput}
+                  onChange={(e) => setGhRepoInput(e.target.value)}
+                  placeholder="e.g. sql-rag-backend or owner/repo"
+                  className="flex-1 bg-[#0A0F18] border border-[#202B3D] rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF] font-mono shadow-inner"
+                />
+                <button
+                  type="button"
+                  onClick={handleIndexRepo}
+                  disabled={ghLoading}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#00D9FF] to-[#00A8FF] text-black font-bold text-xs hover:opacity-90 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {ghLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Index Repo
+                </button>
+              </div>
+
+              {/* Indexed Repos List */}
+              {ghIndexedRepos.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[11px] text-slate-400 font-medium">Indexed Repositories ({ghIndexedRepos.length}):</div>
+                  <div className="space-y-1">
+                    {ghIndexedRepos.map((r) => (
+                      <div key={r.id} className="p-2.5 rounded-lg bg-[#0A0F18] border border-[#202B3D] flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 truncate">
+                          <Code2 className="w-3.5 h-3.5 text-[#00D9FF] shrink-0" />
+                          <span className="font-mono text-slate-200 truncate">{r.owner ? `${r.owner}/` : ''}{r.repo_name}</span>
+                        </div>
+                        <span className="text-[10px] text-[#22C55E] bg-[#22C55E]/10 px-2 py-0.5 rounded border border-[#22C55E]/20 shrink-0">
+                          {r.status || 'ready'} ({r.files_count || 0} files)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

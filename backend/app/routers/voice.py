@@ -3,6 +3,10 @@ import uuid
 import aiofiles
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models.user import User
+from app.security.dependencies import get_optional_user
 from app.schemas.voice import TTSRequest, WakeWordStatusResponse
 from app.services.voice_service import voice_service
 from app.config import settings
@@ -36,6 +40,61 @@ async def transcribe_audio(audio: UploadFile = File(...)):
             pass
 
     return {"transcript": transcript}
+
+@router.post("/transcribe-and-respond")
+async def transcribe_and_respond(
+    audio: UploadFile = File(...),
+    timezone: str = "Asia/Kolkata",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_optional_user)
+):
+    """
+    Hands-Free Voice Flow:
+    1. Transcribes incoming speech audio
+    2. Runs through the Central Agent Orchestrator (Memory, Docs, Code, Tools)
+    3. Synthesizes voice audio response
+    4. Returns transcript, text response, and audio playback URL in a single low-latency call.
+    """
+    temp_path = os.path.join(settings.UPLOAD_DIRECTORY, f"voice_{uuid.uuid4().hex}_{audio.filename}")
+    async with aiofiles.open(temp_path, "wb") as f:
+        await f.write(await audio.read())
+
+    transcript = voice_service.transcribe_audio_file(temp_path)
+    if os.path.exists(temp_path):
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+
+    if not transcript or not transcript.strip():
+        return {
+            "transcript": "",
+            "response": "Mujhe aapki aawaz theek se nahi sunai di. Kya aap dobara bol sakte hain?",
+            "audio_url": None,
+            "sources": [],
+            "tools_executed": []
+        }
+
+    from app.services.orchestrator import agent_orchestrator
+    agent_res = agent_orchestrator.process_request(
+        db=db,
+        user_id=user.id,
+        user_message=transcript,
+        chat_history=[],
+        timezone=timezone
+    )
+
+    response_text = agent_res.get("response", "")
+    audio_url = await voice_service.text_to_speech(response_text)
+
+    return {
+        "transcript": transcript,
+        "response": response_text,
+        "audio_url": audio_url,
+        "sources": agent_res.get("retrieved_sources", []),
+        "tools_executed": agent_res.get("tools_executed", [])
+    }
+
 
 @router.post("/synthesize")
 async def synthesize_speech(payload: TTSRequest):

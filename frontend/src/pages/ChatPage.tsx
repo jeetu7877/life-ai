@@ -17,7 +17,11 @@ import {
   Copy,
   Check,
   Paperclip,
-  GraduationCap
+  GraduationCap,
+  Globe,
+  Code,
+  CheckSquare,
+  Brain
 } from 'lucide-react';
 import { useVoice } from '../context/VoiceContext';
 
@@ -389,10 +393,51 @@ export const ChatPage: React.FC = () => {
                       )}
 
                       {!isUser && msg.metadata_json?.sources && msg.metadata_json.sources.length > 0 && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-lg bg-[#00D9FF]/10 text-[#00D9FF] border border-[#00D9FF]/20 flex items-center gap-1">
-                          <FileText className="w-2.5 h-2.5" />
-                          {msg.metadata_json.sources.map(s => s.source).join(', ')}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {msg.metadata_json.sources.map((s, sIdx) => {
+                            const src = s.source;
+                            if (src === 'github_code') {
+                              return (
+                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-mono">
+                                  <Code className="w-2.5 h-2.5" /> GitHub Code
+                                </span>
+                              );
+                            }
+                            if (src === 'web_search') {
+                              return (
+                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/30 flex items-center gap-1">
+                                  <Globe className="w-2.5 h-2.5" /> Web Cited
+                                </span>
+                              );
+                            }
+                            if (src === 'long_term_memory' || src === 'profile_memory') {
+                              return (
+                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/30 flex items-center gap-1">
+                                  <Brain className="w-2.5 h-2.5" /> Memory
+                                </span>
+                              );
+                            }
+                            if (src === 'document_field' || src === 'documents') {
+                              return (
+                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-[#00D9FF]/10 text-[#00D9FF] border border-[#00D9FF]/30 flex items-center gap-1">
+                                  <FileText className="w-2.5 h-2.5" /> Doc Verified
+                                </span>
+                              );
+                            }
+                            if (src === 'task_planner' || src === 'reminder_service') {
+                              return (
+                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                  <CheckSquare className="w-2.5 h-2.5" /> Action
+                                </span>
+                              );
+                            }
+                            return (
+                              <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-800/80 text-slate-300 border border-slate-700 flex items-center gap-1">
+                                <FileText className="w-2.5 h-2.5" /> {src.replace('_', ' ')}
+                              </span>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   </div>

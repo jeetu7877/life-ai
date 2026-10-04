@@ -19,12 +19,16 @@ import { Link, useNavigate } from 'react-router-dom';
 export const HomeVoicePage: React.FC = () => {
   const {
     voiceState,
+    detailedVoiceState,
     transcript,
     assistantResponse,
     isWakeWordEnabled,
     isHandsFreeMode,
     wakeWord,
     micPermissionError,
+    isNativePlatform,
+    isBatteryOptimizedExempt,
+    requestBatteryOptimizationExemption,
     toggleWakeWord,
     toggleHandsFreeMode,
     triggerManualListen,
@@ -110,10 +114,29 @@ export const HomeVoicePage: React.FC = () => {
         </div>
       )}
 
+      {/* Battery Optimization Advisory Banner for Android Background Reliability */}
+      {isNativePlatform && !isBatteryOptimizedExempt && (
+        <div className="w-full p-3 mb-3 rounded-2xl bg-[#141C28] border border-[#00D9FF]/30 text-slate-200 text-xs flex items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#00D9FF] shrink-0 animate-pulse" />
+            <span className="text-[11px] leading-tight">
+              Disable battery optimization so <strong>"Hey Life"</strong> runs continuously in deep sleep.
+            </span>
+          </div>
+          <button
+            onClick={requestBatteryOptimizationExemption}
+            className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-[#00A8FF] to-[#00D9FF] text-black font-bold text-[10px] shrink-0 hover:opacity-90 cursor-pointer shadow"
+          >
+            Disable
+          </button>
+        </div>
+      )}
+
       {/* Futuristic Centerpiece: Glowing Orb */}
       <div className="w-full flex flex-col items-center">
         <WakeWordIndicator
           state={voiceState}
+          detailedState={detailedVoiceState}
           wakeWordEnabled={isWakeWordEnabled}
           isHandsFreeMode={isHandsFreeMode}
           wakeWord={wakeWord}
