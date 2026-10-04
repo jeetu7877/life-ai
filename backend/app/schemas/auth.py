@@ -63,3 +63,6 @@ class ChangePasswordRequest(BaseModel):
 class DeleteAccountRequest(BaseModel):
     password: str
     confirmation_text: Optional[str] = "CONFIRM"
+
+class TestEmailRequest(BaseModel):
+    recipient_email: str

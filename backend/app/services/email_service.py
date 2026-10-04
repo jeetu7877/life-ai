@@ -232,29 +232,65 @@ If you did not request this account, you can ignore this email.
         )
 
         if smtp_host and smtp_user and smtp_pass:
-            try:
-                msg = MIMEMultipart("alternative")
-                msg["Subject"] = subject
-                msg["From"] = from_email
-                msg["To"] = to_email
-                msg.attach(MIMEText(plain_body, "plain", "utf-8"))
-                msg.attach(MIMEText(html_body, "html", "utf-8"))
+            clean_user = smtp_user.strip()
+            clean_pass = smtp_pass.strip().replace(" ", "")
+            use_ssl = (smtp_port == 465) or str(os.environ.get("SMTP_SECURE", "")).lower() in ("true", "1")
 
-                if smtp_port == 465:
-                    with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
-                        server.login(smtp_user, smtp_pass)
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = from_email
+            msg["To"] = to_email
+            msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+            def _send_attempt(port: int, ssl_flag: bool):
+                if ssl_flag:
+                    with smtplib.SMTP_SSL(smtp_host, port, timeout=12) as server:
+                        server.ehlo()
+                        server.login(clean_user, clean_pass)
                         server.sendmail(from_email, [to_email], msg.as_string())
                 else:
-                    with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                    with smtplib.SMTP(smtp_host, port, timeout=8) as server:
+                        server.ehlo()
                         server.starttls()
-                        server.login(smtp_user, smtp_pass)
+                        server.ehlo()
+                        server.login(clean_user, clean_pass)
                         server.sendmail(from_email, [to_email], msg.as_string())
+
+            try:
+                try:
+                    _send_attempt(smtp_port, use_ssl)
+                except (TimeoutError, smtplib.SMTPConnectError, OSError) as conn_err:
+                    # If port 587 timed out (common residential ISP firewall block), auto fallback to 465 SSL
+                    if not use_ssl and smtp_port != 465:
+                        logger.info(f"[AUTH_OTP] Port {smtp_port} failed ({type(conn_err).__name__}). Automatically falling back to Port 465 (Direct SSL)...")
+                        _send_attempt(465, True)
+                    else:
+                        raise
 
                 logger.info(f"[AUTH_OTP] Successfully delivered 6-digit OTP to {to_email} via SMTP ({smtp_host}).")
                 return True, "Verification code has been sent to your email."
+            except smtplib.SMTPAuthenticationError:
+                logger.error("[AUTH_OTP_FAIL] SMTP authentication failed: Invalid username or App Password.")
+                return False, "SMTP authentication failed: Invalid Gmail username or App Password."
+            except smtplib.SMTPConnectError:
+                logger.error("[AUTH_OTP_FAIL] SMTP connection failed: Unable to connect to host.")
+                return False, "SMTP connection failed: Unable to connect to mail server."
+            except smtplib.SMTPSenderRefused:
+                logger.error("[AUTH_OTP_FAIL] Invalid sender: Sender address refused.")
+                return False, "Invalid sender: Mail server rejected sender address."
+            except smtplib.SMTPRecipientsRefused:
+                logger.error("[AUTH_OTP_FAIL] Recipient rejected.")
+                return False, "Recipient rejected: Mail server rejected recipient email address."
+            except TimeoutError:
+                logger.error("[AUTH_OTP_FAIL] Connection timeout.")
+                return False, "Timeout: Connection to mail server timed out."
+            except smtplib.SMTPException as se:
+                logger.error(f"[AUTH_OTP_FAIL] SMTP error: {type(se).__name__}")
+                return False, f"Gmail rejected connection: {type(se).__name__}"
             except Exception as e:
-                logger.error(f"[AUTH_OTP_FAIL] SMTP delivery failed to recipient: {type(e).__name__}")
-                return False, "Unable to send verification email. Please check your email configuration or try again."
+                logger.error(f"[AUTH_OTP_FAIL] General delivery error: {type(e).__name__}")
+                return False, f"Unable to send verification email: {type(e).__name__}"
 
         # -------------------------------------------------------------
         # 2. Resend HTTP API Provider
@@ -430,6 +466,14 @@ If you did not request this account, you can ignore this email.
         db.commit()
         db.refresh(user)
         return True, "Email verified successfully.", user
+
+    def send_test_email(self, to_email: str) -> Tuple[bool, str]:
+        """
+        Sends an immediate real test email to verify SMTP delivery.
+        Returns (success: bool, status_message: str).
+        """
+        raw_otp = f"{secrets.randbelow(900000) + 100000}"
+        return self.send_otp_email(to_email=to_email, username="Life AI Tester", raw_otp=raw_otp)
 
 
 email_service = EmailVerificationService()

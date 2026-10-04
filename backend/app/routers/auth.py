@@ -20,7 +20,8 @@ from app.schemas.auth import (
     VerifyEmailRequest,
     ResendVerificationRequest,
     ChangePasswordRequest,
-    DeleteAccountRequest
+    DeleteAccountRequest,
+    TestEmailRequest
 )
 from app.security.jwt import get_password_hash, verify_password, create_access_token
 from app.security.dependencies import get_current_user
@@ -213,6 +214,25 @@ def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
         "message": "A new 6-digit verification code has been dispatched to your email.",
         "expires_in_seconds": 600,
         "resend_cooldown_seconds": 60
+    }
+
+@router.post("/test-email")
+def test_email_endpoint(payload: TestEmailRequest):
+    """
+    Test endpoint to verify real SMTP email delivery without registration.
+    Never exposes passwords, keys, or sensitive credentials in response or logs.
+    """
+    sent, msg = email_service.send_test_email(to_email=payload.recipient_email.strip())
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=msg
+        )
+    return {
+        "success": True,
+        "message": f"Real test email successfully delivered to {payload.recipient_email} via Gmail SMTP.",
+        "recipient": payload.recipient_email,
+        "status": "DELIVERED"
     }
 
 @router.post("/login", response_model=TokenResponse)
