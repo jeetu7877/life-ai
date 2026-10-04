@@ -219,6 +219,128 @@ If you did not request this account, you can ignore this email.
             or getattr(settings, "SMTP_FROM", "no-reply@life-ai.com")
         )
 
+        provider_pref = (
+            os.environ.get("EMAIL_PROVIDER")
+            or getattr(settings, "EMAIL_PROVIDER", "smtp")
+        ).strip().lower()
+
+        brevo_key = (
+            os.environ.get("BREVO_API_KEY")
+            or (os.environ.get("EMAIL_API_KEY") if provider_pref == "brevo" else None)
+            or getattr(settings, "BREVO_API_KEY", None)
+        )
+        resend_key = (
+            os.environ.get("RESEND_API_KEY")
+            or (os.environ.get("EMAIL_API_KEY") if provider_pref == "resend" else None)
+            or getattr(settings, "RESEND_API_KEY", None)
+        )
+        sendgrid_key = (
+            os.environ.get("SENDGRID_API_KEY")
+            or (os.environ.get("EMAIL_API_KEY") if provider_pref == "sendgrid" else None)
+            or getattr(settings, "SENDGRID_API_KEY", None)
+        )
+
+        def _send_brevo(api_key: str) -> Tuple[bool, str]:
+            try:
+                payload = json.dumps({
+                    "sender": {"email": from_email, "name": "Life AI"},
+                    "to": [{"email": to_email}],
+                    "subject": subject,
+                    "htmlContent": html_body,
+                    "textContent": plain_body
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    "https://api.brevo.com/v3/smtp/email",
+                    data=payload,
+                    headers={
+                        "api-key": api_key.strip(),
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=12) as response:
+                    if response.status in (200, 201):
+                        logger.info(f"[AUTH_OTP] Successfully delivered OTP to {to_email} via Brevo HTTP API (Port 443).")
+                        return True, "Verification code has been sent to your email."
+                return False, "Brevo server returned non-success response."
+            except urllib.error.HTTPError as he:
+                error_body = he.read().decode('utf-8', errors='ignore')
+                logger.error(f"[AUTH_OTP_FAIL] Brevo API error {he.code}: {error_body[:200]}")
+                return False, f"Brevo delivery rejected ({he.code}): {error_body[:100]}"
+            except Exception as e:
+                logger.error(f"[AUTH_OTP_FAIL] Brevo network error: {type(e).__name__}")
+                return False, "Unable to send verification email via Brevo."
+
+        def _send_resend(api_key: str) -> Tuple[bool, str]:
+            try:
+                payload = json.dumps({
+                    "from": from_email,
+                    "to": [to_email],
+                    "subject": subject,
+                    "text": plain_body,
+                    "html": html_body
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    "https://api.resend.com/emails",
+                    data=payload,
+                    headers={
+                        "Authorization": f"Bearer {api_key.strip()}",
+                        "Content-Type": "application/json"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=12) as response:
+                    if response.status in (200, 201):
+                        logger.info(f"[AUTH_OTP] Successfully delivered OTP to {to_email} via Resend HTTP API (Port 443).")
+                        return True, "Verification code has been sent to your email."
+                return False, "Resend server returned non-success response."
+            except urllib.error.HTTPError as he:
+                error_body = he.read().decode('utf-8', errors='ignore')
+                logger.error(f"[AUTH_OTP_FAIL] Resend API error {he.code}: {error_body[:200]}")
+                return False, "Unable to send verification email via Resend API. Please try again."
+            except Exception as e:
+                logger.error(f"[AUTH_OTP_FAIL] Resend network error: {type(e).__name__}")
+                return False, "Unable to send verification email via Resend."
+
+        def _send_sendgrid(api_key: str) -> Tuple[bool, str]:
+            try:
+                payload = json.dumps({
+                    "personalizations": [{"to": [{"email": to_email}]}],
+                    "from": {"email": from_email},
+                    "subject": subject,
+                    "content": [
+                        {"type": "text/plain", "value": plain_body},
+                        {"type": "text/html", "value": html_body}
+                    ]
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    data=payload,
+                    headers={
+                        "Authorization": f"Bearer {api_key.strip()}",
+                        "Content-Type": "application/json"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=12) as response:
+                    if response.status in (200, 202):
+                        logger.info(f"[AUTH_OTP] Successfully delivered OTP to {to_email} via SendGrid API.")
+                        return True, "Verification code has been sent to your email."
+                return False, "SendGrid returned non-success status."
+            except urllib.error.HTTPError as he:
+                error_body = he.read().decode('utf-8', errors='ignore')
+                logger.error(f"[AUTH_OTP_FAIL] SendGrid API error {he.code}: {error_body[:200]}")
+                return False, "Unable to send verification email via SendGrid."
+            except Exception as e:
+                logger.error(f"[AUTH_OTP_FAIL] SendGrid network error: {type(e).__name__}")
+                return False, "Unable to send verification email via SendGrid."
+
+        # If HTTP provider is explicitly selected, run it immediately
+        if provider_pref == "brevo" and brevo_key:
+            return _send_brevo(brevo_key)
+        if provider_pref == "resend" and resend_key:
+            return _send_resend(resend_key)
+        if provider_pref == "sendgrid" and sendgrid_key:
+            return _send_sendgrid(sendgrid_key)
+
         # -------------------------------------------------------------
         # 1. SMTP Provider (Gmail, SendGrid SMTP, Mailgun SMTP, Custom)
         # -------------------------------------------------------------
@@ -270,6 +392,27 @@ If you did not request this account, you can ignore this email.
 
                 logger.info(f"[AUTH_OTP] Successfully delivered 6-digit OTP to {to_email} via SMTP ({smtp_host}).")
                 return True, "Verification code has been sent to your email."
+            except (OSError, TimeoutError) as oe:
+                logger.error(
+                    f"[AUTH_OTP_FAIL] SMTP socket blocked by host: {oe}. "
+                    "Note: Cloud platforms like Render block outbound SMTP ports 25, 465, and 587 by default. "
+                    "HTTPS-based providers (Brevo, Resend, SendGrid) over port 443 are recommended for cloud hosting."
+                )
+                # Check for automatic fallback to HTTP providers if configured
+                if brevo_key:
+                    logger.info("[AUTH_OTP] Automatically falling back to Brevo HTTP API (Port 443)...")
+                    return _send_brevo(brevo_key)
+                if resend_key:
+                    logger.info("[AUTH_OTP] Automatically falling back to Resend HTTP API (Port 443)...")
+                    return _send_resend(resend_key)
+                if sendgrid_key:
+                    logger.info("[AUTH_OTP] Automatically falling back to SendGrid HTTP API (Port 443)...")
+                    return _send_sendgrid(sendgrid_key)
+                return False, (
+                    "Outbound SMTP is blocked by your cloud host (Render blocks ports 25/465/587). "
+                    "Please configure BREVO_API_KEY or RESEND_API_KEY in Render Environment Variables to send over HTTPS port 443, "
+                    "or request Render support to unblock SMTP."
+                )
             except smtplib.SMTPAuthenticationError:
                 logger.error("[AUTH_OTP_FAIL] SMTP authentication failed: Invalid username or App Password.")
                 return False, "SMTP authentication failed: Invalid Gmail username or App Password."
@@ -282,9 +425,6 @@ If you did not request this account, you can ignore this email.
             except smtplib.SMTPRecipientsRefused:
                 logger.error("[AUTH_OTP_FAIL] Recipient rejected.")
                 return False, "Recipient rejected: Mail server rejected recipient email address."
-            except TimeoutError:
-                logger.error("[AUTH_OTP_FAIL] Connection timeout.")
-                return False, "Timeout: Connection to mail server timed out."
             except smtplib.SMTPException as se:
                 logger.error(f"[AUTH_OTP_FAIL] SMTP error: {type(se).__name__}")
                 return False, f"Gmail rejected connection: {type(se).__name__}"
@@ -293,80 +433,14 @@ If you did not request this account, you can ignore this email.
                 return False, f"Unable to send verification email: {type(e).__name__}"
 
         # -------------------------------------------------------------
-        # 2. Resend HTTP API Provider
+        # 2. HTTP Provider Direct Fallback if SMTP not configured
         # -------------------------------------------------------------
-        resend_key = (
-            os.environ.get("RESEND_API_KEY")
-            or (os.environ.get("EMAIL_API_KEY") if os.environ.get("EMAIL_PROVIDER") == "resend" else None)
-            or getattr(settings, "RESEND_API_KEY", None)
-        )
+        if brevo_key:
+            return _send_brevo(brevo_key)
         if resend_key:
-            try:
-                payload = json.dumps({
-                    "from": from_email,
-                    "to": [to_email],
-                    "subject": subject,
-                    "text": plain_body,
-                    "html": html_body
-                }).encode("utf-8")
-                req = urllib.request.Request(
-                    "https://api.resend.com/emails",
-                    data=payload,
-                    headers={
-                        "Authorization": f"Bearer {resend_key}",
-                        "Content-Type": "application/json"
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=12) as response:
-                    if response.status in (200, 201):
-                        logger.info(f"[AUTH_OTP] Successfully delivered OTP to {to_email} via Resend API.")
-                        return True, "Verification code has been sent to your email."
-            except urllib.error.HTTPError as he:
-                error_body = he.read().decode('utf-8', errors='ignore')
-                logger.error(f"[AUTH_OTP_FAIL] Resend API error {he.code}: {error_body[:200]}")
-                return False, "Unable to send verification email via Resend API. Please try again."
-            except Exception as e:
-                logger.error(f"[AUTH_OTP_FAIL] Resend network error: {type(e).__name__}")
-                return False, "Unable to send verification email. Please try again."
-
-        # -------------------------------------------------------------
-        # 3. SendGrid HTTP API Provider
-        # -------------------------------------------------------------
-        sendgrid_key = (
-            os.environ.get("SENDGRID_API_KEY")
-            or (os.environ.get("EMAIL_API_KEY") if os.environ.get("EMAIL_PROVIDER") == "sendgrid" else None)
-            or getattr(settings, "SENDGRID_API_KEY", None)
-        )
+            return _send_resend(resend_key)
         if sendgrid_key:
-            try:
-                payload = json.dumps({
-                    "personalizations": [{"to": [{"email": to_email}]}],
-                    "from": {"email": from_email},
-                    "subject": subject,
-                    "content": [
-                        {"type": "text/plain", "value": plain_body},
-                        {"type": "text/html", "value": html_body}
-                    ]
-                }).encode("utf-8")
-                req = urllib.request.Request(
-                    "https://api.sendgrid.com/v3/mail/send",
-                    data=payload,
-                    headers={
-                        "Authorization": f"Bearer {sendgrid_key}",
-                        "Content-Type": "application/json"
-                    }
-                )
-                with urllib.request.urlopen(req, timeout=12) as response:
-                    if response.status in (200, 202):
-                        logger.info(f"[AUTH_OTP] Successfully delivered OTP to {to_email} via SendGrid API.")
-                        return True, "Verification code has been sent to your email."
-            except urllib.error.HTTPError as he:
-                error_body = he.read().decode('utf-8', errors='ignore')
-                logger.error(f"[AUTH_OTP_FAIL] SendGrid API error {he.code}: {error_body[:200]}")
-                return False, "Unable to send verification email via SendGrid. Please try again."
-            except Exception as e:
-                logger.error(f"[AUTH_OTP_FAIL] SendGrid network error: {type(e).__name__}")
-                return False, "Unable to send verification email. Please try again."
+            return _send_sendgrid(sendgrid_key)
 
         # -------------------------------------------------------------
         # 4. Testing Environment Mock Fallback

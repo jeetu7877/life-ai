@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     EMAIL_FROM: Optional[str] = None
     RESEND_API_KEY: Optional[str] = None
     SENDGRID_API_KEY: Optional[str] = None
+    BREVO_API_KEY: Optional[str] = None
 
     class Config:
         env_file = ".env"
