@@ -120,8 +120,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
   };
 
   const maskEmail = (raw: string): string => {
-    if (!raw || !raw.includes('@')) return raw || 'your email';
-    const [name, domain] = raw.split('@');
+    if (!raw || typeof raw !== 'string' || !raw.includes('@')) return raw || 'your email';
+    const parts = raw.split('@');
+    const name = parts[0] || '';
+    const domain = parts[1] || '';
+    if (!name) return raw;
     if (name.length <= 2) return `${name[0]}*@${domain}`;
     return `${name.slice(0, 2)}${'*'.repeat(Math.max(2, name.length - 2))}@${domain}`;
   };
