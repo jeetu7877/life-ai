@@ -77,47 +77,47 @@ export const Navbar: React.FC = () => {
 
   return (
     <>
-      <header className="h-16 border-b border-[#202B3D] bg-[#05070B]/95 backdrop-blur-xl px-3 sm:px-6 flex items-center justify-between sticky top-0 z-40 shrink-0 font-['Plus_Jakarta_Sans',sans-serif]">
+      <header className="h-14 sm:h-16 border-b border-[#202B3D] bg-[#05070B]/95 backdrop-blur-xl px-2.5 sm:px-6 flex items-center justify-between sticky top-0 z-40 shrink-0 font-['Plus_Jakarta_Sans',sans-serif] w-full max-w-full min-w-0 box-border select-none">
         {/* Left: Mobile Menu Toggle + Brand */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           {isAuthenticated && (
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(true)}
-              className="md:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-[#141C28] transition-colors cursor-pointer"
+              className="md:hidden p-1.5 sm:p-2 rounded-xl text-slate-300 hover:text-white hover:bg-[#141C28] transition-colors cursor-pointer shrink-0"
               aria-label="Open navigation menu"
             >
               <Menu className="w-5 h-5 text-[#00D9FF]" />
             </button>
           )}
 
-          <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="relative">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-[#00A8FF] via-[#00D9FF] to-[#8B5CF6] flex items-center justify-center shadow-[0_0_20px_rgba(0,217,255,0.4)] transition-transform group-hover:scale-105">
-                <Sparkles className="w-5 h-5 text-white" />
+          <Link to="/" className="flex items-center gap-2 group min-w-0">
+            <div className="relative shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-[#00A8FF] via-[#00D9FF] to-[#8B5CF6] flex items-center justify-center shadow-[0_0_20px_rgba(0,217,255,0.4)] transition-transform group-hover:scale-105">
+                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#22C55E] border-2 border-[#05070B]" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h1 className="text-base sm:text-xl font-bold tracking-tight text-[#F8FAFC]">
+                <h1 className="text-sm sm:text-xl font-bold tracking-tight text-[#F8FAFC] truncate">
                   Life AI
                 </h1>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#00D9FF]/10 text-[#00D9FF] font-semibold border border-[#00D9FF]/30 hidden xs:inline-block">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#00D9FF]/10 text-[#00D9FF] font-semibold border border-[#00D9FF]/30 hidden xs:inline-block shrink-0">
                   Companion
                 </span>
               </div>
-              <p className="text-[10px] text-[#94A3B8] hidden sm:block">Personal AI Operating System</p>
+              <p className="text-[10px] text-[#94A3B8] hidden sm:block truncate">Personal AI Operating System</p>
             </div>
           </Link>
         </div>
 
-        {/* Center: Voice / Wake-Word Status Pill */}
+        {/* Center: Voice / Wake-Word Status Pill (Shown on Tablet & Desktop) */}
         {isAuthenticated && (
-          <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 rounded-full border border-[#202B3D] bg-[#0A0F18]/90 backdrop-blur-md shadow-inner shrink-0">
-            <div className="flex items-center gap-1.5">
+          <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full border border-[#202B3D] bg-[#0A0F18]/90 backdrop-blur-md shadow-inner shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               <span
-                className={`w-2 h-2 rounded-full transition-all ${
+                className={`w-2 h-2 rounded-full transition-all shrink-0 ${
                   voiceState === 'listening'
                     ? 'bg-[#00D9FF] animate-ping'
                     : voiceState === 'speaking'
@@ -132,13 +132,13 @@ export const Navbar: React.FC = () => {
               <Radio className={`w-3.5 h-3.5 ${voiceState !== 'idle' ? 'text-[#00D9FF] animate-pulse' : 'text-slate-400'}`} />
             </div>
 
-            <span className="text-xs text-slate-300 hidden lg:inline">
+            <span className="text-xs text-slate-300 hidden lg:inline truncate">
               Wake word <span className="font-semibold text-[#00D9FF]">"Hey Life"</span>
             </span>
 
             <button
               onClick={toggleWakeWord}
-              className={`text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full transition-all flex items-center gap-1 cursor-pointer ${
+              className={`text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-full transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
                 isWakeWordEnabled
                   ? 'bg-[#00D9FF]/15 text-[#00D9FF] border border-[#00D9FF]/40 hover:bg-[#00D9FF]/25'
                   : 'bg-[#141C28] text-slate-400 border border-[#202B3D] hover:bg-[#1A2332]'
@@ -166,7 +166,7 @@ export const Navbar: React.FC = () => {
             {/* Clickable Profile Avatar Button */}
             <Link
               to="/profile"
-              className="flex items-center gap-2 px-2 py-1 rounded-xl bg-[#101722] hover:bg-[#16202E] border border-[#202B3D] hover:border-[#00D9FF]/40 transition-all cursor-pointer group shrink-0"
+              className="flex items-center gap-1.5 px-1.5 sm:px-2 py-1 rounded-xl bg-[#101722] hover:bg-[#16202E] border border-[#202B3D] hover:border-[#00D9FF]/40 transition-all cursor-pointer group shrink-0"
               title="View & Edit Profile"
             >
               <div className="w-7 h-7 rounded-lg overflow-hidden border border-[#00D9FF]/30 bg-[#0A0F18] flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm">
@@ -176,7 +176,7 @@ export const Navbar: React.FC = () => {
                   <span>{user?.preferred_name?.[0] || user?.username?.[0] || 'U'}</span>
                 )}
               </div>
-              <span className="hidden md:inline text-xs font-semibold text-slate-200 group-hover:text-[#00D9FF] transition-colors">
+              <span className="hidden md:inline text-xs font-semibold text-slate-200 group-hover:text-[#00D9FF] transition-colors truncate max-w-[100px]">
                 {user?.preferred_name || user?.username || 'Profile'}
               </span>
             </Link>
@@ -184,24 +184,24 @@ export const Navbar: React.FC = () => {
             {/* Direct Settings Link Button */}
             <Link
               to="/settings"
-              className="p-2 rounded-xl border border-[#202B3D] bg-[#101722] hover:bg-[#16202E] text-slate-300 hover:text-[#00D9FF] hover:border-[#00D9FF]/40 transition-all flex items-center justify-center cursor-pointer shrink-0"
+              className="p-1.5 sm:p-2 rounded-xl border border-[#202B3D] bg-[#101722] hover:bg-[#16202E] text-slate-300 hover:text-[#00D9FF] hover:border-[#00D9FF]/40 transition-all flex items-center justify-center cursor-pointer shrink-0"
               title="System Settings"
             >
               <Settings className="w-4 h-4" />
             </Link>
 
-            {/* Sign Out Button */}
+            {/* Sign Out Button (Visible on sm: and up; in Drawer on mobile) */}
             <button
               onClick={logout}
-              className="p-2 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#202B3D] bg-[#101722] text-slate-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all flex items-center gap-1.5 text-xs cursor-pointer shrink-0"
+              className="hidden sm:flex p-2 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#202B3D] bg-[#101722] text-slate-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all items-center gap-1.5 text-xs cursor-pointer shrink-0"
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Sign Out</span>
+              <span>Sign Out</span>
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Link
               to="/login"
               className="px-3.5 py-1.5 rounded-xl border border-[#202B3D] text-xs font-semibold text-slate-300 hover:text-white hover:bg-[#141C28] transition-colors"

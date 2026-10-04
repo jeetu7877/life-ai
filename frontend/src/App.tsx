@@ -47,11 +47,11 @@ const AppShell: React.FC = () => {
 
   // Main Authenticated Application Layout (Full Desktop Width, Virtual Companion Hero)
   return (
-    <div className="h-[100dvh] max-h-screen bg-[#05070B] text-slate-100 flex flex-col font-['Plus_Jakarta_Sans',sans-serif] overflow-hidden">
+    <div className="h-[100dvh] max-h-screen w-full max-w-full bg-[#05070B] text-slate-100 flex flex-col font-['Plus_Jakarta_Sans',sans-serif] overflow-hidden min-w-0">
       <Navbar />
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div className="flex-1 flex overflow-hidden min-h-0 w-full max-w-full min-w-0">
         <Sidebar />
-        <main className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden relative w-full">
+        <main className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden relative w-full max-w-full">
           <Routes>
             <Route
               path="/"

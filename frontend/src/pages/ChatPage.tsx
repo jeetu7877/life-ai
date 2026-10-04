@@ -16,7 +16,6 @@ import {
   FileText,
   Copy,
   Check,
-  Paperclip,
   GraduationCap,
   Globe,
   Code,
@@ -24,7 +23,8 @@ import {
   Brain,
   Edit2,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  ChevronDown
 } from 'lucide-react';
 import companionImg from '../assets/companion/companion-idle.jpg';
 import { useVoice } from '../context/VoiceContext';
@@ -40,6 +40,7 @@ export const ChatPage: React.FC = () => {
   const [showMobileHistory, setShowMobileHistory] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState<boolean>(false);
 
   // Dialogs
   const [convToDelete, setConvToDelete] = useState<string | null>(null);
@@ -47,8 +48,11 @@ export const ChatPage: React.FC = () => {
   const [renameTitleInput, setRenameTitleInput] = useState<string>('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { playAudioResponse, triggerManualListen } = useVoice();
-  const { success, error, info } = useToast();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef<boolean>(true);
+
+  const { playAudioResponse, triggerManualListen, voiceState } = useVoice();
+  const { success, error } = useToast();
 
   // Load conversations on mount
   useEffect(() => {
@@ -77,7 +81,7 @@ export const ChatPage: React.FC = () => {
     try {
       const detail = await api.getConversation(convId);
       setMessages(Array.isArray(detail?.messages) ? detail.messages : []);
-      scrollToBottom();
+      scrollToBottom(true);
     } catch (err) {
       console.error('Error loading conversation messages:', err);
       setMessages([]);
@@ -89,9 +93,20 @@ export const ChatPage: React.FC = () => {
     setMessages([]);
   };
 
-  const scrollToBottom = () => {
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    const isNear = distanceFromBottom < 120;
+    isNearBottomRef.current = isNear;
+    setShowScrollBottomBtn(!isNear);
+  };
+
+  const scrollToBottom = (force: boolean = false) => {
     setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      if (force || isNearBottomRef.current) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
     }, 100);
   };
 
@@ -120,7 +135,7 @@ export const ChatPage: React.FC = () => {
       local_time_str: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
     setMessages(prev => [...prev, tempUserMsg]);
-    scrollToBottom();
+    scrollToBottom(true);
 
     try {
       const res = await api.sendMessage({
@@ -219,8 +234,70 @@ export const ChatPage: React.FC = () => {
     return null;
   };
 
+  // Helper to safely render markdown content with contained code blocks
+  const renderMessageContent = (content: string, msgId: string) => {
+    const codeBlockRegex = /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        const textBefore = content.substring(lastIndex, match.index);
+        parts.push(
+          <span key={`text-${lastIndex}`} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+            {textBefore}
+          </span>
+        );
+      }
+
+      const lang = match[1] || 'code';
+      const code = match[2];
+      const blockKey = `code-${match.index}`;
+
+      parts.push(
+        <div key={blockKey} className="w-full max-w-full min-w-0 my-2.5 overflow-hidden rounded-xl border border-[#202B3D] bg-[#080D15]">
+          <div className="flex items-center justify-between px-3 py-1.5 bg-[#101722] border-b border-[#202B3D] text-[11px] text-slate-400 font-mono">
+            <span className="text-[#00D9FF] font-semibold">{lang}</span>
+            <button
+              type="button"
+              onClick={() => handleCopy(code, `${msgId}-${blockKey}`)}
+              className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer text-[10px]"
+            >
+              {copiedId === `${msgId}-${blockKey}` ? (
+                <>
+                  <Check className="w-3 h-3 text-[#22C55E]" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" /> Copy
+                </>
+              )}
+            </button>
+          </div>
+          <pre className="code-scroll p-3 text-xs font-mono text-emerald-300 leading-relaxed overflow-x-auto m-0">
+            <code>{code}</code>
+          </pre>
+        </div>
+      );
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < content.length) {
+      const textRemaining = content.substring(lastIndex);
+      parts.push(
+        <span key={`text-${lastIndex}`} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+          {textRemaining}
+        </span>
+      );
+    }
+
+    return parts.length > 0 ? parts : <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{content}</span>;
+  };
+
   return (
-    <div className="flex-1 flex h-full min-h-0 overflow-hidden relative">
+    <div className="flex-1 flex h-full min-h-0 overflow-hidden relative w-full max-w-full box-border">
       {/* Mobile Drawer Overlay */}
       {showMobileHistory && (
         <div 
@@ -230,7 +307,7 @@ export const ChatPage: React.FC = () => {
       )}
 
       {/* Conversations Drawer / Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#0A0F18] border-r border-[#202B3D] flex flex-col shrink-0 transition-transform duration-300 lg:static lg:translate-x-0 ${
+      <div className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-[#0A0F18] border-r border-[#202B3D] flex flex-col shrink-0 transition-transform duration-300 lg:static lg:translate-x-0 ${
         showMobileHistory ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       }`}>
         <div className="p-3.5 border-b border-[#202B3D] flex items-center justify-between">
@@ -306,50 +383,58 @@ export const ChatPage: React.FC = () => {
       </div>
 
       {/* Main Chat Stream */}
-      <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden bg-[#05070B] min-w-0">
-        {/* Mobile / Header Chat Bar */}
-        <div className="h-12 border-b border-[#202B3D] px-4 flex items-center justify-between bg-[#0A0F18]/90 backdrop-blur-md shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowMobileHistory(true)}
-              className="lg:hidden px-2.5 py-1 rounded-xl border border-[#202B3D] bg-[#101722] text-slate-300 hover:text-white flex items-center gap-1.5 text-xs cursor-pointer"
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-[#00D9FF]" />
-              <span>History ({conversations.length})</span>
-            </button>
-            <div className="hidden lg:flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#22C55E]"></span>
-              <span className="text-xs font-semibold text-slate-200 truncate max-w-sm">
-                {activeConvId ? (conversations.find(c => c.id === activeConvId)?.title || 'Active Conversation') : 'New Conversation'}
-              </span>
-            </div>
+      <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden bg-[#05070B] min-w-0 w-full max-w-full relative">
+        {/* Mobile / Desktop Header Chat Bar */}
+        <div className="h-12 border-b border-[#202B3D] px-2.5 sm:px-4 flex items-center justify-between bg-[#0A0F18]/90 backdrop-blur-md shrink-0 w-full max-w-full min-w-0 box-border">
+          {/* Left: Mobile History Button */}
+          <button
+            onClick={() => setShowMobileHistory(true)}
+            className="lg:hidden px-2 sm:px-2.5 py-1 rounded-xl border border-[#202B3D] bg-[#101722] text-slate-300 hover:text-white flex items-center gap-1.5 text-xs shrink-0 cursor-pointer"
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-[#00D9FF]" />
+            <span className="hidden xs:inline">History</span>
+            <span className="text-[10px] text-slate-400">({conversations.length})</span>
+          </button>
+
+          {/* Center: Conversation Title */}
+          <div className="flex-1 min-w-0 px-2 text-center flex items-center justify-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#22C55E] shrink-0" />
+            <span className="text-xs font-semibold text-slate-200 truncate max-w-[160px] xs:max-w-xs sm:max-w-md">
+              {activeConvId ? (conversations.find(c => c.id === activeConvId)?.title || 'Conversation') : 'New Conversation'}
+            </span>
           </div>
 
+          {/* Right: New Chat */}
           <button
             onClick={handleStartNewChat}
-            className="text-xs px-3 py-1 rounded-xl bg-gradient-to-r from-[#00A8FF]/15 to-[#8B5CF6]/15 text-[#00D9FF] hover:bg-[#00D9FF]/20 border border-[#00D9FF]/30 flex items-center gap-1.5 font-medium cursor-pointer transition-all"
+            className="text-xs px-2.5 sm:px-3 py-1 rounded-xl bg-gradient-to-r from-[#00A8FF]/15 to-[#8B5CF6]/15 text-[#00D9FF] hover:bg-[#00D9FF]/20 border border-[#00D9FF]/30 flex items-center gap-1 font-medium cursor-pointer transition-all shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>+ New Chat</span>
+            <span className="hidden xs:inline">New Chat</span>
+            <span className="xs:hidden">New</span>
           </button>
         </div>
 
         {/* Messages Stream */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+        <div 
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3.5 sm:space-y-4 w-full max-w-full min-w-0 box-border relative"
+        >
           {messages.length === 0 ? (
-            <div className="py-8 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
-              <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-[#00D9FF]/40 shadow-[0_0_24px_rgba(0,217,255,0.3)] bg-black">
+            <div className="py-6 sm:py-8 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4 px-2 w-full min-w-0">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-2 border-[#00D9FF]/40 shadow-[0_0_24px_rgba(0,217,255,0.3)] bg-black shrink-0">
                 <img src={companionImg} alt="Life AI Companion" className="w-full h-full object-cover object-top" />
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Chat with Life AI Companion</h3>
-                <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+              <div className="w-full min-w-0">
+                <h3 className="text-base sm:text-lg font-bold text-white">Chat with Life AI Companion</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
                   Instant answers from your uploaded college IDs, marksheet, resume, and personal memories.
                 </p>
               </div>
 
               {/* Quick Suggestion Pills */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full pt-2 min-w-0">
                 {[
                   "Mera roll number kya hai?",
                   "What is my college?",
@@ -361,10 +446,10 @@ export const ChatPage: React.FC = () => {
                     onClick={() => {
                       setInputMessage(prompt);
                     }}
-                    className="text-xs p-3 rounded-xl border border-[#202B3D] bg-[#101722] hover:border-[#00D9FF]/40 hover:bg-[#141C28] text-slate-300 text-left transition-all cursor-pointer flex items-center gap-2 group"
+                    className="text-xs p-2.5 sm:p-3 rounded-xl border border-[#202B3D] bg-[#101722] hover:border-[#00D9FF]/40 hover:bg-[#141C28] text-slate-300 text-left transition-all cursor-pointer flex items-center gap-2 group min-w-0 w-full"
                   >
-                    <span className="text-[#00D9FF] opacity-70 group-hover:opacity-100">"</span>
-                    <span className="truncate">{prompt}</span>
+                    <span className="text-[#00D9FF] opacity-70 group-hover:opacity-100 shrink-0">"</span>
+                    <span className="truncate flex-1 min-w-0">{prompt}</span>
                   </button>
                 ))}
               </div>
@@ -377,43 +462,43 @@ export const ChatPage: React.FC = () => {
               return (
                 <div
                   key={msg.id || index}
-                  className={`flex gap-3 max-w-2xl ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
+                  className={`flex gap-2 sm:gap-3 w-full max-w-3xl min-w-0 ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
                 >
                   <div
-                    className={`w-8 h-8 rounded-xl shrink-0 overflow-hidden flex items-center justify-center text-xs font-bold ${
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl shrink-0 overflow-hidden flex items-center justify-center text-xs font-bold ${
                       isUser
                         ? 'bg-gradient-to-tr from-[#00A8FF] to-[#0066FF] text-white shadow-[0_0_12px_rgba(0,168,255,0.4)]'
                         : 'bg-black border border-[#00D9FF]/30 shadow-[0_0_12px_rgba(0,217,255,0.2)]'
                     }`}
                   >
                     {isUser ? (
-                      <UserIcon className="w-4 h-4" />
+                      <UserIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     ) : (
                       <img src={companionImg} alt="Life Companion" className="w-full h-full object-cover object-top" />
                     )}
                   </div>
 
-                  <div className="space-y-1.5 max-w-[85%]">
+                  <div className="space-y-1.5 max-w-[calc(100%-36px)] sm:max-w-[82%] min-w-0 flex-1">
                     <div
-                      className={`p-3.5 rounded-2xl text-sm leading-relaxed ${
+                      className={`p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed break-words [overflow-wrap:anywhere] min-w-0 ${
                         isUser
                           ? 'bg-gradient-to-r from-[#0088EE] to-[#0066DD] text-white rounded-tr-none shadow-[0_0_20px_rgba(0,136,238,0.25)]'
                           : 'bg-[#101722] border border-[#202B3D] text-slate-200 rounded-tl-none shadow-md'
                       }`}
                     >
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      {renderMessageContent(msg.content, msg.id || `msg-${index}`)}
 
                       {/* Structured Identity Card if document field mentioned */}
                       {structured && (
-                        <div className="mt-3 p-3 rounded-xl bg-[#141C28] border border-[#00D9FF]/30 space-y-1 shadow-inner">
-                          <div className="flex items-center justify-between text-xs text-[#00D9FF] font-semibold">
-                            <span className="flex items-center gap-1.5">
-                              <GraduationCap className="w-4 h-4 text-[#00D9FF]" />
-                              {structured.label}
+                        <div className="mt-3 p-2.5 sm:p-3 rounded-xl bg-[#141C28] border border-[#00D9FF]/30 space-y-1 shadow-inner w-full min-w-0 max-w-full">
+                          <div className="flex items-center justify-between text-xs text-[#00D9FF] font-semibold gap-2">
+                            <span className="flex items-center gap-1.5 truncate">
+                              <GraduationCap className="w-4 h-4 text-[#00D9FF] shrink-0" />
+                              <span className="truncate">{structured.label}</span>
                             </span>
                             <button
                               onClick={() => handleCopy(structured.value, msg.id)}
-                              className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                              className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer shrink-0"
                             >
                               {copiedId === msg.id ? (
                                 <>
@@ -426,10 +511,10 @@ export const ChatPage: React.FC = () => {
                               )}
                             </button>
                           </div>
-                          <p className="text-base font-bold font-mono text-white tracking-wider">
+                          <p className="text-sm sm:text-base font-bold font-mono text-white tracking-wider break-all">
                             {structured.value}
                           </p>
-                          <span className="text-[10px] text-slate-400 block pt-0.5">
+                          <span className="text-[10px] text-slate-400 block pt-0.5 truncate">
                             Source: {structured.source}
                           </span>
                         </div>
@@ -437,8 +522,8 @@ export const ChatPage: React.FC = () => {
                     </div>
 
                     {/* Meta info & source badges */}
-                    <div className={`flex items-center gap-2 text-[11px] text-slate-500 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                      <span className="flex items-center gap-1">
+                    <div className={`flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] text-slate-500 min-w-0 max-w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
+                      <span className="flex items-center gap-1 shrink-0">
                         <Clock className="w-3 h-3" />
                         {msg.local_time_str || new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -446,53 +531,53 @@ export const ChatPage: React.FC = () => {
                       {!isUser && msg.audio_url && (
                         <button
                           onClick={() => playAudioResponse(msg.audio_url!)}
-                          className="hover:text-[#00D9FF] flex items-center gap-1 text-[10px] bg-[#101722] px-2 py-0.5 rounded-lg border border-[#202B3D] transition-colors cursor-pointer"
+                          className="hover:text-[#00D9FF] flex items-center gap-1 text-[10px] bg-[#101722] px-2 py-0.5 rounded-lg border border-[#202B3D] transition-colors cursor-pointer shrink-0"
                         >
                           <Volume2 className="w-3 h-3 text-[#00D9FF]" /> Replay
                         </button>
                       )}
 
                       {!isUser && msg.metadata_json?.sources && msg.metadata_json.sources.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1 min-w-0">
                           {msg.metadata_json.sources.map((s, sIdx) => {
                             const src = s.source;
                             if (src === 'github_code') {
                               return (
-                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-mono">
+                                <span key={sIdx} className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-mono shrink-0">
                                   <Code className="w-2.5 h-2.5" /> GitHub Code
                                 </span>
                               );
                             }
                             if (src === 'web_search') {
                               return (
-                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/30 flex items-center gap-1">
+                                <span key={sIdx} className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/30 flex items-center gap-1 shrink-0">
                                   <Globe className="w-2.5 h-2.5" /> Web Cited
                                 </span>
                               );
                             }
                             if (src === 'long_term_memory' || src === 'profile_memory') {
                               return (
-                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/30 flex items-center gap-1">
+                                <span key={sIdx} className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/30 flex items-center gap-1 shrink-0">
                                   <Brain className="w-2.5 h-2.5" /> Memory
                                 </span>
                               );
                             }
                             if (src === 'document_field' || src === 'documents') {
                               return (
-                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-[#00D9FF]/10 text-[#00D9FF] border border-[#00D9FF]/30 flex items-center gap-1">
+                                <span key={sIdx} className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-lg bg-[#00D9FF]/10 text-[#00D9FF] border border-[#00D9FF]/30 flex items-center gap-1 shrink-0">
                                   <FileText className="w-2.5 h-2.5" /> Doc Verified
                                 </span>
                               );
                             }
                             if (src === 'task_planner' || src === 'reminder_service') {
                               return (
-                                <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                <span key={sIdx} className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1 shrink-0">
                                   <CheckSquare className="w-2.5 h-2.5" /> Action
                                 </span>
                               );
                             }
                             return (
-                              <span key={sIdx} className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-800/80 text-slate-300 border border-slate-700 flex items-center gap-1">
+                              <span key={sIdx} className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-lg bg-slate-800/80 text-slate-300 border border-slate-700 flex items-center gap-1 shrink-0">
                                 <FileText className="w-2.5 h-2.5" /> {src.replace('_', ' ')}
                               </span>
                             );
@@ -503,20 +588,20 @@ export const ChatPage: React.FC = () => {
                       {!isUser && msg.metadata_json?.timing && (
                         <div
                           title={`Execution: ${msg.metadata_json.timing.total_ms}ms (Router: ${msg.metadata_json.timing.router_ms || 0}ms, Cache: ${msg.metadata_json.timing.cache_ms || 0}ms, LLM: ${msg.metadata_json.timing.llm_ms || 0}ms) | Intent: ${msg.metadata_json.timing.route || 'GENERAL'}`}
-                          className={`text-[10px] px-2 py-0.5 rounded-lg flex items-center gap-1 font-mono transition-all ${
+                          className={`text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-lg flex items-center gap-1 font-mono transition-all shrink-0 ${
                             !msg.metadata_json.timing.llm_used
                               ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                               : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/25'
                           }`}
                         >
-                          <Sparkles className="w-2.5 h-2.5 text-yellow-400" />
+                          <Sparkles className="w-2.5 h-2.5 text-yellow-400 shrink-0" />
                           <span>{msg.metadata_json.timing.total_ms}ms</span>
                           {!msg.metadata_json.timing.llm_used ? (
-                            <span className="text-[9px] font-semibold text-emerald-400 uppercase tracking-wider">Zero-LLM</span>
+                            <span className="text-[8px] sm:text-[9px] font-semibold text-emerald-400 uppercase tracking-wider">Zero-LLM</span>
                           ) : msg.metadata_json.timing.cache_hit ? (
-                            <span className="text-[9px] font-semibold text-sky-400 uppercase tracking-wider">Cache</span>
+                            <span className="text-[8px] sm:text-[9px] font-semibold text-sky-400 uppercase tracking-wider">Cache</span>
                           ) : (
-                            <span className="text-[9px] text-slate-400 uppercase">{msg.metadata_json.timing.provider || 'AI'}</span>
+                            <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase">{msg.metadata_json.timing.provider || 'AI'}</span>
                           )}
                         </div>
                       )}
@@ -527,21 +612,21 @@ export const ChatPage: React.FC = () => {
             })
           )}
           {isSending && (
-            <div className="flex gap-3 max-w-2xl mr-auto items-center text-xs text-[#00D9FF]">
-              <div className="w-8 h-8 rounded-xl bg-[#101722] border border-[#202B3D] flex items-center justify-center">
+            <div className="flex gap-2 sm:gap-3 max-w-2xl mr-auto items-center text-xs text-[#00D9FF]">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-[#101722] border border-[#202B3D] flex items-center justify-center shrink-0">
                 <Bot className="w-4 h-4 text-[#00D9FF]" />
               </div>
-              <div className="p-3 rounded-2xl bg-[#101722] border border-[#202B3D] flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#00D9FF] animate-ping" />
-                Life AI is thinking & retrieving knowledge...
+              <div className="p-2.5 sm:p-3 rounded-2xl bg-[#101722] border border-[#202B3D] flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#00D9FF] animate-ping shrink-0" />
+                <span className="truncate">Life AI is thinking & retrieving knowledge...</span>
               </div>
             </div>
           )}
           {lastFailedPrompt && (
-            <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-300 flex items-center justify-between gap-3 animate-fadeIn">
-              <div className="flex items-center gap-2">
+            <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-300 flex items-center justify-between gap-2 animate-fadeIn w-full">
+              <div className="flex items-center gap-2 min-w-0">
                 <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span>Failed to send: "{lastFailedPrompt.slice(0, 45)}..."</span>
+                <span className="truncate">Failed to send: "{lastFailedPrompt.slice(0, 35)}..."</span>
               </div>
               <button
                 type="button"
@@ -550,7 +635,7 @@ export const ChatPage: React.FC = () => {
                   setLastFailedPrompt(null);
                   setInputMessage(prompt);
                 }}
-                className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+                className="px-2.5 py-1 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 font-semibold flex items-center gap-1 cursor-pointer shrink-0 text-xs"
               >
                 <RefreshCw className="w-3 h-3" /> Retry
               </button>
@@ -559,22 +644,41 @@ export const ChatPage: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Floating Jump to Latest Button */}
+        {showScrollBottomBtn && (
+          <button
+            type="button"
+            onClick={() => {
+              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              setShowScrollBottomBtn(false);
+            }}
+            className="absolute bottom-20 sm:bottom-24 right-4 sm:right-6 z-30 px-3 py-1.5 rounded-full bg-[#101722]/90 border border-[#00D9FF]/40 text-[#00D9FF] text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5 hover:bg-[#141C28] transition-all cursor-pointer animate-bounce"
+          >
+            <ChevronDown className="w-3.5 h-3.5" />
+            <span>Latest</span>
+          </button>
+        )}
+
         {/* Pinned Bottom Glassmorphic Input Bar */}
-        <div className="shrink-0 p-3 sm:p-4 pb-24 md:pb-4 border-t border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl z-20">
-          <form onSubmit={handleSend} className="max-w-4xl mx-auto flex items-center gap-2">
-            <div className="flex-1 relative flex items-center">
+        <div className="shrink-0 p-2 sm:p-4 pb-20 md:pb-4 border-t border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl z-20 w-full max-w-full min-w-0 box-border safe-bottom">
+          <form onSubmit={handleSend} className="max-w-4xl mx-auto flex items-center gap-1.5 sm:gap-2 w-full min-w-0">
+            <div className="flex-1 min-w-0 relative flex items-center">
               <input
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Ask Life anything about documents, memories, or talk in Hindi & English..."
-                className="w-full bg-[#101722] border border-[#202B3D] rounded-2xl pl-4 pr-11 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#00D9FF] focus:ring-1 focus:ring-[#00D9FF]/30 transition-all shadow-inner"
+                placeholder="Ask Life anything or tap mic..."
+                className="w-full min-w-0 bg-[#101722] border border-[#202B3D] rounded-xl sm:rounded-2xl pl-3 sm:pl-4 pr-10 py-2.5 sm:py-3 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#00D9FF] focus:ring-1 focus:ring-[#00D9FF]/30 transition-all shadow-inner"
               />
               <button
                 type="button"
                 onClick={triggerManualListen}
                 title="Tap to speak"
-                className="absolute right-3 text-slate-400 hover:text-[#00D9FF] transition-colors p-1 cursor-pointer"
+                className={`absolute right-2 sm:right-3 p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  voiceState === 'listening'
+                    ? 'text-[#00D9FF] bg-[#00D9FF]/20 animate-pulse'
+                    : 'text-slate-400 hover:text-[#00D9FF]'
+                }`}
               >
                 <Mic className="w-4 h-4" />
               </button>
@@ -582,9 +686,9 @@ export const ChatPage: React.FC = () => {
             <button
               type="submit"
               disabled={!inputMessage.trim() || isSending}
-              className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#00A8FF] to-[#8B5CF6] hover:from-[#00D9FF] hover:to-[#A855F7] disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center shadow-[0_0_16px_rgba(0,168,255,0.4)] transition-all shrink-0 cursor-pointer"
+              className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-[#00A8FF] to-[#8B5CF6] hover:from-[#00D9FF] hover:to-[#A855F7] disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center shadow-[0_0_16px_rgba(0,168,255,0.4)] transition-all shrink-0 cursor-pointer"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </form>
         </div>
@@ -593,7 +697,7 @@ export const ChatPage: React.FC = () => {
       {/* Rename Conversation Modal */}
       {convToRename && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-sm bg-[#0F1722] border border-[#223147] rounded-2xl p-5 shadow-2xl space-y-4">
+          <div className="w-full max-w-sm bg-[#0F1722] border border-[#223147] rounded-2xl p-5 shadow-2xl space-y-4 mx-3">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Edit2 className="w-4 h-4 text-[#00D9FF]" /> Rename Conversation
             </h3>

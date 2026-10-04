@@ -137,8 +137,8 @@ export const HomeVoicePage: React.FC = () => {
   const displayName = user?.preferred_name || (user?.full_name ? user.full_name.split(' ')[0] : (user?.username || 'Jeet'));
 
   return (
-    <div className="flex-1 overflow-y-auto w-full p-4 sm:p-6 lg:p-8 pb-28 md:pb-8 min-h-0 select-none">
-      <div className="max-w-7xl mx-auto w-full space-y-6">
+    <div className="flex-1 overflow-y-auto w-full max-w-full min-w-0 p-3 sm:p-6 lg:p-8 pb-20 md:pb-8 min-h-0 select-none box-border">
+      <div className="max-w-7xl mx-auto w-full min-w-0 space-y-5 sm:space-y-6">
 
         {/* Advisory and Permission Alerts */}
         {micPermissionError && (

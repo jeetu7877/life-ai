@@ -78,7 +78,7 @@ export const MobileBottomNav: React.FC = () => {
   return (
     <>
       {/* Fixed Bottom Bar on Mobile/Android */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0A0F18]/95 backdrop-blur-xl border-t border-[#202B3D] px-2 py-1.5 flex items-center justify-around shadow-2xl safe-bottom select-none">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0A0F18]/95 backdrop-blur-xl border-t border-[#202B3D] px-1 py-1 grid grid-cols-5 items-center w-full max-w-full shadow-2xl safe-bottom select-none">
         {mainNavItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -86,15 +86,15 @@ export const MobileBottomNav: React.FC = () => {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+                `w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all cursor-pointer text-center ${
                   isActive
                     ? 'text-white font-semibold bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 border border-[#00D9FF]/40 shadow-[0_0_12px_rgba(0,217,255,0.25)]'
                     : 'text-[#94A3B8] hover:text-[#F8FAFC]'
                 }`
               }
             >
-              <Icon className="w-4 h-4 mb-0.5" />
-              <span className="text-[10px] tracking-tight">{item.label}</span>
+              <Icon className="w-4 h-4 mb-0.5 shrink-0" />
+              <span className="text-[10px] tracking-tight truncate w-full px-0.5">{item.label}</span>
             </NavLink>
           );
         })}
@@ -103,15 +103,15 @@ export const MobileBottomNav: React.FC = () => {
         <button
           type="button"
           onClick={() => setIsMoreOpen(true)}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all cursor-pointer text-center ${
             isMoreOpen
               ? 'text-white font-semibold bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 border border-[#00D9FF]/40 shadow-[0_0_12px_rgba(0,217,255,0.25)]'
               : 'text-[#94A3B8] hover:text-[#F8FAFC]'
           }`}
           aria-label="More Features"
         >
-          <LayoutGrid className="w-4 h-4 mb-0.5 text-[#00D9FF]" />
-          <span className="text-[10px] tracking-tight text-[#00D9FF] font-semibold">More</span>
+          <LayoutGrid className="w-4 h-4 mb-0.5 text-[#00D9FF] shrink-0" />
+          <span className="text-[10px] tracking-tight text-[#00D9FF] font-semibold truncate w-full px-0.5">More</span>
         </button>
       </nav>
 

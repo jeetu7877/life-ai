@@ -3,9 +3,42 @@
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply bg-[#05070B] text-[#F8FAFC] min-h-screen overflow-x-hidden;
+  *, *::before, *::after {
+    box-sizing: border-box;
   }
+
+  html, body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply bg-[#05070B] text-[#F8FAFC] min-h-screen;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Safe area insets for mobile devices & display cutouts */
+.safe-bottom {
+  padding-bottom: max(0.375rem, env(safe-area-inset-bottom, 0px));
+}
+
+.safe-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+}
+
+/* Universal text wrapping preventing horizontal overflow from long strings */
+.break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Code block internal scrolling */
+.code-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Custom sleek scrollbar */
