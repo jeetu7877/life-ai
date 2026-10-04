@@ -252,7 +252,10 @@ export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error
 
 export type DetailedVoiceState =
   | 'stopped'
+  | 'disabled'
   | 'idle'
+  | 'initializing'
+  | 'recovering'
   | 'mic_permission'
   | 'starting_mic'
   | 'wake_listening'

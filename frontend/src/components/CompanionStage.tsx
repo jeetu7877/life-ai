@@ -184,21 +184,12 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
             onClick={triggerManualListen}
             title="Tap companion to speak"
           >
-            {/* Idle / Calm Avatar Image (Smooth Fade & Subtle Vitality Breathing) */}
+            {/* Single DOM Avatar Image (Never duplicated or layered) */}
             <img
-              src={idleImage}
+              src={isMouthOpen ? speakingImage : idleImage}
               alt="Life AI Companion"
-              className={`absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-150 transform scale-100 group-hover:scale-[1.02] ${
+              className={`w-full h-full object-cover object-top transition-transform duration-200 transform scale-100 group-hover:scale-[1.02] ${
                 voiceState === 'idle' ? 'animate-breathe' : ''
-              } ${isMouthOpen ? 'opacity-0' : 'opacity-100'}`}
-            />
-
-            {/* Speaking / Talking Avatar Image (Synchronized strictly to actual TTS audio energy) */}
-            <img
-              src={speakingImage}
-              alt="Life AI Companion Speaking"
-              className={`absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-150 transform scale-100 group-hover:scale-[1.02] ${
-                isMouthOpen ? 'opacity-100' : 'opacity-0'
               }`}
             />
 
@@ -306,57 +297,78 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
         />
       </div>
 
-      {/* Dynamic Speech & Transcript Dialog Box */}
-      {(voiceState !== 'idle' || transcript || assistantResponse || voiceError) && (
-        <div className="w-full max-w-[340px] sm:max-w-[420px] md:max-w-[480px] lg:max-w-[540px] xl:max-w-[580px] mt-3.5 p-4 rounded-2xl border border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl text-left shadow-xl animate-fadeIn space-y-3">
-          {/* User Transcript Display */}
-          {(transcript || voiceState === 'listening') && (
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-[#00D9FF] flex items-center gap-1.5">
-                <Mic className="w-3 h-3" />
-                You:
+      {/* Permanent Reserved Speech & Transcript Dialog Box (Zero Layout Shifting) */}
+      <div className="w-full max-w-[340px] sm:max-w-[420px] md:max-w-[480px] lg:max-w-[540px] xl:max-w-[580px] mt-3.5 min-h-[105px] p-4 rounded-2xl border border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl text-left shadow-xl flex flex-col justify-center space-y-2.5">
+        {voiceState !== 'idle' || transcript || assistantResponse || voiceError ? (
+          <>
+            {/* User Transcript Display */}
+            {(transcript || voiceState === 'listening') && (
+              <div className="space-y-1">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-[#00D9FF] flex items-center gap-1.5">
+                  <Mic className="w-3 h-3" />
+                  You:
+                </span>
+                <p className="text-sm text-slate-100 font-medium italic pl-1">
+                  "{transcript || (voiceState === 'listening' ? 'Listening... Speak now' : '')}"
+                </p>
+              </div>
+            )}
+
+            {/* Thinking / Retrieval Indicator */}
+            {voiceState === 'thinking' && (
+              <div className="flex items-center gap-2 text-[#8B5CF6] text-xs font-semibold py-1">
+                <span className="w-2 h-2 rounded-full bg-[#8B5CF6] animate-ping" />
+                {detailedVoiceState === 'transcribing'
+                  ? 'Transcribing audio with Gemini 2.5 Flash...'
+                  : 'Thinking & consulting knowledge vault...'}
+              </div>
+            )}
+
+            {/* Assistant Response Display */}
+            {(assistantResponse || voiceState === 'speaking') && (
+              <div className="space-y-1.5 pt-1 border-t border-[#202B3D]">
+                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-[#EC4899]">
+                  <Volume2 className="w-3.5 h-3.5 animate-pulse" />
+                  Life AI:
+                </div>
+                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal pl-1">
+                  {assistantResponse || '...'}
+                </p>
+              </div>
+            )}
+
+            {/* Backend / Network Error Display */}
+            {voiceError && (
+              <div className="p-2 rounded-xl bg-rose-950/40 border border-rose-500/40 flex items-start gap-2 text-rose-300 text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                <div>
+                  <span className="font-bold block text-rose-300">Backend Notice</span>
+                  <span>{voiceError}</span>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          /* Sleek Standby State (Reserves exact height so layout never jumps) */
+          <div className="flex items-center gap-3 py-1">
+            <span
+              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                isWakeWordEnabled ? 'bg-[#22C55E] animate-pulse' : 'bg-slate-600'
+              }`}
+            />
+            <div className="min-w-0 flex-1">
+              <span className="text-xs text-slate-200 font-semibold block truncate">
+                {isWakeWordEnabled ? `Listening for "${wakeWord}"` : 'Companion in Standby'}
               </span>
-              <p className="text-sm text-slate-100 font-medium italic pl-1">
-                "{transcript || (voiceState === 'listening' ? 'Listening... Speak now' : '')}"
+              <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                {isWakeWordEnabled
+                  ? 'Say "Hey Life" anytime to speak hands-free.'
+                  : 'Tap microphone or turn on voice activation in Settings.'}
               </p>
             </div>
-          )}
-
-          {/* Thinking / Retrieval Indicator */}
-          {voiceState === 'thinking' && (
-            <div className="flex items-center gap-2 text-[#8B5CF6] text-xs font-semibold py-1">
-              <span className="w-2 h-2 rounded-full bg-[#8B5CF6] animate-ping" />
-              {detailedVoiceState === 'transcribing'
-                ? 'Transcribing audio with Gemini 2.5 Flash...'
-                : 'Thinking & consulting knowledge vault...'}
-            </div>
-          )}
-
-          {/* Assistant Response Display */}
-          {(assistantResponse || voiceState === 'speaking') && (
-            <div className="space-y-1.5 pt-1 border-t border-[#202B3D]">
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-[#EC4899]">
-                <Volume2 className="w-3.5 h-3.5 animate-pulse" />
-                Life AI:
-              </div>
-              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal pl-1">
-                {assistantResponse || '...'}
-              </p>
-            </div>
-          )}
-
-          {/* Backend / Network Error Display (Separated from Voice Transcript) */}
-          {voiceError && (
-            <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-500/40 flex items-start gap-2 text-rose-300 text-xs">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
-              <div>
-                <span className="font-bold block text-rose-300">Backend Notice</span>
-                <span>{voiceError}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {/* Voice Diagnostics Modal */}
       <VoiceDiagnosticsModal />

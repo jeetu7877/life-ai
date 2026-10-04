@@ -193,12 +193,12 @@ export const HomeVoicePage: React.FC = () => {
         )}
 
         {/* Responsive Dual-Column Grid on Desktop / Single Column on Mobile */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full min-w-0">
           
           {/* ============================================================== */}
           {/* COLUMN 1 (HERO): VIRTUAL COMPANION STAGE (CENTERPIECE FOCUS)    */}
           {/* ============================================================== */}
-          <div className="lg:col-span-7 xl:col-span-7 flex flex-col items-center justify-center">
+          <div className="lg:col-span-7 xl:col-span-7 flex flex-col items-center justify-center w-full min-w-0">
             {/* Companion Stage (Responsive size, up to 580px on desktop) */}
             <CompanionStage onOpenChat={() => navigate('/chat')} />
           </div>
@@ -206,7 +206,7 @@ export const HomeVoicePage: React.FC = () => {
           {/* ============================================================== */}
           {/* COLUMN 2: COMMAND STATION, ACTIONS & RECENT ACTIVITY            */}
           {/* ============================================================== */}
-          <div className="lg:col-span-5 xl:col-span-5 flex flex-col space-y-5">
+          <div className="lg:col-span-5 xl:col-span-5 flex flex-col space-y-5 w-full min-w-0">
             
             {/* Welcome & Companion Status Card */}
             <div className="p-5 rounded-3xl bg-[#101722]/90 border border-[#202B3D] backdrop-blur-xl shadow-xl space-y-3">
