@@ -133,7 +133,18 @@ def _ensure_indexes(engine):
         "CREATE INDEX IF NOT EXISTS ix_agent_tasks_user_status ON agent_tasks (user_id, status);",
         "CREATE INDEX IF NOT EXISTS ix_agent_reminders_remind ON agent_reminders (user_id, is_triggered, remind_at);",
         "CREATE INDEX IF NOT EXISTS ix_tool_logs_user_tool ON agent_tool_logs (user_id, tool_name);",
-        "CREATE INDEX IF NOT EXISTS ix_conv_summary_conv ON conversation_summaries (conversation_id);"
+        "CREATE INDEX IF NOT EXISTS ix_conv_summary_conv ON conversation_summaries (conversation_id);",
+        "CREATE INDEX IF NOT EXISTS ix_kg_entities_user_type ON knowledge_entities (user_id, entity_type);",
+        "CREATE INDEX IF NOT EXISTS ix_kg_entities_user_name ON knowledge_entities (user_id, name);",
+        "CREATE INDEX IF NOT EXISTS ix_kg_rel_user_type ON knowledge_relationships (user_id, relationship_type);",
+        "CREATE INDEX IF NOT EXISTS ix_kg_rel_source ON knowledge_relationships (user_id, source_entity_id);",
+        "CREATE INDEX IF NOT EXISTS ix_goals_user_status ON personal_goals (user_id, status);",
+        "CREATE INDEX IF NOT EXISTS ix_milestones_goal ON goal_milestones (goal_id, status);",
+        "CREATE INDEX IF NOT EXISTS ix_study_topics_user_weak ON study_topics (user_id, is_weak_spot);",
+        "CREATE INDEX IF NOT EXISTS ix_study_topics_subject ON study_topics (subject_id, status);",
+        "CREATE INDEX IF NOT EXISTS ix_analytics_user_cat ON analytics_events (user_id, category, recorded_at);",
+        "CREATE INDEX IF NOT EXISTS ix_daily_briefs_user_date ON daily_briefs (user_id, brief_date);",
+        "CREATE INDEX IF NOT EXISTS ix_proactive_user_active ON proactive_insights (user_id, is_dismissed, importance);"
     ]
     try:
         with engine.connect() as conn:

@@ -163,6 +163,40 @@ export const api = {
   searchGitHubCode: (query: string, repo_name?: string, top_k: number = 5) =>
     apiClient.post<{ results: any[]; count: number }>('/github/search', { query, repo_name, top_k }).then(r => r.data),
 
+  // Goals & Tasks
+  getGoals: () =>
+    apiClient.get<any[]>('/goals').then(r => r.data),
+  createGoal: (data: { title: string; description?: string; category?: string; priority?: number; target_period_months?: number }) =>
+    apiClient.post('/goals', data).then(r => r.data),
+  getGoalRecommendation: () =>
+    apiClient.get<{ has_action: boolean; recommendation: string; goal?: string; next_milestone?: string; top_task?: string }>('/goals/recommendation').then(r => r.data),
+  updateMilestoneStatus: (milestoneId: string, status: string) =>
+    apiClient.post(`/goals/milestones/${milestoneId}/status`, { status }).then(r => r.data),
+
+  // Study Coach
+  getStudySubjects: () =>
+    apiClient.get<any[]>('/study/subjects').then(r => r.data),
+  createStudyRoadmap: (subject_name: string, category?: string) =>
+    apiClient.post('/study/roadmap', { subject_name, category }).then(r => r.data),
+  getWeakTopics: (subject?: string) =>
+    apiClient.get<any[]>('/study/weak-topics', { params: { subject } }).then(r => r.data),
+
+  // Analytics & Daily Brief
+  getAnalyticsMetrics: () =>
+    apiClient.get<any>('/analytics/metrics').then(r => r.data),
+  getDailyBrief: (brief_type: string = 'morning') =>
+    apiClient.get<any>('/analytics/brief', { params: { brief_type } }).then(r => r.data),
+
+  // Proactive Insights
+  getProactiveInsights: () =>
+    apiClient.get<any[]>('/proactive/insights').then(r => r.data),
+  dismissProactiveInsight: (id: string) =>
+    apiClient.post(`/proactive/insights/${id}/dismiss`).then(r => r.data),
+
+  // Knowledge Graph
+  getKnowledgeGraph: () =>
+    apiClient.get<any>('/knowledge-graph').then(r => r.data),
+
   // Health
   checkHealth: () =>
     apiClient.get('/health').then(r => r.data)

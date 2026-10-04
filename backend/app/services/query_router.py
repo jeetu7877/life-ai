@@ -29,6 +29,13 @@ class QueryIntent(str, Enum):
     MULTI_STEP_AGENT_TASK = "multi_step_agent_task"
     VAULT = "vault"
     TIMELINE = "timeline"
+    GOALS = "goals"
+    STUDY = "study"
+    ANALYTICS = "analytics"
+    DAILY_BRIEF = "daily_brief"
+    WHAT_CHANGED = "what_changed"
+    PROACTIVE = "proactive"
+    KNOWLEDGE_GRAPH = "knowledge_graph"
 
 @dataclass
 class RoutePlan:
@@ -163,6 +170,44 @@ class QueryRouter:
         "mera dost", "mere dost", "kaun hai mera", "kaun hai meri"
     ]
 
+    # Goal patterns
+    GOAL_KEYWORDS = [
+        "current goal", "mera goal", "mere goals", "internship ke liye kya karu",
+        "next step", "what should i do today", "aaj mujhe kya karna chahiye",
+        "goal complete", "milestone", "ambition", "crack internship", "internship target",
+        "mere goal ko complete karne ke liye", "goal ka next step"
+    ]
+
+    # Study patterns
+    STUDY_KEYWORDS = [
+        "javascript me weak", "weak kaha hu", "weak area", "study coach",
+        "weak spot", "padhna chahiye", "quiz", "revision", "study roadmap",
+        "learn javascript", "study progress", "kya padhna chahiye", "aaj kya padhna chahiye"
+    ]
+
+    # Analytics patterns
+    ANALYTICS_KEYWORDS = [
+        "productivity", "analytics", "kitne ghante", "productivity report",
+        "hours logged", "productivity stats", "meri productivity kaisi"
+    ]
+
+    # Daily Brief patterns
+    DAILY_BRIEF_KEYWORDS = [
+        "daily brief", "morning brief", "aaj ka brief", "evening summary",
+        "weekly review", "today's brief", "today brief"
+    ]
+
+    # What Changed patterns
+    WHAT_CHANGED_KEYWORDS = [
+        "kya change hua", "what changed", "since yesterday", "project me kal se",
+        "project updates", "project changes", "kal se kya change"
+    ]
+
+    # Proactive patterns
+    PROACTIVE_KEYWORDS = [
+        "suggestions", "proactive", "insights", "any advice", "recommendations for me"
+    ]
+
     def classify_intent(self, user_message: str) -> Tuple[QueryIntent, Optional[str]]:
         """
         Classifies user query intent in <1 millisecond.
@@ -258,15 +303,82 @@ class QueryRouter:
                 cacheable=False
             )
 
+        # 5b. Check Daily Brief
+        if any(bk in lower for bk in self.DAILY_BRIEF_KEYWORDS):
+            return RoutePlan(
+                intent=QueryIntent.DAILY_BRIEF,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 5c. Check What Changed Engine
+        if any(wck in lower for wck in self.WHAT_CHANGED_KEYWORDS):
+            return RoutePlan(
+                intent=QueryIntent.WHAT_CHANGED,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=False
+            )
+
+        # 5d. Check Analytics
+        if any(ak in lower for ak in self.ANALYTICS_KEYWORDS):
+            return RoutePlan(
+                intent=QueryIntent.ANALYTICS,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 5e. Check Study Coach
+        if any(sk in lower for sk in self.STUDY_KEYWORDS):
+            return RoutePlan(
+                intent=QueryIntent.STUDY,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 5f. Check Personal Goals
+        if any(gk in lower for gk in self.GOAL_KEYWORDS):
+            return RoutePlan(
+                intent=QueryIntent.GOALS,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 5g. Check Proactive Insights
+        if any(pk in lower for pk in self.PROACTIVE_KEYWORDS):
+            return RoutePlan(
+                intent=QueryIntent.PROACTIVE,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=False
+            )
+
         # 6. Check Timeline / Activity
         if any(tk in lower for tk in self.TIMELINE_KEYWORDS):
+            is_simple_yesterday = any(w in lower for w in ["kal kya", "yesterday", "aaj kya", "kya kiya tha"])
             return RoutePlan(
                 intent=QueryIntent.TIMELINE,
-                can_bypass_llm=False,
+                can_bypass_llm=is_simple_yesterday,
                 requires_db=True,
                 requires_conv_history=True,
-                requires_llm=True,
-                suggested_model="fast",
+                requires_llm=not is_simple_yesterday,
+                suggested_model="none" if is_simple_yesterday else "fast",
                 cacheable=False
             )
 
@@ -345,6 +457,10 @@ class QueryRouter:
     def handle_greeting_fast_path(self, user_message: str) -> str:
         """Sub-millisecond friendly companion response for casual messages."""
         lower = user_message.lower().strip()
+
+        # Wake-word detection prompt response
+        if lower in ["hey life", "life", "hey jeet", "jeet", "hey life!"] or lower.startswith("hey life"):
+            return "Haan, bolo."
 
         if any(w in lower for w in [
             "how you can help", "how can you help", "what can you do", 

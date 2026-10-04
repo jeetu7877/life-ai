@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { api } from '../services/api';
 import { useVoice } from '../context/VoiceContext';
 import { WakeWordIndicator } from '../components/WakeWordIndicator';
 import { VoiceWaveform } from '../components/VoiceWaveform';
@@ -37,6 +38,24 @@ export const HomeVoicePage: React.FC = () => {
 
   const navigate = useNavigate();
 
+  const [proactiveInsights, setProactiveInsights] = useState<any[]>([]);
+  const [recommendation, setRecommendation] = useState<string>('');
+
+  useEffect(() => {
+    // Load proactive alerts and recommendation
+    api.getGoalRecommendation()
+      .then(res => {
+        if (res?.recommendation) setRecommendation(res.recommendation);
+      })
+      .catch(() => {});
+
+    api.getProactiveInsights()
+      .then(ins => {
+        if (Array.isArray(ins)) setProactiveInsights(ins);
+      })
+      .catch(() => {});
+  }, []);
+
   // Recent voice activities (dynamic + fallback history items)
   const [recentActivities] = useState([
     {
@@ -69,28 +88,28 @@ export const HomeVoicePage: React.FC = () => {
       action: () => triggerManualListen()
     },
     {
-      label: "Your Documents",
-      icon: FileText,
+      label: "Goals & Targets",
+      icon: Brain,
       color: "text-[#00A8FF]",
       border: "border-[#00A8FF]/30",
       bg: "bg-[#00A8FF]/10",
-      action: () => navigate('/documents')
+      action: () => navigate('/goals')
     },
     {
-      label: "Personal Memory",
-      icon: Brain,
+      label: "Study Coach",
+      icon: FileText,
       color: "text-[#8B5CF6]",
       border: "border-[#8B5CF6]/30",
       bg: "bg-[#8B5CF6]/10",
-      action: () => navigate('/memories')
+      action: () => navigate('/study')
     },
     {
-      label: "Daily Updates",
+      label: "Productivity",
       icon: Calendar,
       color: "text-[#C026D3]",
       border: "border-[#C026D3]/30",
       bg: "bg-[#C026D3]/10",
-      action: () => navigate('/timeline')
+      action: () => navigate('/analytics')
     }
   ];
 
@@ -129,6 +148,35 @@ export const HomeVoicePage: React.FC = () => {
           >
             Disable
           </button>
+        </div>
+      )}
+
+      {/* Proactive Insights Alert (if any active) */}
+      {proactiveInsights.length > 0 && (
+        <div className="w-full p-3 mb-3 rounded-2xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center gap-2 truncate">
+            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 animate-ping" />
+            <span className="truncate">
+              <strong>{proactiveInsights[0].title}:</strong> {proactiveInsights[0].reason}
+            </span>
+          </div>
+          <button
+            onClick={() => navigate('/goals')}
+            className="px-2.5 py-1 rounded-xl bg-amber-500 text-black font-bold text-[10px] shrink-0 hover:bg-amber-400 cursor-pointer"
+          >
+            Review
+          </button>
+        </div>
+      )}
+
+      {/* AI Daily Recommendation Card */}
+      {recommendation && (
+        <div className="w-full p-3 mb-4 rounded-2xl bg-gradient-to-r from-[#00A8FF]/10 to-[#8B5CF6]/10 border border-[#00D9FF]/25 text-slate-200 text-xs flex items-start gap-2.5 shadow-md">
+          <Sparkles className="w-4 h-4 text-[#00D9FF] shrink-0 mt-0.5 animate-pulse" />
+          <div className="space-y-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#00D9FF]">Today's Recommendation</span>
+            <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">{recommendation}</p>
+          </div>
         </div>
       )}
 

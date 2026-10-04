@@ -21,6 +21,14 @@ from app.services.github_service import github_service
 from app.services.cache_service import cache_service
 from app.services.context_manager import context_manager
 from app.services.llm_providers import model_router
+from app.services.goal_service import goal_service
+from app.services.study_coach_service import study_coach_service
+from app.services.analytics_service import analytics_service
+from app.services.daily_brief_service import daily_brief_service
+from app.services.what_changed_engine import what_changed_engine
+from app.services.proactive_service import proactive_service
+from app.services.knowledge_graph_service import knowledge_graph_service
+from app.services.web_research_agent import web_research_agent
 
 logger = logging.getLogger("life.orchestrator")
 
@@ -200,6 +208,110 @@ class AgentOrchestrator:
                 logger.info(f"[PERF] route=MEMORY_FAST db=fast llm=false total={total_ms}ms")
                 return result
 
+        # FAST PATH 6: Personal Goals & Next Steps (<10ms)
+        if intent == QueryIntent.GOALS:
+            rec_data = goal_service.get_next_recommended_step(db, user_id)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": rec_data["recommendation"],
+                "retrieved_sources": [{"source": "personal_goals", "goal": rec_data.get("goal")}],
+                "tools_executed": [{"tool": "get_next_recommended_step", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=GOALS db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 7: Study Coach & Weak Spots (<15ms)
+        if intent == QueryIntent.STUDY:
+            subject_detected = "JavaScript" if "javascript" in lower_msg or "js" in lower_msg else ("Python" if "python" in lower_msg else "DSA")
+            study_resp = study_coach_service.format_weak_spot_answer(db, user_id, subject_detected)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": study_resp,
+                "retrieved_sources": [{"source": "study_coach", "subject": subject_detected}],
+                "tools_executed": [{"tool": "get_weak_topics", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=STUDY db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 8: Productivity Analytics (<10ms)
+        if intent == QueryIntent.ANALYTICS:
+            analytics_resp = analytics_service.format_productivity_summary(db, user_id)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": analytics_resp,
+                "retrieved_sources": [{"source": "productivity_analytics"}],
+                "tools_executed": [{"tool": "get_aggregated_metrics", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=ANALYTICS db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 9: Daily AI Brief (<15ms)
+        if intent == QueryIntent.DAILY_BRIEF:
+            brief_resp = daily_brief_service.format_brief_text(db, user_id)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": brief_resp,
+                "retrieved_sources": [{"source": "daily_brief"}],
+                "tools_executed": [{"tool": "generate_brief", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=DAILY_BRIEF db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 10: 'What Changed?' Engine (<15ms)
+        if intent == QueryIntent.WHAT_CHANGED:
+            diff_resp = what_changed_engine.format_diff_response(db, user_id, raw_msg)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": diff_resp,
+                "retrieved_sources": [{"source": "what_changed_engine"}],
+                "tools_executed": [{"tool": "analyze_changes_since", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=WHAT_CHANGED db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 11: Timeline (Yesterday / Today Queries) (<10ms)
+        if intent == QueryIntent.TIMELINE and plan.can_bypass_llm:
+            from datetime import timedelta
+            yesterday_str = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+            acts = timeline_service.get_activities_for_date(db, user_id, yesterday_str)
+            if acts:
+                act_lines = [f"• {a.activity_time or ''} {a.title}: {a.description or ''}".strip() for a in acts]
+                timeline_resp = f"Aapne kal ({yesterday_str}) ye kaam kiye the:\n" + "\n".join(act_lines)
+            else:
+                timeline_resp = f"Aapke record ke mutabik kal ({yesterday_str}) ke liye koi specific activity log nahi thi."
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": timeline_resp,
+                "retrieved_sources": [{"source": "timeline", "date": yesterday_str, "records_found": len(acts)}],
+                "tools_executed": [{"tool": "get_activities_for_date", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=TIMELINE db=fast llm=false total={total_ms}ms")
+            return result
+
         # Step 2: Intent-based Tool Dispatch & Context Gathering
         t_tools_start = time.perf_counter()
 
@@ -369,6 +481,25 @@ class AgentOrchestrator:
                 context_memories += "\n=== PUBLIC WEB SEARCH RESULTS ===\n" + "\n".join(web_snippets)
                 retrieved_sources.append({"source": "web_search", "count": len(web_res.data)})
                 tools_executed.append({"tool": "search_web", "status": "success", "count": len(web_res.data)})
+
+        # Check if research/internship query (Web Research Agent)
+        is_internship_search = any(w in lower_msg for w in [
+            "internship opportunities", "internships find", "internship find karo",
+            "suitable for me", "internship khojo", "internship search", "opportunities find"
+        ])
+        if is_internship_search:
+            intern_resp = web_research_agent.format_internship_response(db, user_id)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": intern_resp,
+                "retrieved_sources": [{"source": "web_search", "agent": "web_research_agent"}],
+                "tools_executed": [{"tool": "research_internships", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            return result
 
         timing_metrics["tools_ms"] = round((time.perf_counter() - t_tools_start) * 1000, 2)
 

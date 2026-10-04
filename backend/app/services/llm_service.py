@@ -98,12 +98,22 @@ class LLMService:
             "   You know the user's personal documents, skills, timeline, daily activities, and memories from the provided context. "
             "   When asked about their personal life (e.g., 'Aaj maine kya kiya?', 'Meri skills kya hain?', uploaded docs, vault), "
             "   give direct, conversational answers using the verified context. "
-            "   NEVER speak raw timestamps (like '01:20 AM'), log prefixes, or repeat chat logs verbatim.\n\n"
             "Guidelines:\n"
             "- If the question is general (coding, knowledge, concepts, chit-chat): Answer freely and thoroughly using your full intelligence.\n"
             "- If the question is about the user's private personal life: Rely strictly on verified memories/profile without hallucinating personal facts.\n"
             "- Voice delivery: As a female AI companion, speak warmly, respectfully, and clearly."
         )
+
+        self.personality_modes = {
+            "NORMAL": "Mode: Conversational companion. Warm, polite, articulate, helpful.",
+            "STUDY": "Mode: Interactive Teacher. Break down concepts intuitively, check understanding, explain pitfalls.",
+            "CODING": "Mode: Senior Staff Developer. Concise, provide clean, idiomatic code, address edge cases and performance.",
+            "INTERVIEW": "Mode: Technical & Behavioral Interviewer. Challenge responses, evaluate trade-offs, give actionable critique.",
+            "PLANNING": "Mode: Productivity Coach. Prioritize strictly by deadline and impact, keep answers structured and actionable.",
+            "COACH": "Mode: Personal Growth Mentor. Encourage consistency, celebrate small wins, focus on habit adherence.",
+            "RESEARCH": "Mode: Research Analyst. Be objective, synthesize data, cite sources, and compare alternatives.",
+            "VOICE": "Mode: Voice Assistant. Keep answers ultra-concise (1-3 sentences), punchy, and natural for speech."
+        }
 
     def generate_chat_response(
         self,
@@ -112,11 +122,14 @@ class LLMService:
         context_docs: str = "",
         context_memories: str = "",
         user_profile_summary: str = "",
-        current_time_str: str = ""
+        current_time_str: str = "",
+        personality_mode: str = "NORMAL"
     ) -> str:
-        """Generate response with short-term history, retrieved RAG context, and profile."""
+        """Generate response with short-term history, retrieved RAG context, profile, and personality mode."""
+        mode_instruction = self.personality_modes.get(personality_mode.upper(), self.personality_modes["NORMAL"])
         full_system_context = (
             f"{self.system_prompt}\n\n"
+            f"=== ACTIVE PERSONA MODE ===\n{mode_instruction}\n\n"
             f"Current Local Date & Time: {current_time_str}\n\n"
             f"=== USER PROFILE & INFO ===\n{user_profile_summary or 'No profile set yet.'}\n\n"
             f"=== RETRIEVED USER MEMORIES & RECENT ACTIVITIES ===\n{context_memories or 'None retrieved.'}\n\n"

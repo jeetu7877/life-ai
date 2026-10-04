@@ -9,6 +9,11 @@ from app.routers.voice import router as voice_router
 from app.routers.health import router as health_router
 from app.routers.github import router as github_router
 from app.routers.tasks import router as tasks_router
+from app.routers.knowledge_graph import router as knowledge_graph_router
+from app.routers.goals import router as goals_router
+from app.routers.study import router as study_router
+from app.routers.analytics import router as analytics_router
+from app.routers.proactive import router as proactive_router
 
 __all__ = [
     "auth_router",
@@ -21,5 +26,10 @@ __all__ = [
     "voice_router",
     "health_router",
     "github_router",
-    "tasks_router"
+    "tasks_router",
+    "knowledge_graph_router",
+    "goals_router",
+    "study_router",
+    "analytics_router",
+    "proactive_router"
 ]

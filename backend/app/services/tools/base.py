@@ -11,6 +11,7 @@ class ToolCategory(str, Enum):
     WEB_SEARCH = "web_search"
     ACTION = "action"
     SYSTEM = "system"
+    DATA_RETRIEVAL = "data_retrieval"
 
 class RiskLevel(str, Enum):
     READ_ONLY = "read_only"

@@ -143,6 +143,99 @@ export interface VaultItem {
   updated_at: string;
 }
 
+export interface GoalMilestone {
+  id: string;
+  title: string;
+  order_index: number;
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped';
+  deadline?: string;
+}
+
+export interface PersonalGoal {
+  id: string;
+  title: string;
+  description?: string;
+  category: string;
+  priority: number;
+  status: 'active' | 'in_progress' | 'completed' | 'paused';
+  progress: number;
+  deadline?: string;
+  target_period?: string;
+  created_at: string;
+  milestones: GoalMilestone[];
+}
+
+export interface StudyTopic {
+  id: string;
+  name: string;
+  status: string;
+  mastery_score: number;
+  is_weak_spot: boolean;
+  weakness_reason?: string;
+}
+
+export interface StudySubject {
+  id: string;
+  name: string;
+  category: string;
+  overall_progress: number;
+  confidence_level: string;
+  topics: StudyTopic[];
+}
+
+export interface ProductivityMetrics {
+  today: {
+    study_hours: number;
+    coding_hours: number;
+    project_hours: number;
+    total_hours: number;
+    completed_tasks: number;
+  };
+  this_week: {
+    study_hours: number;
+    coding_hours: number;
+    project_hours: number;
+    total_hours: number;
+    completed_tasks: number;
+  };
+  this_month: {
+    study_hours: number;
+    coding_hours: number;
+    project_hours: number;
+    total_hours: number;
+    completed_tasks: number;
+  };
+  trend: 'improving' | 'declining' | 'consistent';
+  productivity_score: number;
+}
+
+export interface DailyBrief {
+  id: string;
+  brief_type: string;
+  brief_date: string;
+  summary_yesterday: string[];
+  priorities_today: string[];
+  urgent_deadlines: string[];
+  recommendation?: string;
+}
+
+export interface ProactiveInsight {
+  id: string;
+  insight_type: string;
+  title: string;
+  reason: string;
+  importance: number;
+  source: string;
+  action_label?: string;
+  action_payload?: Record<string, any>;
+  created_at?: string;
+}
+
+export interface KnowledgeGraphData {
+  nodes: Array<{ id: string; name: string; type: string }>;
+  edges: Array<{ source: string; target: string; relationship: string; confidence: number; source_provenance: string }>;
+}
+
 export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
 
 export type DetailedVoiceState =

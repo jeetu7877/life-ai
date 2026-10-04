@@ -1,7 +1,7 @@
 import os
 import uuid
 import aiofiles
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -43,28 +43,50 @@ async def transcribe_audio(audio: UploadFile = File(...)):
 
 @router.post("/transcribe-and-respond")
 async def transcribe_and_respond(
-    audio: UploadFile = File(...),
+    request: Request,
     timezone: str = "Asia/Kolkata",
     db: Session = Depends(get_db),
     user: User = Depends(get_optional_user)
 ):
     """
     Hands-Free Voice Flow:
-    1. Transcribes incoming speech audio
+    1. Accepts voice audio (multipart/form-data) or text input (JSON / form)
     2. Runs through the Central Agent Orchestrator (Memory, Docs, Code, Tools)
     3. Synthesizes voice audio response
     4. Returns transcript, text response, and audio playback URL in a single low-latency call.
     """
-    temp_path = os.path.join(settings.UPLOAD_DIRECTORY, f"voice_{uuid.uuid4().hex}_{audio.filename}")
-    async with aiofiles.open(temp_path, "wb") as f:
-        await f.write(await audio.read())
+    content_type = request.headers.get("content-type", "")
+    transcript = ""
 
-    transcript = voice_service.transcribe_audio_file(temp_path)
-    if os.path.exists(temp_path):
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        audio = form.get("audio")
+        if "timezone" in form:
+            timezone = str(form.get("timezone"))
+        if audio and hasattr(audio, "read"):
+            filename = getattr(audio, "filename", "speech.wav") or "speech.wav"
+            temp_path = os.path.join(settings.UPLOAD_DIRECTORY, f"voice_{uuid.uuid4().hex}_{filename}")
+            async with aiofiles.open(temp_path, "wb") as f:
+                await f.write(await audio.read())
+            transcript = voice_service.transcribe_audio_file(temp_path)
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+        elif "text" in form:
+            transcript = str(form.get("text"))
+        elif "transcript" in form:
+            transcript = str(form.get("transcript"))
+    else:
+        # JSON payload
         try:
-            os.remove(temp_path)
+            body = await request.json()
+            transcript = body.get("text") or body.get("transcript") or ""
+            if "timezone" in body:
+                timezone = str(body.get("timezone"))
         except Exception:
-            pass
+            transcript = ""
 
     if not transcript or not transcript.strip():
         return {

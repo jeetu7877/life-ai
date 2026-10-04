@@ -18,7 +18,12 @@ from app.routers import (
     voice_router,
     health_router,
     github_router,
-    tasks_router
+    tasks_router,
+    knowledge_graph_router,
+    goals_router,
+    study_router,
+    analytics_router,
+    proactive_router
 )
 
 # Setup structured logging
@@ -107,6 +112,11 @@ app.include_router(vault_router, prefix=settings.API_V1_PREFIX)
 app.include_router(voice_router, prefix=settings.API_V1_PREFIX)
 app.include_router(github_router, prefix=settings.API_V1_PREFIX)
 app.include_router(tasks_router, prefix=settings.API_V1_PREFIX)
+app.include_router(knowledge_graph_router, prefix=settings.API_V1_PREFIX)
+app.include_router(goals_router, prefix=settings.API_V1_PREFIX)
+app.include_router(study_router, prefix=settings.API_V1_PREFIX)
+app.include_router(analytics_router, prefix=settings.API_V1_PREFIX)
+app.include_router(proactive_router, prefix=settings.API_V1_PREFIX)
 
 # Also expose top-level health
 @app.get("/health")

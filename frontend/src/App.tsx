@@ -8,6 +8,9 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 
 import { HomeVoicePage } from './pages/HomeVoicePage';
 import { ChatPage } from './pages/ChatPage';
+import { GoalsPage } from './pages/GoalsPage';
+import { StudyPage } from './pages/StudyPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 import { MemoryPage } from './pages/MemoryPage';
 import { TimelinePage } from './pages/TimelinePage';
 import { DocumentsPage } from './pages/DocumentsPage';
@@ -30,6 +33,9 @@ export const App: React.FC = () => {
                 <Routes>
                   <Route path="/" element={<HomeVoicePage />} />
                   <Route path="/chat" element={<ChatPage />} />
+                  <Route path="/goals" element={<GoalsPage />} />
+                  <Route path="/study" element={<StudyPage />} />
+                  <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/memories" element={<MemoryPage />} />
                   <Route path="/timeline" element={<TimelinePage />} />
                   <Route path="/documents" element={<DocumentsPage />} />

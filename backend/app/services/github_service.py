@@ -469,5 +469,66 @@ class GitHubService:
             return matched_repo
         return None
 
+    def explain_code_architecture_or_flow(
+        self,
+        db: Session,
+        user_id: str,
+        query: str,
+        repo_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Cross-file architectural understanding:
+        Traces relationships such as auth_controller.py -> auth_service.py -> database.py.
+        """
+        code_chunks = self.search_code(db, user_id, query=query, repo_name=repo_name, top_k=6)
+        if not code_chunks:
+            return {
+                "success": False,
+                "message": "Is query se related koi indexed code chunks nahi mile. Kripya pehle repository sync karein."
+            }
+
+        files_involved = list(set(c["file_path"] for c in code_chunks))
+        snippets = []
+        for c in code_chunks:
+            snippets.append(f"[{c['file_path']} L{c['start_line']}-{c['end_line']}]:\n{c['content']}")
+
+        # Trace dependencies from import statements in content
+        dependencies = {}
+        for c in code_chunks:
+            imports = re.findall(r'(?:from\s+([a-zA-Z0-9_\.]+)\s+import|import\s+([a-zA-Z0-9_\.]+))', c["content"])
+            deps = [imp[0] or imp[1] for imp in imports]
+            if deps:
+                dependencies[c["file_path"]] = deps[:5]
+
+        return {
+            "success": True,
+            "query": query,
+            "files_involved": files_involved,
+            "dependency_graph": dependencies,
+            "code_context": "\n\n".join(snippets[:4]),
+            "summary": f"Identified {len(files_involved)} related source files with active imports: {', '.join(files_involved)}"
+        }
+
+    def propose_code_change_safely(
+        self,
+        file_path: str,
+        proposed_change: str,
+        reason: str
+    ) -> Dict[str, Any]:
+        """
+        Safe Code Modification Workflow (Rule 9):
+        1. Inspects
+        2. Explains proposed change
+        3. Requests explicit user confirmation
+        4. Shows diff preview
+        """
+        return {
+            "file_path": file_path,
+            "reason": reason,
+            "proposed_diff": proposed_change,
+            "requires_user_confirmation": True,
+            "safety_status": "Awaiting user confirmation before write operation."
+        }
+
 github_service = GitHubService()
 

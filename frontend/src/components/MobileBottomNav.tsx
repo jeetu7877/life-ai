@@ -1,10 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Mic, MessageSquare, Brain, Settings } from 'lucide-react';
+import { Mic, MessageSquare, Target, Brain, Settings } from 'lucide-react';
 
 const navItems = [
-  { to: '/', label: 'Voice', icon: Mic },
+  { to: '/', label: 'Home', icon: Mic },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
+  { to: '/goals', label: 'Goals', icon: Target },
   { to: '/memories', label: 'Memories', icon: Brain },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

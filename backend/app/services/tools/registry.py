@@ -11,6 +11,13 @@ from app.services.tools.conversation_tools import ConversationSearchTool
 from app.services.tools.github_tools import GitHubSearchTool, GitHubFileReadTool
 from app.services.tools.web_tools import WebSearchTool
 from app.services.tools.action_tools import TaskCreateTool, TaskListTool, ReminderCreateTool, DestructiveActionTool
+from app.services.tools.knowledge_and_coaching_tools import (
+    GoalActionTool,
+    StudyWeaknessTool,
+    AnalyticsSummaryTool,
+    TimelineQueryTool,
+    KnowledgeGraphTool
+)
 
 logger = logging.getLogger("life.tools")
 
@@ -127,5 +134,12 @@ class ToolRegistry:
         self.register(TaskListTool())
         self.register(ReminderCreateTool())
         self.register(DestructiveActionTool())
+
+        # Goal, Coaching, Analytics & Knowledge Graph Tools
+        self.register(GoalActionTool())
+        self.register(StudyWeaknessTool())
+        self.register(AnalyticsSummaryTool())
+        self.register(TimelineQueryTool())
+        self.register(KnowledgeGraphTool())
 
 tool_registry = ToolRegistry()

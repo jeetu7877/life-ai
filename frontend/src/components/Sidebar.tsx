@@ -3,6 +3,9 @@ import { NavLink } from 'react-router-dom';
 import {
   Mic,
   MessageSquare,
+  Target,
+  GraduationCap,
+  BarChart3,
   Brain,
   Calendar,
   FileText,
@@ -12,8 +15,11 @@ import {
 } from 'lucide-react';
 
 const navItems = [
-  { to: '/', label: 'Voice Home', icon: Mic },
+  { to: '/', label: 'Home Dashboard', icon: Mic },
   { to: '/chat', label: 'Daily Chat', icon: MessageSquare },
+  { to: '/goals', label: 'Goals & Milestones', icon: Target },
+  { to: '/study', label: 'AI Study Coach', icon: GraduationCap },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/memories', label: 'Long-Term Memory', icon: Brain },
   { to: '/timeline', label: 'Timeline', icon: Calendar },
   { to: '/documents', label: 'Documents & RAG', icon: FileText },

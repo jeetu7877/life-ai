@@ -10,6 +10,11 @@ from app.models.connected_account import ConnectedAccount
 from app.models.github import GitHubRepository, CodeChunk
 from app.models.task import AgentTask, AgentReminder
 from app.models.tool_log import AgentToolLog
+from app.models.knowledge_graph import KnowledgeEntity, KnowledgeRelationship
+from app.models.goal import PersonalGoal, GoalMilestone
+from app.models.study import StudySubject, StudyTopic, StudySession
+from app.models.analytics import AnalyticsEvent, DailyBrief
+from app.models.proactive import ProactiveInsight, ProactiveSetting
 
 __all__ = [
     "User",
@@ -28,6 +33,17 @@ __all__ = [
     "CodeChunk",
     "AgentTask",
     "AgentReminder",
-    "AgentToolLog"
+    "AgentToolLog",
+    "KnowledgeEntity",
+    "KnowledgeRelationship",
+    "PersonalGoal",
+    "GoalMilestone",
+    "StudySubject",
+    "StudyTopic",
+    "StudySession",
+    "AnalyticsEvent",
+    "DailyBrief",
+    "ProactiveInsight",
+    "ProactiveSetting"
 ]
 
