@@ -77,8 +77,8 @@ export const MobileBottomNav: React.FC = () => {
 
   return (
     <>
-      {/* Fixed Bottom Bar on Mobile/Android */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0A0F18]/95 backdrop-blur-xl border-t border-[#202B3D] px-1 py-1 grid grid-cols-5 items-center w-full max-w-full shadow-2xl safe-bottom select-none">
+      {/* Bottom Navigation Bar in Mobile AppShell Flow */}
+      <nav className="md:hidden shrink-0 z-40 bg-[#0A0F18]/95 backdrop-blur-xl border-t border-[#202B3D] px-1 py-1 grid grid-cols-5 items-center w-full max-w-full shadow-2xl safe-bottom select-none">
         {mainNavItems.map((item) => {
           const Icon = item.icon;
           return (

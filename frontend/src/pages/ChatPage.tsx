@@ -106,7 +106,14 @@ export const ChatPage: React.FC = () => {
   const scrollToBottom = (force: boolean = false) => {
     setTimeout(() => {
       if (force || isNearBottomRef.current) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTo({
+            top: scrollContainerRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        } else {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
       }
     }, 100);
   };
@@ -423,19 +430,19 @@ export const ChatPage: React.FC = () => {
           className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3.5 sm:space-y-4 w-full max-w-full min-w-0 box-border relative"
         >
           {messages.length === 0 ? (
-            <div className="py-6 sm:py-8 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4 px-2 w-full min-w-0">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-2 border-[#00D9FF]/40 shadow-[0_0_24px_rgba(0,217,255,0.3)] bg-black shrink-0">
+            <div className="py-3 sm:py-6 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-2.5 sm:space-y-4 px-2 w-full min-w-0">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-2 border-[#00D9FF]/40 shadow-[0_0_24px_rgba(0,217,255,0.3)] bg-black shrink-0">
                 <img src={companionImg} alt="Life AI Companion" className="w-full h-full object-cover object-top" />
               </div>
               <div className="w-full min-w-0">
-                <h3 className="text-base sm:text-lg font-bold text-white">Chat with Life AI Companion</h3>
-                <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
+                <h3 className="text-sm sm:text-lg font-bold text-white">Chat with Life AI Companion</h3>
+                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 max-w-xs mx-auto leading-relaxed">
                   Instant answers from your uploaded college IDs, marksheet, resume, and personal memories.
                 </p>
               </div>
 
               {/* Quick Suggestion Pills */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full pt-2 min-w-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 w-full pt-1 min-w-0">
                 {[
                   "Mera roll number kya hai?",
                   "What is my college?",
@@ -661,28 +668,7 @@ export const ChatPage: React.FC = () => {
         )}
 
         {/* Pinned Bottom Glassmorphic Input Bar */}
-        <div className="shrink-0 p-2 sm:p-3.5 pb-20 md:pb-4 border-t border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl z-20 w-full max-w-full min-w-0 box-border safe-bottom">
-          {/* Quick Suggestions Bar horizontally scrollable directly above composer */}
-          <div className="max-w-4xl mx-auto mb-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 px-0.5 min-w-0 w-full">
-            {[
-              "Mera roll number kya hai?",
-              "What is my college?",
-              "Meri bestie ka naam kya hai?",
-              "What are my DBMS marks in semester 5?"
-            ].map((prompt, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => {
-                  setInputMessage(prompt);
-                }}
-                className="text-[11px] whitespace-nowrap px-3 py-1 rounded-full border border-[#202B3D] bg-[#101722]/90 hover:border-[#00D9FF]/40 hover:bg-[#141C28] text-slate-300 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-sm"
-              >
-                <span className="text-[#00D9FF] text-xs font-bold leading-none">"</span>
-                <span className="truncate">{prompt}</span>
-              </button>
-            ))}
-          </div>
+        <div className="shrink-0 p-2.5 sm:p-3 border-t border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl z-20 w-full max-w-full min-w-0 box-border">
 
           <form onSubmit={handleSend} className="max-w-4xl mx-auto flex items-center gap-1.5 sm:gap-2 w-full min-w-0 relative">
             {/* [+] Quick Action Button */}
