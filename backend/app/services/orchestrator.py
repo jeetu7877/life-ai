@@ -241,6 +241,33 @@ class AgentOrchestrator:
                 context_code = "\n\n".join(snippets)
                 retrieved_sources.append({"source": "github_code", "count": len(gh_res.data)})
                 tools_executed.append({"tool": "search_github_code", "status": "success", "count": len(gh_res.data)})
+            else:
+                # Fallback: check if user has connected GitHub account and list their repos
+                try:
+                    from app.models.connected_account import ConnectedAccount
+                    token = github_service.get_user_token(db, user_id)
+                    account = db.query(ConnectedAccount).filter(
+                        ConnectedAccount.user_id == user_id,
+                        ConnectedAccount.provider == "github"
+                    ).first()
+                    if token and account:
+                        uname = account.account_username or "user"
+                        import asyncio
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                            remote_repos = executor.submit(asyncio.run, github_service.list_remote_repositories(token)).result(timeout=4.0)
+                        if remote_repos:
+                            r_lines = [f"• {r['name']} ({r.get('language') or 'General'})" for r in remote_repos[:12]]
+                            context_code = (
+                                f"=== USER GITHUB ACCOUNT CONNECTED (@{uname}) ===\n"
+                                f"The user has connected their GitHub account, but hasn't indexed any code repository into the Code Brain yet.\n"
+                                f"Their active repositories on GitHub are:\n" + "\n".join(r_lines) + "\n\n"
+                                f"Instructions: Inform the user that their GitHub account (@{uname}) is connected, list their available projects from above, and instruct them to index a repository from Settings (or say which repo to index) so you can analyze its code architecture and functions."
+                            )
+                            retrieved_sources.append({"source": "github_remote_repos", "count": len(remote_repos)})
+                            tools_executed.append({"tool": "list_github_repos", "status": "success", "count": len(remote_repos)})
+                except Exception as ex:
+                    logger.debug(f"GitHub fallback listing note: {ex}")
 
         # Tool Check C: Public Web Search
         is_web_intent = any(w in lower_msg for w in [

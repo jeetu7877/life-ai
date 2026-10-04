@@ -62,6 +62,7 @@ export const SettingsPage: React.FC = () => {
   const [ghLoading, setGhLoading] = useState<boolean>(false);
   const [ghMessage, setGhMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [ghIndexedRepos, setGhIndexedRepos] = useState<any[]>([]);
+  const [remoteRepos, setRemoteRepos] = useState<any[]>([]);
 
   const fetchGitHubStatus = async () => {
     try {
@@ -69,6 +70,17 @@ export const SettingsPage: React.FC = () => {
       setGhConnected(data.is_connected);
       if (data.username) setGhUsername(data.username);
       setGhIndexedRepos(data.indexed_repositories || []);
+
+      if (data.is_connected) {
+        try {
+          const rList = await api.listGitHubRepos();
+          if (rList && rList.repositories) {
+            setRemoteRepos(rList.repositories);
+          }
+        } catch {
+          // ignore
+        }
+      }
     } catch {
       // ignore
     }
@@ -99,15 +111,16 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleIndexRepo = async () => {
-    if (!ghRepoInput.trim()) {
+  const handleIndexRepo = async (repoNameOverride?: string) => {
+    const targetRepo = (repoNameOverride || ghRepoInput).trim();
+    if (!targetRepo) {
       setGhMessage({ type: 'error', text: 'Please enter repository name (e.g. vikashyadav/sql-rag).' });
       return;
     }
     setGhLoading(true);
-    setGhMessage({ type: 'info', text: `Indexing repository ${ghRepoInput.trim()}... (fetching tree and AST chunking)` });
+    setGhMessage({ type: 'info', text: `Indexing repository ${targetRepo}... (fetching tree and AST chunking)` });
     try {
-      const res = await api.indexGitHubRepo(ghRepoInput.trim());
+      const res = await api.indexGitHubRepo(targetRepo);
       setGhMessage({ type: 'success', text: `Repository ${res.repository} indexed! ${res.chunks_indexed} code chunks embedded.` });
       setGhRepoInput('');
       await fetchGitHubStatus();
@@ -571,7 +584,7 @@ export const SettingsPage: React.FC = () => {
                 />
                 <button
                   type="button"
-                  onClick={handleIndexRepo}
+                  onClick={() => handleIndexRepo()}
                   disabled={ghLoading}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#00D9FF] to-[#00A8FF] text-black font-bold text-xs hover:opacity-90 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                 >
@@ -579,6 +592,44 @@ export const SettingsPage: React.FC = () => {
                   Index Repo
                 </button>
               </div>
+
+              {/* Remote GitHub Repos List for 1-Click Indexing */}
+              {remoteRepos.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[11px] text-slate-400 font-medium">Your GitHub Repositories (1-click to index):</div>
+                  <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                    {remoteRepos.map((repo) => {
+                      const isAlreadyIndexed = ghIndexedRepos.some((ir) => ir.repo_name.toLowerCase() === repo.name.toLowerCase());
+                      return (
+                        <div key={repo.id} className="p-2.5 rounded-lg bg-[#0A0F18] border border-[#202B3D] flex items-center justify-between text-xs">
+                          <div className="truncate pr-2">
+                            <div className="font-semibold text-slate-200 truncate flex items-center gap-1.5">
+                              <GitBranch className="w-3 h-3 text-[#00D9FF] shrink-0" />
+                              <span className="truncate">{repo.name}</span>
+                              {repo.is_private && <span className="text-[9px] bg-slate-800 text-slate-400 px-1 py-0.2 rounded">Private</span>}
+                            </div>
+                            <div className="text-[10px] text-slate-400 truncate">
+                              {repo.language || 'Code'} {repo.description ? `• ${repo.description}` : ''}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleIndexRepo(repo.name)}
+                            disabled={ghLoading}
+                            className={`px-3 py-1 rounded-lg text-[11px] font-semibold shrink-0 cursor-pointer transition-all ${
+                              isAlreadyIndexed
+                                ? 'bg-[#22C55E]/15 border border-[#22C55E]/40 text-[#22C55E]'
+                                : 'bg-gradient-to-r from-[#00A8FF]/20 to-[#00D9FF]/20 hover:from-[#00A8FF]/40 hover:to-[#00D9FF]/40 border border-[#00D9FF]/40 text-[#00D9FF]'
+                            }`}
+                          >
+                            {isAlreadyIndexed ? 'Re-Index' : 'Index Code'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Indexed Repos List */}
               {ghIndexedRepos.length > 0 && (
