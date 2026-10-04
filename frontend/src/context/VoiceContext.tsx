@@ -16,6 +16,8 @@ interface VoiceContextType {
   voiceResponseEnabled: boolean;
   isNativePlatform: boolean;
   isBatteryOptimizedExempt: boolean;
+  isAudioSpeaking: boolean;
+  audioEnergy: number;
   toggleWakeWord: () => void;
   toggleHandsFreeMode: () => Promise<void>;
   updateWakeWord: (word: string) => void;
@@ -47,6 +49,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [micPermissionError, setMicPermissionError] = useState<boolean>(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isBatteryOptimizedExempt, setIsBatteryOptimizedExempt] = useState<boolean>(true);
+  const [isAudioSpeaking, setIsAudioSpeaking] = useState<boolean>(false);
+  const [audioEnergy, setAudioEnergy] = useState<number>(0);
 
   const isNative = handsFreeService.isNativeAvailable();
 
@@ -59,6 +63,34 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const silenceTimerRef = useRef<any>(null);
   const speechDebounceTimerRef = useRef<any>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const cadenceIntervalRef = useRef<any>(null);
+
+  const stopAudioAnalysis = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (cadenceIntervalRef.current) {
+      clearInterval(cadenceIntervalRef.current);
+      cadenceIntervalRef.current = null;
+    }
+    setIsAudioSpeaking(false);
+    setAudioEnergy(0);
+  };
+
+  const startCadenceFallback = () => {
+    stopAudioAnalysis();
+    cadenceIntervalRef.current = setInterval(() => {
+      if (isSpeakingRef.current) {
+        setIsAudioSpeaking(prev => !prev);
+        setAudioEnergy(Math.random() * 0.5 + 0.4);
+      } else {
+        stopAudioAnalysis();
+      }
+    }, 180);
+  };
 
   // Sync with native Android HandsFreeVoice service events when running inside Android APK
   useEffect(() => {
@@ -387,9 +419,11 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const host = getServerHostUrl();
     const resolvedUrl = url.startsWith('http') ? url : `${host}${url.startsWith('/') ? '' : '/'}${url}`;
     const audio = new Audio(resolvedUrl);
+    audio.crossOrigin = 'anonymous';
     audioPlayerRef.current = audio;
 
     const onFinish = () => {
+      stopAudioAnalysis();
       isSpeakingRef.current = false;
       setVoiceState('listening');
       setTranscript('');
@@ -402,6 +436,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     audio.onended = onFinish;
     audio.onerror = () => {
+      stopAudioAnalysis();
       if (fallbackText) {
         speakText(fallbackText);
       } else {
@@ -409,7 +444,50 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
 
+    // Attach audio analyzer for synchronized lip-sync
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new AudioCtx();
+        }
+        const ctx = audioContextRef.current;
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        const source = ctx.createMediaElementSource(audio);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 64;
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const sampleAudio = () => {
+          if (!isSpeakingRef.current) {
+            stopAudioAnalysis();
+            return;
+          }
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const avg = sum / dataArray.length;
+          const energy = Math.min(1, avg / 110);
+          setAudioEnergy(energy);
+          setIsAudioSpeaking(avg > 8);
+          animationFrameRef.current = requestAnimationFrame(sampleAudio);
+        };
+        animationFrameRef.current = requestAnimationFrame(sampleAudio);
+      } else {
+        startCadenceFallback();
+      }
+    } catch {
+      startCadenceFallback();
+    }
+
     audio.play().catch(() => {
+      stopAudioAnalysis();
       if (fallbackText) {
         speakText(fallbackText);
       } else {
@@ -420,6 +498,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const speakText = (text: string) => {
     if (!window.speechSynthesis) {
+      stopAudioAnalysis();
       setVoiceState('listening');
       resetSilenceTimer();
       return;
@@ -455,6 +534,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     utterance.rate = 0.95;
 
     const onFinish = () => {
+      stopAudioAnalysis();
       isSpeakingRef.current = false;
       setVoiceState('listening');
       setTranscript('');
@@ -463,6 +543,21 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setTimeout(() => {
         startRecognition();
       }, 200);
+    };
+
+    utterance.onstart = () => {
+      startCadenceFallback();
+    };
+
+    utterance.onboundary = () => {
+      setIsAudioSpeaking(true);
+      setAudioEnergy(0.85);
+      setTimeout(() => {
+        if (isSpeakingRef.current) {
+          setIsAudioSpeaking(false);
+          setAudioEnergy(0.1);
+        }
+      }, 120);
     };
 
     utterance.onend = onFinish;
@@ -571,6 +666,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         voiceResponseEnabled,
         isNativePlatform: isNative,
         isBatteryOptimizedExempt,
+        isAudioSpeaking,
+        audioEnergy,
         toggleWakeWord,
         toggleHandsFreeMode,
         updateWakeWord,

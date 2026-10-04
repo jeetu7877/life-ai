@@ -69,9 +69,13 @@ apiClient.interceptors.request.use((config) => {
 export const api = {
   // Auth
   register: (data: { email: string; username: string; password: string; full_name?: string }) =>
-    apiClient.post<AuthResponse>('/auth/register', data).then(r => r.data),
+    apiClient.post<{ success: boolean; message: string; email: string; requires_otp: boolean; expires_in_seconds: number }>('/auth/register', data).then(r => r.data),
   login: (data: { username_or_email: string; password: string }) =>
     apiClient.post<AuthResponse>('/auth/login', data).then(r => r.data),
+  verifyOtp: (data: { email: string; otp: string }) =>
+    apiClient.post<AuthResponse>('/auth/verify-otp', data).then(r => r.data),
+  resendOtp: (email: string) =>
+    apiClient.post<{ success: boolean; message: string; resend_cooldown_seconds?: number }>('/auth/resend-otp', { email }).then(r => r.data),
   getMe: () => apiClient.get<User>('/auth/me').then(r => r.data),
   verifyEmail: (token: string) =>
     apiClient.post<{ message: string; user: any }>('/auth/verify-email', { token }).then(r => r.data),

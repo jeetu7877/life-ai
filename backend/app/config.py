@@ -64,6 +64,16 @@ class Settings(BaseSettings):
         "capacitor://localhost"
     ]
 
+    # Email OTP & Transactional Verification Provider
+    EMAIL_PROVIDER: str = "smtp"  # "smtp", "resend", "sendgrid", or "console"
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASS: Optional[str] = None
+    SMTP_FROM: str = "no-reply@life-ai.com"
+    RESEND_API_KEY: Optional[str] = None
+    SENDGRID_API_KEY: Optional[str] = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

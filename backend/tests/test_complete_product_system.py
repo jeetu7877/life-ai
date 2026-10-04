@@ -14,7 +14,7 @@ client = TestClient(app)
 
 @pytest.fixture
 def auth_client():
-    """Register and login a clean user for complete product system tests."""
+    """Register, verify, and login a clean user for complete product system tests."""
     username = f"prod_user_{int(time.time() * 1000)}"
     email = f"{username}@example.com"
     password = "StrongPassword123!"
@@ -26,7 +26,23 @@ def auth_client():
         "full_name": "Product Test User"
     })
     assert reg_resp.status_code == 200
-    token = reg_resp.json()["access_token"]
+
+    # Activate user in DB
+    db = SessionLocal()
+    u = db.query(User).filter(User.email == email).first()
+    assert u is not None
+    u.is_verified = True
+    u.is_active = True
+    db.commit()
+    db.close()
+
+    # Login to acquire token
+    login_resp = client.post("/api/v1/auth/login", json={
+        "username_or_email": username,
+        "password": password
+    })
+    assert login_resp.status_code == 200
+    token = login_resp.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     return {

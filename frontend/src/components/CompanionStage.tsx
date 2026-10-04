@@ -27,13 +27,13 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
     isWakeWordEnabled,
     isHandsFreeMode,
     wakeWord,
+    isAudioSpeaking,
+    audioEnergy,
     toggleWakeWord,
     toggleHandsFreeMode,
     triggerManualListen
   } = useVoice();
 
-  // Talking mouth animation cycle when speaking
-  const [mouthOpen, setMouthOpen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'companion' | 'orb'>(() => {
     return (localStorage.getItem('life_companion_view_mode') as 'companion' | 'orb') || 'companion';
   });
@@ -43,19 +43,8 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
     localStorage.setItem('life_companion_view_mode', mode);
   };
 
-  useEffect(() => {
-    if (voiceState !== 'speaking') {
-      setMouthOpen(false);
-      return;
-    }
-
-    // Realistic speech cadence mouth fluctuation
-    const interval = setInterval(() => {
-      setMouthOpen((prev) => !prev);
-    }, 220);
-
-    return () => clearInterval(interval);
-  }, [voiceState]);
+  // Audio-driven mouth state: open strictly when audio sound energy is present; closed on pauses/silence
+  const isMouthOpen = voiceState === 'speaking' && isAudioSpeaking;
 
   // Determine state aura colors and labels
   const getStateMeta = () => {
@@ -151,12 +140,14 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
       </div>
 
       {/* Primary Companion Stage Container */}
-      <div className="relative w-full max-w-[340px] sm:max-w-[380px] aspect-square rounded-3xl overflow-hidden bg-black border border-[#202B3D] shadow-[0_10px_35px_rgba(0,0,0,0.8)] flex items-center justify-center group">
+      <div className="relative w-full max-w-[340px] sm:max-w-[420px] md:max-w-[480px] lg:max-w-[540px] xl:max-w-[580px] aspect-square rounded-3xl overflow-hidden bg-black border border-[#202B3D] shadow-[0_15px_45px_rgba(0,0,0,0.85)] flex items-center justify-center group">
         {/* Dynamic State Ambient Glow / Rim Halo */}
         <div
-          className="absolute inset-0 pointer-events-none transition-all duration-700 ease-out z-10"
+          className="absolute inset-0 pointer-events-none transition-all duration-300 ease-out z-10"
           style={{
-            boxShadow: `inset 0 0 60px ${meta.glowColor}, 0 0 40px ${meta.glowColor}`
+            boxShadow: voiceState === 'speaking'
+              ? `inset 0 0 ${50 + Math.round(audioEnergy * 40)}px ${meta.glowColor}, 0 0 ${35 + Math.round(audioEnergy * 50)}px ${meta.glowColor}`
+              : `inset 0 0 60px ${meta.glowColor}, 0 0 40px ${meta.glowColor}`
           }}
         />
 
@@ -169,21 +160,21 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
             onClick={triggerManualListen}
             title="Tap companion to speak"
           >
-            {/* Idle / Calm Avatar Image (Smooth Fade) */}
+            {/* Idle / Calm Avatar Image (Smooth Fade & Subtle Vitality Breathing) */}
             <img
               src={idleImage}
               alt="Life AI Companion"
-              className={`absolute inset-0 w-full h-full object-cover object-top transition-all duration-300 transform scale-100 group-hover:scale-[1.02] ${
-                mouthOpen && voiceState === 'speaking' ? 'opacity-0' : 'opacity-100'
-              }`}
+              className={`absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-150 transform scale-100 group-hover:scale-[1.02] ${
+                voiceState === 'idle' ? 'animate-breathe' : ''
+              } ${isMouthOpen ? 'opacity-0' : 'opacity-100'}`}
             />
 
-            {/* Speaking / Talking Avatar Image (Smooth Fade during active speech) */}
+            {/* Speaking / Talking Avatar Image (Synchronized strictly to actual TTS audio energy) */}
             <img
               src={speakingImage}
               alt="Life AI Companion Speaking"
-              className={`absolute inset-0 w-full h-full object-cover object-top transition-all duration-300 transform scale-100 group-hover:scale-[1.02] ${
-                mouthOpen && voiceState === 'speaking' ? 'opacity-100' : 'opacity-0'
+              className={`absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-150 transform scale-100 group-hover:scale-[1.02] ${
+                isMouthOpen ? 'opacity-100' : 'opacity-0'
               }`}
             />
 
@@ -204,8 +195,8 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
             )}
 
             {/* Bottom Floating Control Bar on Companion */}
-            <div className="absolute bottom-3 inset-x-3 z-20 flex items-center justify-between pointer-events-auto bg-black/60 backdrop-blur-md px-3 py-2 rounded-2xl border border-white/10 shadow-lg">
-              <div className="flex items-center gap-2">
+            <div className="absolute bottom-3 inset-x-3 z-20 flex items-center justify-between pointer-events-auto bg-black/60 backdrop-blur-md px-3.5 py-2.5 rounded-2xl border border-white/10 shadow-lg">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -222,9 +213,9 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
                   <Radio className="w-3.5 h-3.5" />
                 </button>
                 <div className="text-left">
-                  <span className="text-[11px] font-bold text-white block leading-tight">Life Companion</span>
-                  <span className="text-[9px] text-slate-400 block leading-tight">
-                    {voiceState === 'speaking' ? 'Speaking...' : voiceState === 'listening' ? 'Listening...' : 'Tap to talk'}
+                  <span className="text-[12px] font-bold text-white block leading-tight">Life Companion</span>
+                  <span className="text-[10px] text-slate-400 block leading-tight">
+                    {voiceState === 'speaking' ? (isMouthOpen ? 'Speaking now...' : 'Speaking (pause)...') : voiceState === 'listening' ? 'Listening...' : 'Tap to talk'}
                   </span>
                 </div>
               </div>
@@ -236,7 +227,7 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
                   e.stopPropagation();
                   triggerManualListen();
                 }}
-                className={`p-2 rounded-xl transition-all shadow-md flex items-center justify-center cursor-pointer ${
+                className={`p-2.5 rounded-xl transition-all shadow-md flex items-center justify-center cursor-pointer ${
                   voiceState === 'listening'
                     ? 'bg-[#00D9FF] text-black shadow-[0_0_15px_rgba(0,217,255,0.6)] animate-pulse'
                     : 'bg-gradient-to-r from-[#00A8FF] to-[#8B5CF6] text-white hover:opacity-90'
@@ -277,13 +268,13 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
       </div>
 
       {/* Live Audio Waveform Visualizer */}
-      <div className="mt-3 w-full max-w-[340px] sm:max-w-[380px]">
+      <div className="mt-3 w-full max-w-[340px] sm:max-w-[420px] md:max-w-[480px] lg:max-w-[540px] xl:max-w-[580px]">
         <VoiceWaveform isActive={voiceState === 'listening' || voiceState === 'speaking'} />
       </div>
 
       {/* Dynamic Subtitle / Speech Dialog Box */}
       {(voiceState !== 'idle' || transcript || assistantResponse) && (
-        <div className="w-full max-w-[340px] sm:max-w-[380px] mt-3 p-3.5 rounded-2xl border border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl text-center shadow-xl animate-fadeIn">
+        <div className="w-full max-w-[340px] sm:max-w-[420px] md:max-w-[480px] lg:max-w-[540px] xl:max-w-[580px] mt-3.5 p-4 rounded-2xl border border-[#202B3D] bg-[#0A0F18]/95 backdrop-blur-xl text-center shadow-xl animate-fadeIn">
           {voiceState === 'listening' && (
             <div className="space-y-1">
               <span className="text-[10px] uppercase font-bold tracking-wider text-[#00D9FF]">You are saying:</span>
@@ -301,12 +292,12 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
           )}
 
           {voiceState === 'speaking' && (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-[#EC4899]">
-                <Volume2 className="w-3 h-3 animate-pulse" />
+                <Volume2 className="w-3.5 h-3.5 animate-pulse" />
                 Life Companion:
               </div>
-              <p className="text-xs text-slate-200 leading-relaxed font-normal">
+              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal">
                 {assistantResponse}
               </p>
             </div>

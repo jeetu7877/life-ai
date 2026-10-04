@@ -56,3 +56,16 @@
 .glow-orb {
   box-shadow: 0 0 50px 10px rgba(0, 217, 255, 0.25), 0 0 80px 20px rgba(139, 92, 246, 0.25);
 }
+
+@keyframes subtleBreathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+}
+
+.animate-breathe {
+  animation: subtleBreathe 4.5s ease-in-out infinite;
+}

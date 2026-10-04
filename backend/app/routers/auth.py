@@ -14,6 +14,9 @@ from app.schemas.auth import (
     UserLogin,
     TokenResponse,
     UserResponse,
+    RegisterResponse,
+    VerifyOtpRequest,
+    ResendOtpRequest,
     VerifyEmailRequest,
     ResendVerificationRequest,
     ChangePasswordRequest,
@@ -26,27 +29,80 @@ from app.services.rag_service import rag_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-@router.post("/register", response_model=TokenResponse)
-def register(user_in: UserRegister, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    # Check existing email/username
-    if db.query(User).filter((User.email == user_in.email) | (User.username == user_in.username)).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User with this email or username already exists"
+@router.post("/register", response_model=RegisterResponse)
+def register(user_in: UserRegister, db: Session = Depends(get_db)):
+    clean_email = user_in.email.strip().lower()
+    clean_username = user_in.username.strip()
+
+    # Check existing user
+    existing_user = db.query(User).filter(
+        (User.email == clean_email) | (User.username == clean_username)
+    ).first()
+
+    if existing_user:
+        if existing_user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email or username already exists"
+            )
+        # Unverified existing registration: refresh OTP
+        raw_otp, otp_hash, expires_at = email_service.generate_otp()
+        sent, send_msg = email_service.send_otp_email(
+            to_email=existing_user.email,
+            username=existing_user.username,
+            raw_otp=raw_otp
+        )
+        if not sent:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=send_msg
+            )
+        existing_user.otp_code_hash = otp_hash
+        existing_user.otp_expires_at = expires_at
+        existing_user.otp_attempts = 0
+        existing_user.last_otp_sent_at = datetime.utcnow()
+        if user_in.password:
+            existing_user.hashed_password = get_password_hash(user_in.password)
+        db.commit()
+
+        return RegisterResponse(
+            success=True,
+            message="Verification OTP has been sent to your email. Please verify to activate your account.",
+            email=existing_user.email,
+            requires_otp=True,
+            expires_in_seconds=600,
+            resend_cooldown_seconds=60
         )
 
-    # Automated tests or local mocks can be automatically verified if specified
-    is_test_account = user_in.email.endswith("@test.com") or user_in.email.endswith("@localhost")
-    
-    # Generate cryptographic verification token
-    raw_token, token_hash, expires_at = email_service.generate_verification_token()
+    # Generate 6-digit numeric OTP and link token
+    raw_otp, otp_hash, expires_at = email_service.generate_otp()
+    raw_token, token_hash, _ = email_service.generate_verification_token()
 
+    # Attempt to send OTP email first
+    sent, send_msg = email_service.send_otp_email(
+        to_email=clean_email,
+        username=clean_username,
+        raw_otp=raw_otp
+    )
+
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=send_msg
+        )
+
+    # Create unverified pending user
     new_user = User(
-        email=user_in.email,
-        username=user_in.username,
-        full_name=user_in.full_name or user_in.username,
+        email=clean_email,
+        username=clean_username,
+        full_name=user_in.full_name or clean_username,
         hashed_password=get_password_hash(user_in.password),
-        is_verified=True if is_test_account else False,
+        is_active=False,
+        is_verified=False,
+        otp_code_hash=otp_hash,
+        otp_expires_at=expires_at,
+        otp_attempts=0,
+        last_otp_sent_at=datetime.utcnow(),
         verification_token_hash=token_hash,
         verification_token_expires_at=expires_at
     )
@@ -63,34 +119,30 @@ def register(user_in: UserRegister, background_tasks: BackgroundTasks, db: Sessi
     db.add(profile)
     db.commit()
 
-    # Dispatch verification email via background task
-    background_tasks.add_task(
-        email_service.send_verification_email,
-        to_email=new_user.email,
-        username=new_user.username,
-        raw_token=raw_token
-    )
-
-    token = create_access_token({"sub": new_user.id})
-    return TokenResponse(
-        access_token=token,
-        user_id=new_user.id,
-        username=new_user.username,
+    return RegisterResponse(
+        success=True,
+        message="Verification code sent to your email. Please verify OTP to activate your account.",
         email=new_user.email,
-        is_verified=new_user.is_verified,
-        message="Account created! A verification link has been sent to your email." if not is_test_account else "Account created."
+        requires_otp=True,
+        expires_in_seconds=600,
+        resend_cooldown_seconds=60
     )
 
-@router.post("/login", response_model=TokenResponse)
-def login(login_in: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(
-        (User.username == login_in.username_or_email) | (User.email == login_in.username_or_email)
-    ).first()
-
-    if not user or not verify_password(login_in.password, user.hashed_password):
+@router.post("/verify-otp", response_model=TokenResponse)
+def verify_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
+    """
+    Verifies 6-digit numeric OTP and activates the account.
+    Only after successful OTP verification is a session token issued.
+    """
+    success, message, user = email_service.verify_otp(
+        email=payload.email,
+        entered_otp=payload.otp,
+        db=db
+    )
+    if not success or not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username/email or password"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
         )
 
     token = create_access_token({"sub": user.id})
@@ -99,7 +151,97 @@ def login(login_in: UserLogin, db: Session = Depends(get_db)):
         user_id=user.id,
         username=user.username,
         email=user.email,
-        is_verified=bool(getattr(user, "is_verified", False)),
+        is_verified=True,
+        message="Account verified successfully! Welcome to Life AI."
+    )
+
+@router.post("/resend-otp")
+def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
+    """
+    Resends 6-digit verification OTP with 60-second rate limiting cooldown.
+    """
+    clean_email = payload.email.strip().lower()
+    user = db.query(User).filter(User.email == clean_email).first()
+
+    if not user:
+        # Prevent email enumeration with standard message
+        return {
+            "success": True,
+            "message": "If this email is registered, a new OTP code has been dispatched.",
+            "resend_cooldown_seconds": 60
+        }
+
+    if user.is_verified:
+        return {
+            "success": True,
+            "message": "Your account is already verified. Please sign in.",
+            "is_verified": True
+        }
+
+    # Check 60-second cooldown rate limit
+    allowed, wait_sec = email_service.check_resend_rate_limit(
+        email=user.email,
+        last_sent_at=user.last_otp_sent_at
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Please wait {wait_sec} seconds before requesting a new OTP."
+        )
+
+    raw_otp, otp_hash, expires_at = email_service.generate_otp()
+    sent, send_msg = email_service.send_otp_email(
+        to_email=user.email,
+        username=user.username,
+        raw_otp=raw_otp
+    )
+
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=send_msg
+        )
+
+    user.otp_code_hash = otp_hash
+    user.otp_expires_at = expires_at
+    user.otp_attempts = 0
+    user.last_otp_sent_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "A new 6-digit verification code has been dispatched to your email.",
+        "expires_in_seconds": 600,
+        "resend_cooldown_seconds": 60
+    }
+
+@router.post("/login", response_model=TokenResponse)
+def login(login_in: UserLogin, db: Session = Depends(get_db)):
+    clean_identifier = login_in.username_or_email.strip()
+    user = db.query(User).filter(
+        (User.username == clean_identifier) | (User.email == clean_identifier.lower())
+    ).first()
+
+    if not user or not verify_password(login_in.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username/email or password"
+        )
+
+    # Enforce email verification: Unverified users cannot login
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email before logging in."
+        )
+
+    token = create_access_token({"sub": user.id})
+    return TokenResponse(
+        access_token=token,
+        user_id=user.id,
+        username=user.username,
+        email=user.email,
+        is_verified=True,
         message="Welcome back!"
     )
 

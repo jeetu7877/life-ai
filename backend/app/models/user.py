@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Boolean
+from sqlalchemy import Column, String, DateTime, Boolean, Integer
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -12,10 +12,15 @@ class User(Base):
     username = Column(String(100), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=False)
     is_verified = Column(Boolean, default=False)
     verification_token_hash = Column(String(255), nullable=True)
     verification_token_expires_at = Column(DateTime, nullable=True)
+    otp_code_hash = Column(String(255), nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+    otp_attempts = Column(Integer, default=0)
+    last_otp_sent_at = Column(DateTime, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
     avatar_url = Column(String(500), nullable=True)
     password_reset_token_hash = Column(String(255), nullable=True)
     password_reset_expires_at = Column(DateTime, nullable=True)

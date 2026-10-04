@@ -37,6 +37,21 @@ class UserResponse(BaseModel):
 class VerifyEmailRequest(BaseModel):
     token: str
 
+class VerifyOtpRequest(BaseModel):
+    email: str
+    otp: str
+
+class ResendOtpRequest(BaseModel):
+    email: str
+
+class RegisterResponse(BaseModel):
+    success: bool = True
+    message: str
+    email: str
+    requires_otp: bool = True
+    expires_in_seconds: int = 600
+    resend_cooldown_seconds: int = 60
+
 class ResendVerificationRequest(BaseModel):
     email: str
 

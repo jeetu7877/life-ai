@@ -12,9 +12,11 @@ import {
   CheckCircle2,
   Server,
   RefreshCw,
-  KeyRound
+  KeyRound,
+  Clock,
+  ArrowLeft
 } from 'lucide-react';
-import { getServerHostUrl } from '../services/api';
+import { api, getServerHostUrl } from '../services/api';
 import axios from 'axios';
 
 interface AuthPageProps {
@@ -24,7 +26,7 @@ interface AuthPageProps {
 export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { login, register, isAuthenticated, isLoading } = useAuth();
+  const { login, register, verifyOtp, isAuthenticated, isLoading } = useAuth();
 
   // If already authenticated, redirect to home
   useEffect(() => {
@@ -37,11 +39,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
   const isRegisterRoute = initialMode === 'register' || location.pathname === '/register';
   const [isRegister, setIsRegister] = useState<boolean>(isRegisterRoute);
 
+  // Authentication Stage: 'credentials' or 'otp_verification'
+  const [authStage, setAuthStage] = useState<'credentials' | 'otp_verification'>('credentials');
+
+  // Credential Form State
   const [fullName, setFullName] = useState<string>('');
   const [username, setUsername] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
+
+  // OTP Verification State
+  const [otpEmail, setOtpEmail] = useState<string>('');
+  const [otpInput, setOtpInput] = useState<string>('');
+  const [otpExpiresIn, setOtpExpiresIn] = useState<number>(600); // 10 minutes in seconds
+  const [resendCooldown, setResendCooldown] = useState<number>(60); // 60s cooldown
+  const [isResendingOtp, setIsResendingOtp] = useState<boolean>(false);
 
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState<string>('');
@@ -57,12 +70,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
     checkServerHealth(currentServerUrl);
   }, [currentServerUrl]);
 
+  // Timer tick for OTP expiration and resend cooldown
+  useEffect(() => {
+    if (authStage !== 'otp_verification') return;
+
+    const timer = setInterval(() => {
+      setOtpExpiresIn((prev) => (prev > 0 ? prev - 1 : 0));
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [authStage]);
+
   const checkServerHealth = async (url: string) => {
     setServerStatus('checking');
     try {
       const cleanUrl = url.trim().replace(/\/+$/, '');
       const res = await axios.get(`${cleanUrl}/health`, { timeout: 6000 });
-      if (res.data?.status === 'ok') {
+      if (res.data?.status === 'ok' || res.data?.status === 'healthy') {
         setServerStatus('online');
       } else {
         setServerStatus('offline');
@@ -80,7 +105,21 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
     checkServerHealth(cleanUrl);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const maskEmail = (raw: string): string => {
+    if (!raw || !raw.includes('@')) return raw;
+    const [name, domain] = raw.split('@');
+    if (name.length <= 2) return `${name[0]}*@${domain}`;
+    return `${name.slice(0, 2)}***@${domain}`;
+  };
+
+  const formatSeconds = (sec: number): string => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // Submit Credentials (Register or Login)
+  const handleSubmitCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -106,21 +145,36 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
         setErrorMsg('Passwords do not match. Please re-enter.');
         return;
       }
+    } else {
+      if (!username.trim()) {
+        setErrorMsg('Please enter your username or email.');
+        return;
+      }
+      if (!password) {
+        setErrorMsg('Please enter your password.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
 
     try {
       if (isRegister) {
-        await register({
+        // Register creates pending account and sends 6-digit OTP
+        const res = await register({
           email: email.trim(),
           username: username.trim(),
           password,
           full_name: fullName.trim()
         });
-        setSuccessMsg('Account created successfully! Welcome to Life AI.');
-        navigate('/', { replace: true });
+
+        setOtpEmail(email.trim());
+        setOtpExpiresIn(res?.expires_in_seconds || 600);
+        setResendCooldown(res?.resend_cooldown_seconds || 60);
+        setAuthStage('otp_verification');
+        setSuccessMsg(res?.message || 'Verification code sent to your email.');
       } else {
+        // Login directly
         await login({
           username_or_email: username.trim(),
           password
@@ -128,7 +182,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
         navigate('/', { replace: true });
       }
     } catch (err: any) {
+      const status = err.response?.status;
       const detail = err.response?.data?.detail;
+
+      // Handle unverified email error on login (403 Forbidden)
+      if (status === 403 && typeof detail === 'string' && detail.toLowerCase().includes('verify')) {
+        const targetEmail = email || username.trim();
+        setOtpEmail(targetEmail);
+        setAuthStage('otp_verification');
+        setErrorMsg('Please verify your email before logging in. Enter the OTP below or request a new one.');
+        return;
+      }
+
       if (typeof detail === 'string') {
         setErrorMsg(detail);
       } else if (Array.isArray(detail) && detail[0]?.msg) {
@@ -143,6 +208,63 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
     }
   };
 
+  // Submit 6-Digit OTP Verification
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    const cleanOtp = otpInput.trim();
+    if (!cleanOtp || cleanOtp.length !== 6 || !/^\d{6}$/.test(cleanOtp)) {
+      setErrorMsg('Please enter a valid 6-digit numeric OTP.');
+      return;
+    }
+
+    if (otpExpiresIn <= 0) {
+      setErrorMsg('OTP has expired. Please request a new code.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      await verifyOtp({
+        email: otpEmail,
+        otp: cleanOtp
+      });
+      setSuccessMsg('Account activated successfully! Redirecting...');
+      setTimeout(() => {
+        navigate('/', { replace: true });
+      }, 500);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      setErrorMsg(typeof detail === 'string' ? detail : 'Verification failed. Please check the OTP.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Resend OTP
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || isResendingOtp || !otpEmail) return;
+
+    setIsResendingOtp(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try {
+      const res = await api.resendOtp(otpEmail);
+      setSuccessMsg(res.message || 'New 6-digit OTP code has been sent to your email.');
+      setResendCooldown(res.resend_cooldown_seconds || 60);
+      setOtpExpiresIn(600);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      setErrorMsg(typeof detail === 'string' ? detail : 'Failed to resend verification OTP.');
+    } finally {
+      setIsResendingOtp(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-[#05070B] font-['Plus_Jakarta_Sans',sans-serif]">
       <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl border border-[#202B3D] bg-[#101722] space-y-6 shadow-2xl relative">
@@ -152,229 +274,382 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
             <Sparkles className="w-8 h-8 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-white tracking-tight">
-            {isRegister ? 'Create Your Account' : 'Welcome to Life AI'}
+            {authStage === 'otp_verification'
+              ? 'Verify Your Email'
+              : isRegister
+              ? 'Create Your Account'
+              : 'Welcome to Life AI'}
           </h2>
           <p className="text-xs text-slate-400">
-            {isRegister
+            {authStage === 'otp_verification'
+              ? 'Enter the 6-digit code sent to activate your account'
+              : isRegister
               ? 'Join Life AI — your personal memory, code, and voice companion'
               : 'Sign in to access your personal memory graph and documents'}
           </p>
         </div>
 
-        {/* Tab Switcher: Sign In vs Create Account */}
-        <div className="flex p-1 bg-[#0A0F18] border border-[#202B3D] rounded-xl">
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegister(false);
-              setErrorMsg('');
-            }}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              !isRegister
-                ? 'bg-gradient-to-r from-[#00A8FF]/20 to-[#00D9FF]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegister(true);
-              setErrorMsg('');
-            }}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              isRegister
-                ? 'bg-gradient-to-r from-[#00A8FF]/20 to-[#00D9FF]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Create Account
-          </button>
-        </div>
-
-        {/* Status Messages */}
-        {errorMsg && (
-          <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300 text-xs flex items-start gap-2.5">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-            <span className="leading-relaxed">{errorMsg}</span>
-          </div>
-        )}
-
-        {successMsg && (
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-xs flex items-start gap-2.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-            <span className="leading-relaxed">{successMsg}</span>
-          </div>
-        )}
-
-        {/* Auth Form */}
-        <form onSubmit={handleSubmit} className="space-y-3.5">
-          {isRegister && (
-            <div>
-              <label className="text-[11px] font-semibold text-slate-300">Full Name</label>
-              <div className="relative mt-1">
-                <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="e.g. Vikash Yadav"
-                  className="w-full bg-[#0A0F18] border border-[#202B3D] rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF]"
-                  required
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="text-[11px] font-semibold text-slate-300">
-              {isRegister ? 'Username' : 'Username or Email'}
-            </label>
-            <div className="relative mt-1">
-              <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={isRegister ? 'Choose a unique username' : 'Enter username or email'}
-                className="w-full bg-[#0A0F18] border border-[#202B3D] rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF]"
-                required
-              />
-            </div>
-          </div>
-
-          {isRegister && (
-            <div>
-              <label className="text-[11px] font-semibold text-slate-300">Email Address</label>
-              <div className="relative mt-1">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  className="w-full bg-[#0A0F18] border border-[#202B3D] rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF]"
-                  required
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="text-[11px] font-semibold text-slate-300">Password</label>
-            <div className="relative mt-1">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full bg-[#0A0F18] border border-[#202B3D] rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF]"
-                required
-              />
-            </div>
-          </div>
-
-          {isRegister && (
-            <div>
-              <label className="text-[11px] font-semibold text-slate-300">Confirm Password</label>
-              <div className="relative mt-1">
-                <KeyRound className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter your password"
-                  className="w-full bg-[#0A0F18] border border-[#202B3D] rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF]"
-                  required
-                />
-              </div>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-[#00A8FF] to-[#8B5CF6] hover:from-[#00D9FF] hover:to-[#A855F7] disabled:opacity-50 text-white text-xs font-bold tracking-wide flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,168,255,0.4)] transition-all cursor-pointer"
-          >
-            {isSubmitting ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>{isRegister ? 'Creating Account...' : 'Signing In...'}</span>
-              </>
-            ) : (
-              <>
-                <span>{isRegister ? 'Complete Registration' : 'Sign In to Life AI'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Verification Link Shortcut */}
-        <div className="text-center pt-1 border-t border-[#1C283B]">
-          <Link
-            to="/verify-email"
-            className="text-[11px] text-slate-400 hover:text-[#00D9FF] transition-colors"
-          >
-            Have a verification token? Verify email here
-          </Link>
-        </div>
-
-        {/* Server Connection Badge & Configuration (Useful for Android APK) */}
-        <div className="pt-2 text-[10px] text-slate-500 flex flex-col items-center gap-1.5">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  serverStatus === 'online'
-                    ? 'bg-emerald-400'
-                    : serverStatus === 'checking'
-                    ? 'bg-amber-400 animate-ping'
-                    : 'bg-red-400'
-                }`}
-              />
-              Server: {serverStatus === 'online' ? 'Online' : serverStatus === 'checking' ? 'Checking...' : 'Offline'}
+        {/* Server Connection Status Indicator */}
+        <div className="p-2.5 rounded-2xl bg-[#0A0F18] border border-[#202B3D] flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2 truncate">
+            <Server className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="text-slate-400 text-[11px] truncate">Server:</span>
+            <span className="text-slate-200 text-[11px] truncate font-mono">
+              {currentServerUrl.replace(/^https?:\/\//, '')}
             </span>
-            <span>•</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {serverStatus === 'online' ? (
+              <span className="flex items-center gap-1 text-[10px] text-[#22C55E] bg-[#22C55E]/10 border border-[#22C55E]/30 px-2 py-0.5 rounded-full font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E]" />
+                Online
+              </span>
+            ) : serverStatus === 'checking' ? (
+              <span className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-full">
+                <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                Connecting
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[10px] text-red-400 bg-red-400/10 border border-red-400/30 px-2 py-0.5 rounded-full font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                Offline
+              </span>
+            )}
+
             <button
               type="button"
               onClick={() => setShowServerConfig(!showServerConfig)}
-              className="text-slate-400 hover:text-[#00D9FF] underline cursor-pointer"
+              className="text-[10px] text-[#00D9FF] hover:underline ml-1 cursor-pointer"
             >
-              {showServerConfig ? 'Hide Server Settings' : 'Change Server URL'}
+              Change
             </button>
           </div>
+        </div>
 
-          {showServerConfig && (
-            <div className="w-full mt-2 p-3 rounded-xl bg-[#0A0F18] border border-[#202B3D] space-y-2 text-left">
-              <label className="text-[10px] text-slate-400 font-semibold block">Backend Server URL</label>
+        {/* Server URL Config Expansion */}
+        {showServerConfig && (
+          <div className="p-3.5 rounded-2xl bg-[#0C121D] border border-[#00D9FF]/30 space-y-2.5 animate-fadeIn">
+            <span className="text-[11px] font-semibold text-slate-300 block">Server API Host URL</span>
+            <div className="flex gap-2">
               <input
                 type="text"
                 value={customServerInput}
                 onChange={(e) => setCustomServerInput(e.target.value)}
-                placeholder="https://life-ai-daoh.onrender.com or http://10.10.202.55:8000"
-                className="w-full bg-[#101722] border border-[#202B3D] rounded-lg px-2.5 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-[#00D9FF]"
+                placeholder="https://life-ai-daoh.onrender.com"
+                className="flex-1 px-3 py-1.5 rounded-xl bg-[#05070B] border border-[#202B3D] text-xs text-white focus:outline-none focus:border-[#00D9FF]"
               />
-              <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSaveCustomServer}
+                className="px-3 py-1.5 rounded-xl bg-[#00D9FF] text-black font-bold text-xs hover:bg-[#00D9FF]/90 cursor-pointer"
+              >
+                Save
+              </button>
+            </div>
+            <div className="flex gap-2 pt-1 text-[10px]">
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomServerInput('https://life-ai-daoh.onrender.com');
+                  localStorage.setItem('life_server_url', 'https://life-ai-daoh.onrender.com');
+                  setCurrentServerUrl('https://life-ai-daoh.onrender.com');
+                  setShowServerConfig(false);
+                  checkServerHealth('https://life-ai-daoh.onrender.com');
+                }}
+                className="text-[#00D9FF] hover:underline cursor-pointer"
+              >
+                Use Render Cloud
+              </button>
+              <span className="text-slate-600">•</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomServerInput('http://10.10.202.55:8000');
+                  localStorage.setItem('life_server_url', 'http://10.10.202.55:8000');
+                  setCurrentServerUrl('http://10.10.202.55:8000');
+                  setShowServerConfig(false);
+                  checkServerHealth('http://10.10.202.55:8000');
+                }}
+                className="text-[#00D9FF] hover:underline cursor-pointer"
+              >
+                Use Local Wi-Fi PC
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Global Error Banner */}
+        {errorMsg && (
+          <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-start gap-2.5 shadow-md animate-fadeIn">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">{errorMsg}</div>
+          </div>
+        )}
+
+        {/* Global Success Banner */}
+        {successMsg && (
+          <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2.5 shadow-md animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">{successMsg}</div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* STAGE 1: CREDENTIALS (SIGN IN / CREATE ACCOUNT)                 */}
+        {/* ============================================================== */}
+        {authStage === 'credentials' && (
+          <>
+            {/* Mode Switcher Tabs */}
+            <div className="flex p-1 rounded-2xl bg-[#0A0F18] border border-[#202B3D]">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegister(false);
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  !isRegister
+                    ? 'bg-[#101722] text-[#00D9FF] border border-[#00D9FF]/40 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegister(true);
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isRegister
+                    ? 'bg-[#101722] text-[#00D9FF] border border-[#00D9FF]/40 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Create Account
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitCredentials} className="space-y-4">
+              {isRegister && (
+                <>
+                  {/* Full Name */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300">Full Name</label>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Vikash Yadav"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-[#0A0F18] border border-[#202B3D] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00D9FF] transition-colors"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Email */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300">Email Address</label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="name@example.com"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-[#0A0F18] border border-[#202B3D] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00D9FF] transition-colors"
+                        required
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Username / Email */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">
+                  {isRegister ? 'Username' : 'Username or Email'}
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder={isRegister ? 'vikash_dev' : 'your_username or email'}
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-[#0A0F18] border border-[#202B3D] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00D9FF] transition-colors"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-[#0A0F18] border border-[#202B3D] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00D9FF] transition-colors"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Confirm Password (Register Only) */}
+              {isRegister && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">Confirm Password</label>
+                  <div className="relative">
+                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-[#0A0F18] border border-[#202B3D] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00D9FF] transition-colors"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#00A8FF] via-[#00D9FF] to-[#8B5CF6] text-black font-bold text-xs shadow-[0_0_20px_rgba(0,217,255,0.3)] hover:opacity-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{isRegister ? 'Create Account' : 'Sign In'}</span>
+                    <ArrowRight className="w-4 h-4 text-black" />
+                  </>
+                )}
+              </button>
+            </form>
+          </>
+        )}
+
+        {/* ============================================================== */}
+        {/* STAGE 2: 6-DIGIT EMAIL OTP VERIFICATION SCREEN                   */}
+        {/* ============================================================== */}
+        {authStage === 'otp_verification' && (
+          <form onSubmit={handleVerifyOtp} className="space-y-5 animate-fadeIn">
+            {/* Top Notice */}
+            <div className="p-4 rounded-2xl bg-[#0A0F18] border border-[#202B3D] text-center space-y-1.5">
+              <span className="text-xs text-slate-400 block">We sent a 6-digit verification code to:</span>
+              <span className="text-sm font-bold text-[#00D9FF] tracking-wide block font-mono">
+                {maskEmail(otpEmail)}
+              </span>
+            </div>
+
+            {/* 6-Digit OTP Input */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300 block text-center">
+                Enter 6-Digit Verification Code
+              </label>
+              <div className="flex justify-center">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={otpInput}
+                  onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="• • • • • •"
+                  autoFocus
+                  className="w-full max-w-[280px] text-center tracking-[12px] text-2xl font-mono font-bold py-3.5 rounded-2xl bg-[#0A0F18] border-2 border-[#00D9FF]/50 text-white focus:outline-none focus:border-[#00D9FF] focus:shadow-[0_0_20px_rgba(0,217,255,0.25)] transition-all"
+                  required
+                />
+              </div>
+
+              {/* Expiration Timer Indicator */}
+              <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400 pt-1">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  OTP expires in{' '}
+                  <strong className={otpExpiresIn < 60 ? 'text-red-400 font-mono' : 'text-slate-200 font-mono'}>
+                    {formatSeconds(otpExpiresIn)}
+                  </strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-3 pt-2">
+              <button
+                type="submit"
+                disabled={isSubmitting || otpInput.length !== 6 || otpExpiresIn <= 0}
+                className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#00A8FF] via-[#00D9FF] to-[#8B5CF6] text-black font-bold text-xs shadow-[0_0_20px_rgba(0,217,255,0.3)] hover:opacity-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                    <span>Verifying Code...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4 text-black" />
+                    <span>Verify Email & Activate Account</span>
+                  </>
+                )}
+              </button>
+
+              {/* Resend OTP Button with 60-Second Cooldown */}
+              <div className="flex items-center justify-between px-1 text-xs">
                 <button
                   type="button"
-                  onClick={handleSaveCustomServer}
-                  className="px-3 py-1 bg-gradient-to-r from-[#00A8FF] to-[#00D9FF] text-black font-bold rounded-lg text-[10px] cursor-pointer"
+                  onClick={() => {
+                    setAuthStage('credentials');
+                    setErrorMsg('');
+                    setSuccessMsg('');
+                  }}
+                  className="text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
                 >
-                  Save & Connect
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to form</span>
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => checkServerHealth(customServerInput)}
-                  className="px-2.5 py-1 bg-[#141E2D] border border-[#202B3D] text-slate-300 rounded-lg text-[10px] cursor-pointer"
+                  onClick={handleResendOtp}
+                  disabled={resendCooldown > 0 || isResendingOtp}
+                  className={`font-semibold transition-colors cursor-pointer ${
+                    resendCooldown > 0 || isResendingOtp
+                      ? 'text-slate-500 cursor-not-allowed'
+                      : 'text-[#00D9FF] hover:underline'
+                  }`}
                 >
-                  Ping
+                  {isResendingOtp
+                    ? 'Dispatching...'
+                    : resendCooldown > 0
+                    ? `Resend OTP in ${resendCooldown}s`
+                    : 'Resend OTP Code'}
                 </button>
               </div>
             </div>
-          )}
+          </form>
+        )}
+
+        {/* Security Footer Notice */}
+        <div className="pt-2 border-t border-[#202B3D] text-center">
+          <p className="text-[10px] text-slate-500 flex items-center justify-center gap-1">
+            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+            256-Bit Cryptographic Memory & OTP Security Active
+          </p>
         </div>
       </div>
     </div>

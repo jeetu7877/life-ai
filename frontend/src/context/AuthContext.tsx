@@ -8,7 +8,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (data: { username_or_email: string; password: string }) => Promise<void>;
-  register: (data: { email: string; username: string; password: string; full_name?: string }) => Promise<void>;
+  register: (data: { email: string; username: string; password: string; full_name?: string }) => Promise<any>;
+  verifyOtp: (data: { email: string; otp: string }) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -106,7 +107,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (data: { email: string; username: string; password: string; full_name?: string }) => {
     setIsLoading(true);
     try {
-      const res = await api.register(data);
+      // Register creates a pending unverified account and dispatches 6-digit OTP
+      return await api.register(data);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const verifyOtp = async (data: { email: string; otp: string }) => {
+    setIsLoading(true);
+    try {
+      const res = await api.verifyOtp(data);
       localStorage.setItem('life_token', res.access_token);
       localStorage.setItem('jeet_token', res.access_token);
       setToken(res.access_token);
@@ -133,6 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         login,
         register,
+        verifyOtp,
         logout,
         refreshUser
       }}

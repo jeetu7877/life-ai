@@ -133,6 +133,21 @@ def _ensure_sqlite_columns(engine):
                 if "password_reset_expires_at" not in user_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME"))
                     logger.info("Migrated users table: added password_reset_expires_at column")
+                if "otp_code_hash" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN otp_code_hash VARCHAR(255)"))
+                    logger.info("Migrated users table: added otp_code_hash column")
+                if "otp_expires_at" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN otp_expires_at DATETIME"))
+                    logger.info("Migrated users table: added otp_expires_at column")
+                if "otp_attempts" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN otp_attempts INTEGER DEFAULT 0"))
+                    logger.info("Migrated users table: added otp_attempts column")
+                if "last_otp_sent_at" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN last_otp_sent_at DATETIME"))
+                    logger.info("Migrated users table: added last_otp_sent_at column")
+                if "verified_at" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN verified_at DATETIME"))
+                    logger.info("Migrated users table: added verified_at column")
 
             # Check profiles table columns
             prof_result = conn.execute(text("PRAGMA table_info(profiles)"))
