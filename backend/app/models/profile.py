@@ -16,6 +16,12 @@ class PersonalProfile(Base):
     college = Column(String(255), nullable=True)
     degree = Column(String(100), nullable=True)
     branch = Column(String(100), nullable=True)
+    batch = Column(String(50), nullable=True)
+    avatar_url = Column(String(500), nullable=True)
+    bio = Column(Text, nullable=True)
+    timezone = Column(String(100), default="Asia/Kolkata")
+    language = Column(String(50), default="Hinglish")
+    theme = Column(String(50), default="dark")
     
     # Structured JSON lists/dictionaries
     skills = Column(JSON, default=list)  # ["Python", "FastAPI", "React"]

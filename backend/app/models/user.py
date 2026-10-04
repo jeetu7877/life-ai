@@ -13,6 +13,12 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False)
+    verification_token_hash = Column(String(255), nullable=True)
+    verification_token_expires_at = Column(DateTime, nullable=True)
+    avatar_url = Column(String(500), nullable=True)
+    password_reset_token_hash = Column(String(255), nullable=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

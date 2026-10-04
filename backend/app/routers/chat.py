@@ -5,7 +5,7 @@ from datetime import datetime
 from app.database import get_db, SessionLocal
 from app.models.user import User
 from app.models.conversation import Conversation, Message
-from app.schemas.chat import MessageCreate, ChatAnswerResponse, ConversationResponse, MessageResponse
+from app.schemas.chat import MessageCreate, ChatAnswerResponse, ConversationResponse, MessageResponse, ConversationUpdate
 from app.security.dependencies import get_optional_user
 from app.services.agent_service import agent_service
 from app.services.memory_service import memory_service
@@ -280,6 +280,25 @@ def get_conversation_detail(conv_id: str, db: Session = Depends(get_db), user: U
     ).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    return conv
+
+@router.patch("/conversations/{conv_id}", response_model=ConversationResponse)
+def rename_conversation(
+    conv_id: str,
+    payload: ConversationUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_optional_user)
+):
+    conv = db.query(Conversation).filter(
+        Conversation.id == conv_id,
+        Conversation.user_id == user.id
+    ).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    conv.title = payload.title.strip() or "Untitled Chat"
+    conv.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(conv)
     return conv
 
 @router.delete("/conversations/{conv_id}")

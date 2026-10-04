@@ -5,6 +5,8 @@ export interface User {
   full_name?: string;
   preferred_name?: string;
   is_active: boolean;
+  is_verified?: boolean;
+  avatar_url?: string;
   created_at: string;
 }
 
@@ -14,6 +16,8 @@ export interface AuthResponse {
   user_id: string;
   username: string;
   email: string;
+  is_verified?: boolean;
+  avatar_url?: string;
 }
 
 export interface Message {
@@ -117,6 +121,14 @@ export interface PersonalProfile {
   current_focus?: string;
   achievements: string[];
   important_dates: Record<string, string>;
+  avatar_url?: string;
+  bio?: string;
+  batch?: string;
+  timezone?: string;
+  language?: string;
+  theme?: string;
+  completion_percentage?: number;
+  missing_fields?: string[];
   updated_at: string;
 }
 

@@ -41,6 +41,10 @@ export const HomeVoicePage: React.FC = () => {
   const [proactiveInsights, setProactiveInsights] = useState<any[]>([]);
   const [recommendation, setRecommendation] = useState<string>('');
 
+  const [recentActivities, setRecentActivities] = useState<
+    Array<{ query: string; reply: string; time: string; source?: string }>
+  >([]);
+
   useEffect(() => {
     // Load proactive alerts and recommendation
     api.getGoalRecommendation()
@@ -54,29 +58,37 @@ export const HomeVoicePage: React.FC = () => {
         if (Array.isArray(ins)) setProactiveInsights(ins);
       })
       .catch(() => {});
-  }, []);
 
-  // Recent voice activities (dynamic + fallback history items)
-  const [recentActivities] = useState([
-    {
-      query: "Mera roll number kya hai?",
-      reply: "Tumhara roll number 24103068 hai (College ID).",
-      time: "2m ago",
-      source: "College ID"
-    },
-    {
-      query: "Meri bestie ka naam kya hai?",
-      reply: "Tumhari bestie ka naam Niku hai.",
-      time: "15m ago",
-      source: "Memory"
-    },
-    {
-      query: "What are my DBMS marks?",
-      reply: "You scored 88/100 in DBMS Semester 5.",
-      time: "1h ago",
-      source: "Marksheet"
-    }
-  ]);
+    // Fetch real recent conversation interactions
+    api.getConversations()
+      .then(async (convs) => {
+        if (Array.isArray(convs) && convs.length > 0) {
+          const latestConvs = convs.slice(0, 3);
+          const realActs: Array<{ query: string; reply: string; time: string; source?: string }> = [];
+          for (const c of latestConvs) {
+            try {
+              const full = await api.getConversation(c.id);
+              if (full?.messages && full.messages.length >= 2) {
+                const uMsg = [...full.messages].reverse().find((m) => m.role === 'user');
+                const aMsg = [...full.messages].reverse().find((m) => m.role === 'assistant');
+                if (uMsg && aMsg) {
+                  realActs.push({
+                    query: uMsg.content,
+                    reply: aMsg.content,
+                    time: new Date(aMsg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    source: c.title
+                  });
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }
+          setRecentActivities(realActs);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const quickActions = [
     {
@@ -263,34 +275,43 @@ export const HomeVoicePage: React.FC = () => {
           </Link>
         </div>
 
-        <div className="space-y-2">
-          {recentActivities.map((item, idx) => (
-            <div
-              key={idx}
-              onClick={() => navigate('/chat')}
-              className="p-3 rounded-2xl bg-[#101722] border border-[#202B3D] hover:border-[#00D9FF]/30 transition-all flex items-center justify-between gap-3 cursor-pointer group"
-            >
-              <div className="flex items-center gap-3 truncate">
-                <div className="w-8 h-8 rounded-xl bg-[#141C28] border border-[#202B3D] flex items-center justify-center text-[#00D9FF] shrink-0">
-                  <Mic className="w-3.5 h-3.5" />
+        {recentActivities.length > 0 ? (
+          <div className="space-y-2">
+            {recentActivities.map((item, idx) => (
+              <div
+                key={idx}
+                onClick={() => navigate('/chat')}
+                className="p-3 rounded-2xl bg-[#101722] border border-[#202B3D] hover:border-[#00D9FF]/30 transition-all flex items-center justify-between gap-3 cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <div className="w-8 h-8 rounded-xl bg-[#141C28] border border-[#202B3D] flex items-center justify-center text-[#00D9FF] shrink-0">
+                    <Mic className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="truncate">
+                    <p className="text-xs font-semibold text-slate-200 group-hover:text-[#00D9FF] transition-colors truncate">
+                      "{item.query}"
+                    </p>
+                    <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                      {item.reply}
+                    </p>
+                  </div>
                 </div>
-                <div className="truncate">
-                  <p className="text-xs font-semibold text-slate-200 group-hover:text-[#00D9FF] transition-colors truncate">
-                    "{item.query}"
-                  </p>
-                  <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                    {item.reply}
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[10px] text-slate-500 font-mono">{item.time}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300" />
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] text-slate-500 font-mono">{item.time}</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300" />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-[#0A0F18]/80 border border-[#202B3D] text-center space-y-1.5">
+            <p className="text-xs font-semibold text-slate-300">No recent interactions yet</p>
+            <p className="text-[11px] text-slate-400">
+              Say "Hey Life" or tap the microphone above to begin speaking with your personal assistant.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

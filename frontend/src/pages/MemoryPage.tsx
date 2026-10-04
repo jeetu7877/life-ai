@@ -17,8 +17,11 @@ import {
   MoreVertical,
   Layers
 } from 'lucide-react';
+import { useToast } from '../components/ui/Toast';
+import { ConfirmationDialog } from '../components/ui/ConfirmationDialog';
 
 export const MemoryPage: React.FC = () => {
+  const { success, error, info } = useToast();
   const [memories, setMemories] = useState<Memory[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedType, setSelectedType] = useState<string>('all');
@@ -27,7 +30,7 @@ export const MemoryPage: React.FC = () => {
   const [newContent, setNewContent] = useState<string>('');
   const [newType, setNewType] = useState<string>('skill');
   const [newImportance, setNewImportance] = useState<number>(3);
-  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [memoryToDelete, setMemoryToDelete] = useState<Memory | null>(null);
 
   const filterChips = [
     { id: 'all', label: 'All' },
@@ -90,26 +93,25 @@ export const MemoryPage: React.FC = () => {
       setMemories(prev => [created, ...prev]);
       setNewContent('');
       setShowAddModal(false);
-      showFeedback('Memory saved successfully!');
+      success('Memory saved successfully!');
     } catch (err) {
       console.error('Failed to create memory:', err);
-      showFeedback('Failed to create memory.');
+      error('Failed to create memory.');
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleConfirmDelete = async () => {
+    if (!memoryToDelete) return;
     try {
-      await api.deleteMemory(id);
-      setMemories(prev => prev.filter(m => m.id !== id));
-      showFeedback('Memory deleted.');
+      await api.deleteMemory(memoryToDelete.id);
+      setMemories(prev => prev.filter(m => m.id !== memoryToDelete.id));
+      success('Memory deleted.');
     } catch (err) {
       console.error('Delete error:', err);
+      error('Failed to delete memory.');
+    } finally {
+      setMemoryToDelete(null);
     }
-  };
-
-  const showFeedback = (msg: string) => {
-    setActionFeedback(msg);
-    setTimeout(() => setActionFeedback(null), 3000);
   };
 
   const filteredMemories = memories.filter(m =>
@@ -124,12 +126,6 @@ export const MemoryPage: React.FC = () => {
 
   return (
     <div className="flex-1 overflow-y-auto w-full p-4 sm:p-6 max-w-5xl mx-auto space-y-6 pb-28 md:pb-8 min-h-0">
-      {/* Feedback Toast */}
-      {actionFeedback && (
-        <div className="fixed top-20 right-6 z-50 p-3 rounded-xl bg-gradient-to-r from-[#00A8FF] to-[#8B5CF6] text-white text-xs font-semibold shadow-lg shadow-[#00A8FF]/30 flex items-center gap-2">
-          <Sparkles className="w-4 h-4" /> {actionFeedback}
-        </div>
-      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -280,7 +276,7 @@ export const MemoryPage: React.FC = () => {
                     <CheckCircle className="w-3 h-3" /> {Math.round(mem.confidence * 100)}%
                   </span>
                   <button
-                    onClick={() => handleDelete(mem.id)}
+                    onClick={() => setMemoryToDelete(mem)}
                     className="text-slate-500 hover:text-red-400 p-1 transition-colors cursor-pointer"
                     title="Delete memory"
                   >
@@ -378,6 +374,18 @@ export const MemoryPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Confirmation Dialog: Delete Memory */}
+      <ConfirmationDialog
+        isOpen={memoryToDelete !== null}
+        title="Delete Memory Fact"
+        message={`Are you sure you want to delete this memory? "${memoryToDelete?.content.slice(0, 80)}..."`}
+        confirmLabel="Delete Memory"
+        cancelLabel="Cancel"
+        isDangerous={true}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setMemoryToDelete(null)}
+      />
     </div>
   );
 };

@@ -9,6 +9,12 @@ class ProfileUpdate(BaseModel):
     college: Optional[str] = None
     degree: Optional[str] = None
     branch: Optional[str] = None
+    batch: Optional[str] = None
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    timezone: Optional[str] = None
+    language: Optional[str] = None
+    theme: Optional[str] = None
     skills: Optional[List[str]] = None
     programming_languages: Optional[List[str]] = None
     frameworks: Optional[List[str]] = None
@@ -30,6 +36,12 @@ class ProfileResponse(BaseModel):
     college: Optional[str] = None
     degree: Optional[str] = None
     branch: Optional[str] = None
+    batch: Optional[str] = None
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    timezone: Optional[str] = "Asia/Kolkata"
+    language: Optional[str] = "Hinglish"
+    theme: Optional[str] = "dark"
     skills: List[str] = []
     programming_languages: List[str] = []
     frameworks: List[str] = []
@@ -42,6 +54,9 @@ class ProfileResponse(BaseModel):
     achievements: List[str] = []
     important_dates: Dict[str, str] = {}
     updated_at: datetime
+    is_verified: bool = False
+    completion_percentage: int = 80
+    missing_fields: List[str] = []
 
     class Config:
         from_attributes = True

@@ -23,6 +23,9 @@ class MessageResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ConversationUpdate(BaseModel):
+    title: str
+
 class ConversationResponse(BaseModel):
     id: str
     user_id: str

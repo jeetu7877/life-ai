@@ -111,6 +111,52 @@ def _ensure_sqlite_columns(engine):
                     conn.execute(text("ALTER TABLE code_chunks ADD COLUMN end_line INTEGER"))
                     logger.info("Migrated code_chunks table: added end_line column")
 
+            # Check users table columns
+            user_result = conn.execute(text("PRAGMA table_info(users)"))
+            user_cols = [row[1] for row in user_result.fetchall()]
+            if user_cols:
+                if "is_verified" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0"))
+                    logger.info("Migrated users table: added is_verified column")
+                if "verification_token_hash" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR(255)"))
+                    logger.info("Migrated users table: added verification_token_hash column")
+                if "verification_token_expires_at" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN verification_token_expires_at DATETIME"))
+                    logger.info("Migrated users table: added verification_token_expires_at column")
+                if "avatar_url" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500)"))
+                    logger.info("Migrated users table: added avatar_url column")
+                if "password_reset_token_hash" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN password_reset_token_hash VARCHAR(255)"))
+                    logger.info("Migrated users table: added password_reset_token_hash column")
+                if "password_reset_expires_at" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME"))
+                    logger.info("Migrated users table: added password_reset_expires_at column")
+
+            # Check profiles table columns
+            prof_result = conn.execute(text("PRAGMA table_info(profiles)"))
+            prof_cols = [row[1] for row in prof_result.fetchall()]
+            if prof_cols:
+                if "batch" not in prof_cols:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN batch VARCHAR(50)"))
+                    logger.info("Migrated profiles table: added batch column")
+                if "avatar_url" not in prof_cols:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_url VARCHAR(500)"))
+                    logger.info("Migrated profiles table: added avatar_url column")
+                if "bio" not in prof_cols:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN bio TEXT"))
+                    logger.info("Migrated profiles table: added bio column")
+                if "timezone" not in prof_cols:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN timezone VARCHAR(100) DEFAULT 'Asia/Kolkata'"))
+                    logger.info("Migrated profiles table: added timezone column")
+                if "language" not in prof_cols:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN language VARCHAR(50) DEFAULT 'Hinglish'"))
+                    logger.info("Migrated profiles table: added language column")
+                if "theme" not in prof_cols:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN theme VARCHAR(50) DEFAULT 'dark'"))
+                    logger.info("Migrated profiles table: added theme column")
+
             conn.commit()
     except Exception as e:
         logger.debug(f"SQLite column migration note: {e}")

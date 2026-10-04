@@ -73,6 +73,16 @@ export const api = {
   login: (data: { username_or_email: string; password: string }) =>
     apiClient.post<AuthResponse>('/auth/login', data).then(r => r.data),
   getMe: () => apiClient.get<User>('/auth/me').then(r => r.data),
+  verifyEmail: (token: string) =>
+    apiClient.post<{ message: string; user: any }>('/auth/verify-email', { token }).then(r => r.data),
+  resendVerification: (email: string) =>
+    apiClient.post<{ message: string }>('/auth/resend-verification', { email }).then(r => r.data),
+  changePassword: (data: { current_password: string; new_password: string }) =>
+    apiClient.post<{ message: string }>('/auth/change-password', data).then(r => r.data),
+  deleteAccount: (password: string) =>
+    apiClient.post<{ message: string }>('/auth/account', { password }).then(r => r.data),
+  exportData: () =>
+    apiClient.get<any>('/auth/export-data').then(r => r.data),
 
   // Chat
   sendMessage: (data: { content: string; conversation_id?: string; timezone?: string; voice_mode?: boolean }) =>
@@ -90,6 +100,8 @@ export const api = {
     apiClient.get<Conversation[]>('/chat/conversations').then(r => r.data),
   getConversation: (id: string) =>
     apiClient.get<Conversation>(`/chat/conversations/${id}`).then(r => r.data),
+  renameConversation: (id: string, title: string) =>
+    apiClient.patch<Conversation>(`/chat/conversations/${id}`, { title }).then(r => r.data),
   deleteConversation: (id: string) =>
     apiClient.delete(`/chat/conversations/${id}`).then(r => r.data),
 
@@ -124,6 +136,12 @@ export const api = {
     apiClient.get<PersonalProfile>('/profile').then(r => r.data),
   updateProfile: (data: Partial<PersonalProfile>) =>
     apiClient.patch<PersonalProfile>('/profile', data).then(r => r.data),
+  uploadAvatar: (formData: FormData) =>
+    apiClient.post<{ avatar_url: string; message: string }>('/profile/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }).then(r => r.data),
+  removeAvatar: () =>
+    apiClient.delete<{ message: string }>('/profile/avatar').then(r => r.data),
 
   // Timeline
   getTimeline: (params?: { date?: string; project_tag?: string; category?: string }) =>

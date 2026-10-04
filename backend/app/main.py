@@ -128,6 +128,10 @@ app.include_router(time_machine_router, prefix=settings.API_V1_PREFIX)
 app.include_router(intelligence_router, prefix=settings.API_V1_PREFIX)
 app.include_router(journal_router, prefix=settings.API_V1_PREFIX)
 
+# Serve uploaded static media (avatars, audio responses, files)
+os.makedirs(settings.UPLOAD_DIRECTORY, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIRECTORY), name="uploads")
+
 # Also expose top-level health
 @app.get("/health")
 def top_health():
