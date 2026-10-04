@@ -97,17 +97,22 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const isNative = handsFreeService.isNativeAvailable();
 
-  // Internal Refs
+  // Internal Execution Refs
   const recognitionRef = useRef<any>(null);
   const wakeRecognitionRef = useRef<any>(null);
   const isListeningRef = useRef<boolean>(false);
   const isSpeakingRef = useRef<boolean>(false);
   const isMicGatedRef = useRef<boolean>(false);
-  const isInActiveConversationRef = useRef<boolean>(false);
+  const isWakeActiveRef = useRef<boolean>(false);
+  const wakeRestartTimerRef = useRef<any>(null);
+
+  // Spoken Text Accumulation Refs (immune to stale React closures)
+  const transcriptRef = useRef<string>('');
   const lastSpokenTextRef = useRef<string>('');
   const finalTranscriptRef = useRef<string>('');
   const speechDetectedRef = useRef<boolean>(false);
   const lastSpeechTimeRef = useRef<number>(0);
+  const lastVolUpdateRef = useRef<number>(0);
 
   // Media & Recording Refs
   const activeStreamRef = useRef<MediaStream | null>(null);
@@ -142,7 +147,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.log('[VOICE] STT Engine: Web Speech API not detected, defaulting to Gemini Multimodal STT.');
     }
 
-    // Check backend connectivity ping
+    // Ping backend health
     api.checkHealth()
       .then(() => setIsBackendOnline(true))
       .catch(() => setIsBackendOnline(false));
@@ -248,6 +253,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         subTranscript = await handsFreeService.addListener('transcriptUpdate', (data: { transcript: string; isFinal: boolean }) => {
           setTranscript(data.transcript);
+          transcriptRef.current = data.transcript;
         });
 
         subResponse = await handsFreeService.addListener('assistantResponse', (data: { response: string; conversationId?: string }) => {
@@ -305,7 +311,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Acquire active microphone stream & setup real-time AudioContext energy meter
+  // Acquire active microphone stream & setup throttled real-time AudioContext energy meter
   const startLiveMicrophoneStream = async (): Promise<MediaStream> => {
     console.log('[VOICE] checking microphone permission');
     setDetailedVoiceState('starting_mic');
@@ -375,7 +381,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const avg = sum / dataArray.length;
             // Normalize volume 0.0 to 1.0 with responsive curve
             const vol = Math.min(1.0, (avg / 128) * 1.8);
-            setInputVolume(vol);
+
+            // Throttle UI state update to ~12 FPS to avoid React re-render flooding!
+            const now = performance.now();
+            if (now - lastVolUpdateRef.current > 80) {
+              lastVolUpdateRef.current = now;
+              setInputVolume(vol);
+            }
 
             // Speech threshold detection (> 0.07 energy)
             if (vol > 0.07) {
@@ -419,8 +431,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setMicPermissionGranted(true);
         return true;
       } else {
-        const stream = await startLiveMicrophoneStream();
-        // Keep active or release gracefully if not currently listening
+        await startLiveMicrophoneStream();
         if (!isListeningRef.current) {
           releaseActiveMediaStream();
         }
@@ -451,13 +462,22 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch (_) {}
       recognitionRef.current = null;
     }
+    isListeningRef.current = false;
+  };
+
+  // Stop wake word listener cleanly
+  const stopWakeWordListener = () => {
+    isWakeActiveRef.current = false;
+    if (wakeRestartTimerRef.current) {
+      clearTimeout(wakeRestartTimerRef.current);
+      wakeRestartTimerRef.current = null;
+    }
     if (wakeRecognitionRef.current) {
       try {
         wakeRecognitionRef.current.abort();
       } catch (_) {}
       wakeRecognitionRef.current = null;
     }
-    isListeningRef.current = false;
   };
 
   // Stop listening session and process results
@@ -465,17 +485,18 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (speechPauseTimerRef.current) clearTimeout(speechPauseTimerRef.current);
 
-    isListeningRef.current = false;
-    console.log('[VOICE] speech recognition ended');
-
-    // 1. Stop Web Speech recognition
+    // Stop Web Speech recognition and allow 200ms to flush final speech events
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
       } catch (_) {}
     }
+    await new Promise(r => setTimeout(r, 200));
 
-    // 2. Stop MediaRecorder and grab audio blob if available
+    isListeningRef.current = false;
+    console.log('[VOICE] speech recognition ended');
+
+    // Stop MediaRecorder and grab audio blob if available
     let recordedBlob: Blob | null = null;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
@@ -495,10 +516,15 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     releaseActiveMediaStream();
 
-    // 3. Evaluate transcript: First Web Speech, then Backend Gemini STT fallback
-    let candidateTranscript = (finalTranscriptRef.current || transcript || '').trim();
+    // Evaluate transcript using all accumulated refs (immune to stale React closures)
+    let candidateTranscript = (
+      lastSpokenTextRef.current ||
+      transcriptRef.current ||
+      finalTranscriptRef.current ||
+      ''
+    ).trim();
 
-    // If Web Speech gave nothing but speech was detected or audio recorded, invoke Gemini STT!
+    // If Web Speech yielded nothing but real speech was recorded, invoke Gemini STT fallback
     if (!candidateTranscript && recordedBlob && recordedBlob.size > 800) {
       console.log('[VOICE] Web Speech yielded no transcript. Invoking backend Gemini Multimodal STT fallback...');
       setDetailedVoiceState('transcribing');
@@ -508,27 +534,32 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           candidateTranscript = backendRes.transcript.trim();
           console.log(`[VOICE] transcript received (Gemini STT): "${candidateTranscript}"`);
           setTranscript(candidateTranscript);
+          transcriptRef.current = candidateTranscript;
         }
       } catch (sttErr: any) {
         console.warn('[VOICE ERROR] Gemini STT transcription error:', sttErr);
       }
     }
 
-    // 4. Handle Result
+    // Process Result
     if (candidateTranscript) {
-      console.log(`[VOICE] final transcript: "${candidateTranscript}"`);
+      console.log(`[VOICE] Final transcript to submit: "${candidateTranscript}"`);
+      setTranscript(candidateTranscript);
       await handleUserUtterance(candidateTranscript);
     } else {
-      console.log('[VOICE] empty transcript detected');
+      console.log('[VOICE] empty transcript detected (user was silent)');
       setTranscript('');
+      transcriptRef.current = '';
+      lastSpokenTextRef.current = '';
       setAssistantResponse("I couldn't hear that. Please try again.");
       setVoiceState('idle');
       setDetailedVoiceState(isWakeWordEnabled ? 'wake_listening' : 'idle');
-      isInActiveConversationRef.current = false;
 
-      // Resume wake listening if enabled
+      // Safely resume wake listening if enabled
       if (isWakeWordEnabled && !isSpeakingRef.current && !isNative) {
-        startWakeWordListener();
+        setTimeout(() => {
+          startWakeWordListener();
+        }, 500);
       }
     }
   };
@@ -561,23 +592,19 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
-    // Reset transcription state
+    // IMMEDIATELY terminate wake word listener to prevent any race condition!
+    stopWakeWordListener();
+    isListeningRef.current = true;
+
+    // Reset transcription state and refs
     setTranscript('');
     setAssistantResponse('');
     setVoiceError(null);
+    transcriptRef.current = '';
     finalTranscriptRef.current = '';
     lastSpokenTextRef.current = '';
     speechDetectedRef.current = false;
     recordedChunksRef.current = [];
-    isInActiveConversationRef.current = true;
-
-    // Stop wake word listener while in active query
-    if (wakeRecognitionRef.current) {
-      try {
-        wakeRecognitionRef.current.abort();
-      } catch (_) {}
-      wakeRecognitionRef.current = null;
-    }
 
     try {
       // 1. Acquire live microphone stream
@@ -604,14 +631,14 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.warn('[VOICE] MediaRecorder init note:', recStartErr);
       }
 
-      // 3. Initialize Web Speech Recognition
+      // 3. Initialize Web Speech Recognition in continuous mode for queries
       const SpeechRecognitionClass =
         (window as unknown as IWindow).SpeechRecognition ||
         (window as unknown as IWindow).webkitSpeechRecognition;
 
       if (SpeechRecognitionClass) {
         const recognition = new SpeechRecognitionClass();
-        recognition.continuous = false; // single focused utterance for crisp response
+        recognition.continuous = true; // Stay active across brief speech pauses
         recognition.interimResults = true;
         recognition.lang = 'en-IN'; // Indian accents, Hindi & Hinglish
 
@@ -645,14 +672,20 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
           const currentText = (finalStr || interim).trim();
           if (currentText) {
-            setTranscript(currentText);
+            console.log(`[VOICE] interim transcript: "${currentText}"`);
+            transcriptRef.current = currentText;
             lastSpokenTextRef.current = currentText;
+            setTranscript(currentText);
+
             if (finalStr) {
               finalTranscriptRef.current = finalStr;
-              console.log(`[VOICE] transcript received (Web Speech final): "${finalStr}"`);
+              console.log(`[VOICE] transcript piece finalized: "${finalStr}"`);
             }
 
-            // Debounce pause: if user pauses speaking for 1.3 seconds, finish listening
+            // User is actively speaking: clear silence timeout
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+            // Auto-submit when user pauses speaking for 1.3 seconds
             if (speechPauseTimerRef.current) clearTimeout(speechPauseTimerRef.current);
             speechPauseTimerRef.current = setTimeout(() => {
               if (isListeningRef.current) {
@@ -669,7 +702,6 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setMicPermissionError(true);
             setVoiceError('Microphone permission denied by browser.');
           }
-          // For network or no-speech error, allow MediaRecorder fallback
         };
 
         recognition.onend = () => {
@@ -690,13 +722,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           resetSilenceTimer();
         }
       } else {
-        // Fallback for browsers without Web Speech (MediaRecorder + Gemini STT exclusively)
+        // Fallback for browsers without Web Speech
         isListeningRef.current = true;
         setVoiceState('listening');
         setDetailedVoiceState('listening');
         resetSilenceTimer();
 
-        // Check periodic pause via AudioContext speech detector
+        // Check pause via AudioContext speech detector
         const checkSpeechDoneInterval = setInterval(() => {
           if (!isListeningRef.current) {
             clearInterval(checkSpeechDoneInterval);
@@ -711,13 +743,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } catch (err: any) {
       console.error('[VOICE ERROR] Failed to start manual listen:', err);
-      isInActiveConversationRef.current = false;
+      isListeningRef.current = false;
       setVoiceState('idle');
       setDetailedVoiceState(isWakeWordEnabled ? 'wake_listening' : 'idle');
     }
   };
 
-  // Lightweight continuous Wake Word Listener ("Hey Life" / "Life" / "Jeet")
+  // Continuous Wake Word Listener ("Hey Life" / "Life" / "Jeet")
   const startWakeWordListener = useCallback(() => {
     if (isNative || !isWakeWordEnabled || isListeningRef.current || isSpeakingRef.current) return;
 
@@ -727,7 +759,9 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (!SpeechRecognitionClass) return;
 
+    // Ensure query recognition is closed
     stopRecognitionGracefully();
+    isWakeActiveRef.current = true;
 
     try {
       const wakeRec = new SpeechRecognitionClass();
@@ -743,6 +777,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
 
       wakeRec.onresult = (event: any) => {
+        if (!isWakeActiveRef.current || isListeningRef.current) return;
+
         let transcriptText = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           transcriptText += event.results[i][0].transcript;
@@ -766,11 +802,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           console.log('[WAKE] callback fired');
           console.log('[WAKE] entering listening state');
 
-          try {
-            wakeRec.abort();
-          } catch (_) {}
-          wakeRecognitionRef.current = null;
-
+          stopWakeWordListener();
           handleWakeWordTriggered();
         }
       };
@@ -782,11 +814,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
 
       wakeRec.onend = () => {
-        // Automatically recover wake listener if still enabled and not speaking
-        if (isWakeWordEnabled && !isListeningRef.current && !isSpeakingRef.current && !isNative) {
-          setTimeout(() => {
-            startWakeWordListener();
-          }, 300);
+        // Only recover if wake mode is still active and user is not speaking/listening
+        if (isWakeActiveRef.current && isWakeWordEnabled && !isListeningRef.current && !isSpeakingRef.current && !isNative) {
+          wakeRestartTimerRef.current = setTimeout(() => {
+            if (isWakeActiveRef.current && !isListeningRef.current && !isSpeakingRef.current) {
+              startWakeWordListener();
+            }
+          }, 800);
         }
       };
 
@@ -799,28 +833,18 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [isNative, isWakeWordEnabled, wakeWord]);
 
-  // Start wake listener on state change
+  // Start wake listener only once on mount or when wake toggle changes
   useEffect(() => {
     if (isWakeWordEnabled && !isNative && !isListeningRef.current && !isSpeakingRef.current) {
       startWakeWordListener();
     } else {
-      if (wakeRecognitionRef.current) {
-        try {
-          wakeRecognitionRef.current.abort();
-        } catch (_) {}
-        wakeRecognitionRef.current = null;
-      }
+      stopWakeWordListener();
     }
 
     return () => {
-      if (wakeRecognitionRef.current) {
-        try {
-          wakeRecognitionRef.current.abort();
-        } catch (_) {}
-        wakeRecognitionRef.current = null;
-      }
+      stopWakeWordListener();
     };
-  }, [isWakeWordEnabled, isNative, startWakeWordListener]);
+  }, [isWakeWordEnabled, isNative]); // Exclude startWakeWordListener from dependencies to prevent infinite re-renders!
 
   // When wake word triggers: speak fast greeting and listen for query
   const handleWakeWordTriggered = async () => {
@@ -831,7 +855,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Speak fast greeting "Haan, bolo." with microphone gated
     speakText('Haan, bolo.', () => {
-      // Once greeting is finished, automatically enter manual listen!
+      // Once greeting completes, automatically transition to manual listen
       triggerManualListen();
     });
   };
@@ -1075,23 +1099,22 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     gateMicrophone(false);
     setVoiceState('idle');
     setDetailedVoiceState(isWakeWordEnabled ? 'wake_listening' : 'idle');
-    isInActiveConversationRef.current = false;
 
     // Resume wake listening if enabled
     if (isWakeWordEnabled && !isNative) {
       setTimeout(() => {
         startWakeWordListener();
-      }, 400);
+      }, 500);
     }
   };
 
   // Full stop: Stop all voice actions, mic, TTS, and reset
   const stopVoice = () => {
     console.log('[VOICE] stopVoice called: terminating all speech and audio');
-    isInActiveConversationRef.current = false;
     isSpeakingRef.current = false;
     isListeningRef.current = false;
     gateMicrophone(false);
+    stopWakeWordListener();
 
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (speechPauseTimerRef.current) clearTimeout(speechPauseTimerRef.current);

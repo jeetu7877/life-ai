@@ -107,7 +107,15 @@ class VoiceService:
         Accurately recognizes English, Hindi, and Hinglish.
         """
         api_key = (os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY or "").strip().strip('"').strip("'")
-        if api_key and os.path.exists(file_path) and os.path.getsize(file_path) > 100:
+        if not api_key:
+            return ""
+
+        # Validate that api_key is a genuine Google AI Studio key (starts with AIzaSy...), not an Antigravity token (starts with AQ.)
+        if api_key.startswith("AQ.") or not api_key.startswith("AIza"):
+            logger.warning("[VOICE_STT] GEMINI_API_KEY is not a Google AI Studio key (starts with '%s...'). Google Gemini requires a key starting with 'AIzaSy'.", api_key[:6])
+            return ""
+
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 100:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=api_key)
