@@ -37,22 +37,127 @@ export const App: React.FC = () => {
                 <Sidebar />
                 <main className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
                   <Routes>
-                    <Route path="/" element={<HomeVoicePage />} />
-                    <Route path="/chat" element={<ChatPage />} />
-                    <Route path="/life-map" element={<LifeMapPage />} />
-                    <Route path="/what-if" element={<WhatIfPage />} />
-                    <Route path="/journal" element={<JournalPage />} />
-                    <Route path="/goals" element={<GoalsPage />} />
-                    <Route path="/study" element={<StudyPage />} />
-                    <Route path="/analytics" element={<AnalyticsPage />} />
-                    <Route path="/memories" element={<MemoryPage />} />
-                    <Route path="/timeline" element={<TimelinePage />} />
-                    <Route path="/documents" element={<DocumentsPage />} />
-                    <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/vault" element={<VaultPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
+                    {/* Public Auth Routes */}
+                    <Route path="/login" element={<AuthPage initialMode="login" />} />
+                    <Route path="/register" element={<AuthPage initialMode="register" />} />
                     <Route path="/auth" element={<AuthPage />} />
                     <Route path="/verify-email" element={<VerifyEmailPage />} />
+
+                    {/* Protected Main Application Routes */}
+                    <Route
+                      path="/"
+                      element={
+                        <ProtectedRoute>
+                          <HomeVoicePage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/chat"
+                      element={
+                        <ProtectedRoute>
+                          <ChatPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/life-map"
+                      element={
+                        <ProtectedRoute>
+                          <LifeMapPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/what-if"
+                      element={
+                        <ProtectedRoute>
+                          <WhatIfPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/journal"
+                      element={
+                        <ProtectedRoute>
+                          <JournalPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/goals"
+                      element={
+                        <ProtectedRoute>
+                          <GoalsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/study"
+                      element={
+                        <ProtectedRoute>
+                          <StudyPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/analytics"
+                      element={
+                        <ProtectedRoute>
+                          <AnalyticsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/memories"
+                      element={
+                        <ProtectedRoute>
+                          <MemoryPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/timeline"
+                      element={
+                        <ProtectedRoute>
+                          <TimelinePage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/documents"
+                      element={
+                        <ProtectedRoute>
+                          <DocumentsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/profile"
+                      element={
+                        <ProtectedRoute>
+                          <ProfilePage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/vault"
+                      element={
+                        <ProtectedRoute>
+                          <VaultPage />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/settings"
+                      element={
+                        <ProtectedRoute>
+                          <SettingsPage />
+                        </ProtectedRoute>
+                      }
+                    />
+
+                    {/* Default fallback */}
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </main>

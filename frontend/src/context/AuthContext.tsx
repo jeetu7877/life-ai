@@ -16,67 +16,105 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const getStoredToken = () => localStorage.getItem('life_token') || localStorage.getItem('jeet_token');
+  const getStoredToken = () => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('life_token') || localStorage.getItem('jeet_token');
+  };
 
-  const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(getStoredToken());
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const refreshUser = useCallback(async () => {
     const curToken = getStoredToken();
-    if (!curToken) return;
+    if (!curToken) {
+      setUser(null);
+      return;
+    }
     try {
       const currentUser = await api.getMe();
       setUser(currentUser);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Could not refresh user session:', err);
+      // If 401 Unauthorized, token has expired or is invalid
+      if (err.response?.status === 401) {
+        localStorage.removeItem('life_token');
+        localStorage.removeItem('jeet_token');
+        setToken(null);
+        setUser(null);
+      }
     }
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     const initAuth = async () => {
       const curToken = getStoredToken();
       if (!curToken) {
-        setIsLoading(false);
+        if (isMounted) {
+          setToken(null);
+          setUser(null);
+          setIsLoading(false);
+        }
         return;
       }
+
       try {
         const currentUser = await api.getMe();
-        setUser(currentUser);
-      } catch (err) {
-        // Fallback demo user for local fast development if backend is not yet populated
-        setUser({
-          id: 'demo-user',
-          email: 'user@jeet.ai',
-          username: 'jeet_user',
-          full_name: 'Vikash Yadav',
-          is_active: true,
-          is_verified: true,
-          created_at: new Date().toISOString()
-        });
+        if (isMounted) {
+          setUser(currentUser);
+          setToken(curToken);
+        }
+      } catch (err: any) {
+        console.warn('Stored token is invalid or backend unreachable:', err);
+        // Clear invalid tokens on 401
+        if (err.response?.status === 401) {
+          localStorage.removeItem('life_token');
+          localStorage.removeItem('jeet_token');
+          if (isMounted) {
+            setToken(null);
+            setUser(null);
+          }
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
+
     initAuth();
-  }, [token]);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const login = async (data: { username_or_email: string; password: string }) => {
-    const res = await api.login(data);
-    localStorage.setItem('life_token', res.access_token);
-    localStorage.setItem('jeet_token', res.access_token);
-    setToken(res.access_token);
-    const currentUser = await api.getMe();
-    setUser(currentUser);
+    setIsLoading(true);
+    try {
+      const res = await api.login(data);
+      localStorage.setItem('life_token', res.access_token);
+      localStorage.setItem('jeet_token', res.access_token);
+      setToken(res.access_token);
+      const currentUser = await api.getMe();
+      setUser(currentUser);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const register = async (data: { email: string; username: string; password: string; full_name?: string }) => {
-    const res = await api.register(data);
-    localStorage.setItem('life_token', res.access_token);
-    localStorage.setItem('jeet_token', res.access_token);
-    setToken(res.access_token);
-    const currentUser = await api.getMe();
-    setUser(currentUser);
+    setIsLoading(true);
+    try {
+      const res = await api.register(data);
+      localStorage.setItem('life_token', res.access_token);
+      localStorage.setItem('jeet_token', res.access_token);
+      setToken(res.access_token);
+      const currentUser = await api.getMe();
+      setUser(currentUser);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const logout = () => {
@@ -91,7 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         token,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !!token,
         isLoading,
         login,
         register,
