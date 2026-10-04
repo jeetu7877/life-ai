@@ -15,6 +15,15 @@ from app.models.goal import PersonalGoal, GoalMilestone
 from app.models.study import StudySubject, StudyTopic, StudySession
 from app.models.analytics import AnalyticsEvent, DailyBrief
 from app.models.proactive import ProactiveInsight, ProactiveSetting
+from app.models.life_twin import LifeTwinSnapshot
+from app.models.journal import JournalEntry
+from app.models.intelligence import (
+    ProjectHealthRecord,
+    RiskEvent,
+    PatternEvent,
+    DecisionDebateSession,
+    BottleneckAnalysisRecord
+)
 
 __all__ = [
     "User",
@@ -44,6 +53,13 @@ __all__ = [
     "AnalyticsEvent",
     "DailyBrief",
     "ProactiveInsight",
-    "ProactiveSetting"
+    "ProactiveSetting",
+    "LifeTwinSnapshot",
+    "JournalEntry",
+    "ProjectHealthRecord",
+    "RiskEvent",
+    "PatternEvent",
+    "DecisionDebateSession",
+    "BottleneckAnalysisRecord"
 ]
 

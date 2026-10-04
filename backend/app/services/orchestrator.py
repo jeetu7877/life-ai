@@ -29,6 +29,13 @@ from app.services.what_changed_engine import what_changed_engine
 from app.services.proactive_service import proactive_service
 from app.services.knowledge_graph_service import knowledge_graph_service
 from app.services.web_research_agent import web_research_agent
+from app.services.life_twin_service import life_twin_service
+from app.services.what_if_simulator import what_if_simulator
+from app.services.time_machine_service import time_machine_service
+from app.services.bottleneck_engine import bottleneck_engine
+from app.services.project_health_service import project_health_service
+from app.services.decision_debate_service import decision_debate_service
+from app.services.pattern_detector_service import pattern_detector_service
 
 logger = logging.getLogger("life.orchestrator")
 
@@ -310,6 +317,150 @@ class AgentOrchestrator:
             }
             cache_service.set_semantic_response(user_id, raw_msg, result)
             logger.info(f"[PERF] route=TIMELINE db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 12: Life Twin Current Situation (<10ms)
+        if intent == QueryIntent.LIFE_TWIN:
+            twin_resp = life_twin_service.format_twin_summary(db, user_id)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": twin_resp,
+                "retrieved_sources": [{"source": "life_twin"}],
+                "tools_executed": [{"tool": "query_life_twin_state", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=LIFE_TWIN db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 13: What-If Counterfactual Simulator (<15ms)
+        if intent == QueryIntent.WHAT_IF:
+            what_if_resp = what_if_simulator.format_simulation_response(db, user_id, raw_msg)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": what_if_resp,
+                "retrieved_sources": [{"source": "what_if_simulator"}],
+                "tools_executed": [{"tool": "run_what_if_simulation", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=WHAT_IF db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 14: Month Diff / Snapshot Comparison (<15ms)
+        if intent == QueryIntent.MONTH_DIFF:
+            diff_resp = life_twin_service.format_snapshot_comparison(db, user_id)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": diff_resp,
+                "retrieved_sources": [{"source": "life_twin_snapshots"}],
+                "tools_executed": [{"tool": "compare_snapshots", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=MONTH_DIFF db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 15: Personal Time Machine (<15ms)
+        if intent == QueryIntent.TIME_MACHINE:
+            tm_resp = time_machine_service.format_time_machine_response(db, user_id, raw_msg)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": tm_resp,
+                "retrieved_sources": [{"source": "time_machine"}],
+                "tools_executed": [{"tool": "replay_time_machine", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=TIME_MACHINE db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 16: Bottleneck Engine / 'Why Am I Stuck?' (<15ms)
+        if intent == QueryIntent.BOTTLENECK:
+            stuck_resp = bottleneck_engine.format_bottleneck_response(db, user_id, raw_msg)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": stuck_resp,
+                "retrieved_sources": [{"source": "bottleneck_engine"}],
+                "tools_executed": [{"tool": "diagnose_stuck_bottleneck", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=BOTTLENECK db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 17: Connected Knowledge Graph / Life Map (<10ms)
+        if intent == QueryIntent.CONNECTED_GRAPH:
+            graph_resp = knowledge_graph_service.format_connected_map(db, user_id, raw_msg)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": graph_resp,
+                "retrieved_sources": [{"source": "knowledge_graph"}],
+                "tools_executed": [{"tool": "query_knowledge_graph", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=CONNECTED_GRAPH db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 18: Decision Debate (<15ms)
+        if intent == QueryIntent.DECISION_DEBATE:
+            debate_resp = decision_debate_service.format_debate_response(db, user_id, raw_msg)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": debate_resp,
+                "retrieved_sources": [{"source": "decision_debate"}],
+                "tools_executed": [{"tool": "debate_decision_options", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=DECISION_DEBATE db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 19: Project Health (<15ms)
+        if intent == QueryIntent.PROJECT_HEALTH:
+            health_resp = project_health_service.format_project_health(db, user_id, "Life AI")
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": health_resp,
+                "retrieved_sources": [{"source": "project_health"}],
+                "tools_executed": [{"tool": "analyze_project_health", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=PROJECT_HEALTH db=fast llm=false total={total_ms}ms")
+            return result
+
+        # FAST PATH 20: Pattern Detector (<15ms)
+        if intent == QueryIntent.PATTERN_DETECTOR:
+            pattern_resp = pattern_detector_service.format_pattern_response(db, user_id)
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            result = {
+                "response": pattern_resp,
+                "retrieved_sources": [{"source": "pattern_detector"}],
+                "tools_executed": [{"tool": "detect_personal_patterns", "status": "success"}],
+                "timing": timing_metrics
+            }
+            cache_service.set_semantic_response(user_id, raw_msg, result)
+            logger.info(f"[PERF] route=PATTERN_DETECTOR db=fast llm=false total={total_ms}ms")
             return result
 
         # Step 2: Intent-based Tool Dispatch & Context Gathering

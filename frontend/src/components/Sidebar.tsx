@@ -3,6 +3,9 @@ import { NavLink } from 'react-router-dom';
 import {
   Mic,
   MessageSquare,
+  Network,
+  Sparkles,
+  BookMarked,
   Target,
   GraduationCap,
   BarChart3,
@@ -17,6 +20,9 @@ import {
 const navItems = [
   { to: '/', label: 'Home Dashboard', icon: Mic },
   { to: '/chat', label: 'Daily Chat', icon: MessageSquare },
+  { to: '/life-map', label: 'Life Map & Twin', icon: Network },
+  { to: '/what-if', label: 'What-If Simulations', icon: Sparkles },
+  { to: '/journal', label: 'Journal & Retros', icon: BookMarked },
   { to: '/goals', label: 'Goals & Milestones', icon: Target },
   { to: '/study', label: 'AI Study Coach', icon: GraduationCap },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },

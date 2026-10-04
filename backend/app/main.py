@@ -23,7 +23,12 @@ from app.routers import (
     goals_router,
     study_router,
     analytics_router,
-    proactive_router
+    proactive_router,
+    life_twin_router,
+    simulations_router,
+    time_machine_router,
+    intelligence_router,
+    journal_router
 )
 
 # Setup structured logging
@@ -117,6 +122,11 @@ app.include_router(goals_router, prefix=settings.API_V1_PREFIX)
 app.include_router(study_router, prefix=settings.API_V1_PREFIX)
 app.include_router(analytics_router, prefix=settings.API_V1_PREFIX)
 app.include_router(proactive_router, prefix=settings.API_V1_PREFIX)
+app.include_router(life_twin_router, prefix=settings.API_V1_PREFIX)
+app.include_router(simulations_router, prefix=settings.API_V1_PREFIX)
+app.include_router(time_machine_router, prefix=settings.API_V1_PREFIX)
+app.include_router(intelligence_router, prefix=settings.API_V1_PREFIX)
+app.include_router(journal_router, prefix=settings.API_V1_PREFIX)
 
 # Also expose top-level health
 @app.get("/health")

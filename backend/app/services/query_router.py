@@ -36,6 +36,15 @@ class QueryIntent(str, Enum):
     WHAT_CHANGED = "what_changed"
     PROACTIVE = "proactive"
     KNOWLEDGE_GRAPH = "knowledge_graph"
+    LIFE_TWIN = "life_twin"
+    WHAT_IF = "what_if"
+    TIME_MACHINE = "time_machine"
+    BOTTLENECK = "bottleneck"
+    DECISION_DEBATE = "decision_debate"
+    PROJECT_HEALTH = "project_health"
+    PATTERN_DETECTOR = "pattern_detector"
+    CONNECTED_GRAPH = "connected_graph"
+    MONTH_DIFF = "month_diff"
 
 @dataclass
 class RoutePlan:
@@ -173,7 +182,9 @@ class QueryRouter:
     # Goal patterns
     GOAL_KEYWORDS = [
         "current goal", "mera goal", "mere goals", "internship ke liye kya karu",
-        "next step", "what should i do today", "aaj mujhe kya karna chahiye",
+        "next step", "what should i do next", "what should i do today", "what should i do",
+        "what to do next", "what do i do next", "what next", "agla step",
+        "aaj mujhe kya karna chahiye", "ab kya karu", "kya karu next",
         "goal complete", "milestone", "ambition", "crack internship", "internship target",
         "mere goal ko complete karne ke liye", "goal ka next step"
     ]
@@ -268,7 +279,106 @@ class QueryRouter:
                 cacheable=True
             )
 
-        # 4. Check Level 1 Profile Query -> ZERO LLM (<10ms)
+        # 4a. Check Life Twin & Current Situation (<10ms)
+        if any(k in lower for k in ["current situation", "situation", "kis cheez par focus", "life twin", "current status"]):
+            return RoutePlan(
+                intent=QueryIntent.LIFE_TWIN,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 4b. Check What-If Simulator (<15ms)
+        if lower.startswith("what if") or "what if i " in lower or "agar main " in lower:
+            return RoutePlan(
+                intent=QueryIntent.WHAT_IF,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 4c. Check Month Diff / Snapshot comparison (<15ms)
+        if any(k in lower for k in ["what changed in my life this month", "what changed this month", "what changed since last month", "this month vs last month"]):
+            return RoutePlan(
+                intent=QueryIntent.MONTH_DIFF,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 4d. Check Personal Time Machine (<15ms)
+        if any(k in lower for k in ["one month ago", "1 month ago", "last month", "september 1", "sep 1", "what was i doing", "what was my project status on", "what were my goals at that time", "what skills had i completed", "time machine"]):
+            return RoutePlan(
+                intent=QueryIntent.TIME_MACHINE,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 4e. Check Why Am I Stuck / Bottleneck (<15ms)
+        if any(k in lower for k in ["why am i stuck", "why am i not making progress", "why am i not improving", "kaha atka hoon", "stuck on this goal"]):
+            return RoutePlan(
+                intent=QueryIntent.BOTTLENECK,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 4f. Check Connected Knowledge Graph / Life Map (<10ms)
+        if any(k in lower for k in ["how my projects and goals are connected", "how are my projects and goals connected", "projects and goals connected", "projects and goals are connected", "how is everything connected", "knowledge map", "life map"]):
+            return RoutePlan(
+                intent=QueryIntent.CONNECTED_GRAPH,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 4g. Check Decision Debate (<15ms)
+        if any(k in lower for k in ["should i focus on dsa or project", "should i focus on dsa or projects", "dsa or project", "dsa or projects", "dsa ya project", "decision debate"]):
+            return RoutePlan(
+                intent=QueryIntent.DECISION_DEBATE,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 4h. Check Project Health (<15ms)
+        if any(k in lower for k in ["is my life ai project healthy", "project healthy", "project health", "repo health", "is my project healthy"]):
+            return RoutePlan(
+                intent=QueryIntent.PROJECT_HEALTH,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 4i. Check Pattern Detector (<15ms)
+        if any(k in lower for k in ["notice any pattern", "pattern in my", "patterns in my work", "patterns do you see", "pattern detector"]):
+            return RoutePlan(
+                intent=QueryIntent.PATTERN_DETECTOR,
+                can_bypass_llm=True,
+                requires_db=True,
+                requires_llm=False,
+                suggested_model="none",
+                cacheable=True
+            )
+
+        # 4j. Check Level 1 Profile Query -> ZERO LLM (<10ms)
         for sub_cat, patterns in self.PROFILE_PATTERNS.items():
             if any(re.search(p, lower) if '\\b' in p else p in lower for p in patterns):
                 if any(w in lower for w in ["my", "mera", "meri", "mere", "i", "mein", "what is", "batao", "kaun", "kya"]):

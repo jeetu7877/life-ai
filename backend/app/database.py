@@ -144,7 +144,13 @@ def _ensure_indexes(engine):
         "CREATE INDEX IF NOT EXISTS ix_study_topics_subject ON study_topics (subject_id, status);",
         "CREATE INDEX IF NOT EXISTS ix_analytics_user_cat ON analytics_events (user_id, category, recorded_at);",
         "CREATE INDEX IF NOT EXISTS ix_daily_briefs_user_date ON daily_briefs (user_id, brief_date);",
-        "CREATE INDEX IF NOT EXISTS ix_proactive_user_active ON proactive_insights (user_id, is_dismissed, importance);"
+        "CREATE INDEX IF NOT EXISTS ix_proactive_user_active ON proactive_insights (user_id, is_dismissed, importance);",
+        "CREATE INDEX IF NOT EXISTS ix_life_twin_user_date ON life_twin_snapshots (user_id, snapshot_date);",
+        "CREATE INDEX IF NOT EXISTS ix_journal_user_cat ON journal_entries (user_id, category, entry_date);",
+        "CREATE INDEX IF NOT EXISTS ix_project_health_user ON project_health_records (user_id, repo_name);",
+        "CREATE INDEX IF NOT EXISTS ix_risks_user_status ON risk_events (user_id, status, severity);",
+        "CREATE INDEX IF NOT EXISTS ix_patterns_user ON pattern_events (user_id, pattern_type);",
+        "CREATE INDEX IF NOT EXISTS ix_bottlenecks_user ON bottleneck_analysis_records (user_id, category);"
     ]
     try:
         with engine.connect() as conn:

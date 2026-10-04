@@ -14,6 +14,11 @@ from app.routers.goals import router as goals_router
 from app.routers.study import router as study_router
 from app.routers.analytics import router as analytics_router
 from app.routers.proactive import router as proactive_router
+from app.routers.life_twin import router as life_twin_router
+from app.routers.simulations import router as simulations_router
+from app.routers.time_machine import router as time_machine_router
+from app.routers.intelligence import router as intelligence_router
+from app.routers.journal import router as journal_router
 
 __all__ = [
     "auth_router",
@@ -31,5 +36,10 @@ __all__ = [
     "goals_router",
     "study_router",
     "analytics_router",
-    "proactive_router"
+    "proactive_router",
+    "life_twin_router",
+    "simulations_router",
+    "time_machine_router",
+    "intelligence_router",
+    "journal_router"
 ]

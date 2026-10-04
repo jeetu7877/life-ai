@@ -18,6 +18,15 @@ from app.services.tools.knowledge_and_coaching_tools import (
     TimelineQueryTool,
     KnowledgeGraphTool
 )
+from app.services.tools.intelligence_tools import (
+    LifeTwinTool,
+    WhatIfTool,
+    TimeMachineTool,
+    BottleneckTool,
+    ProjectHealthTool,
+    DecisionDebateTool,
+    PatternDetectorTool
+)
 
 logger = logging.getLogger("life.tools")
 
@@ -141,5 +150,14 @@ class ToolRegistry:
         self.register(AnalyticsSummaryTool())
         self.register(TimelineQueryTool())
         self.register(KnowledgeGraphTool())
+
+        # Life Twin & Unique Intelligence Tools
+        self.register(LifeTwinTool())
+        self.register(WhatIfTool())
+        self.register(TimeMachineTool())
+        self.register(BottleneckTool())
+        self.register(ProjectHealthTool())
+        self.register(DecisionDebateTool())
+        self.register(PatternDetectorTool())
 
 tool_registry = ToolRegistry()

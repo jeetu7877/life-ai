@@ -122,7 +122,7 @@ class GoalService:
         # 1. Fetch highest priority active goal
         top_goal = db.query(PersonalGoal).filter(
             PersonalGoal.user_id == user_id,
-            PersonalGoal.status == "active"
+            PersonalGoal.status.in_(["active", "in_progress"])
         ).order_by(PersonalGoal.priority.asc(), PersonalGoal.deadline.asc()).first()
 
         # 2. Fetch pending tasks

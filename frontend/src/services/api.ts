@@ -197,6 +197,42 @@ export const api = {
   getKnowledgeGraph: () =>
     apiClient.get<any>('/knowledge-graph').then(r => r.data),
 
+  // Unique Intelligence Suite
+  getLifeTwinState: () =>
+    apiClient.get<any>('/life-twin').then(r => r.data),
+  createLifeTwinSnapshot: () =>
+    apiClient.post<any>('/life-twin/snapshot').then(r => r.data),
+  getLifeTwinComparison: () =>
+    apiClient.get<any>('/life-twin/comparison').then(r => r.data),
+
+  runWhatIfSimulation: (query: string) =>
+    apiClient.post<any>('/simulations/what-if', { query }).then(r => r.data),
+  runDecisionDebate: (data: { option_a: string; option_b: string; decision_context?: string }) =>
+    apiClient.post<any>('/simulations/decision-debate', data).then(r => r.data),
+  getBottlenecks: () =>
+    apiClient.get<any>('/simulations/bottlenecks').then(r => r.data),
+
+  getTimeMachineReconstruction: (query: string) =>
+    apiClient.get<any>('/time-machine/query', { params: { query } }).then(r => r.data),
+  getWeeklyReflection: () =>
+    apiClient.get<any>('/time-machine/weekly-reflection').then(r => r.data),
+
+  getProjectHealth: (projectName?: string) =>
+    apiClient.get<any>('/intelligence/project-health', { params: { project_name: projectName } }).then(r => r.data),
+  getPersonalRisks: () =>
+    apiClient.get<any[]>('/intelligence/risks').then(r => r.data),
+  getPatterns: () =>
+    apiClient.get<any[]>('/intelligence/patterns').then(r => r.data),
+  getMemoryConflicts: () =>
+    apiClient.get<any[]>('/intelligence/memory-conflicts').then(r => r.data),
+
+  getJournalEntries: (category?: string) =>
+    apiClient.get<any[]>('/journal', { params: { category } }).then(r => r.data),
+  createJournalEntry: (data: { title?: string; content: string; category?: string; entry_date?: string }) =>
+    apiClient.post<any>('/journal', data).then(r => r.data),
+  promoteJournalEntry: (id: string) =>
+    apiClient.post<any>(`/journal/${id}/promote`).then(r => r.data),
+
   // Health
   checkHealth: () =>
     apiClient.get('/health').then(r => r.data)

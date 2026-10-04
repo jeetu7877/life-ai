@@ -1,13 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Mic, MessageSquare, Target, Brain, Settings } from 'lucide-react';
+import { Mic, MessageSquare, Network, Target, Brain } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Home', icon: Mic },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
+  { to: '/life-map', label: 'Life Map', icon: Network },
   { to: '/goals', label: 'Goals', icon: Target },
   { to: '/memories', label: 'Memories', icon: Brain },
-  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export const MobileBottomNav: React.FC = () => {

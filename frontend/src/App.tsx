@@ -18,6 +18,9 @@ import { ProfilePage } from './pages/ProfilePage';
 import { VaultPage } from './pages/VaultPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AuthPage } from './pages/AuthPage';
+import { LifeMapPage } from './pages/LifeMapPage';
+import { WhatIfPage } from './pages/WhatIfPage';
+import { JournalPage } from './pages/JournalPage';
 import { MobileBottomNav } from './components/MobileBottomNav';
 
 export const App: React.FC = () => {
@@ -33,6 +36,9 @@ export const App: React.FC = () => {
                 <Routes>
                   <Route path="/" element={<HomeVoicePage />} />
                   <Route path="/chat" element={<ChatPage />} />
+                  <Route path="/life-map" element={<LifeMapPage />} />
+                  <Route path="/what-if" element={<WhatIfPage />} />
+                  <Route path="/journal" element={<JournalPage />} />
                   <Route path="/goals" element={<GoalsPage />} />
                   <Route path="/study" element={<StudyPage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />

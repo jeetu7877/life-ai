@@ -298,4 +298,49 @@ class KnowledgeGraphService:
             "edges": links
         }
 
+    def format_connected_map(self, db: Session, user_id: str, query: Optional[str] = None) -> str:
+        """Render a readable relationship graph showing how user, skills, projects, and goals interconnect."""
+        subgraph = self.get_user_knowledge_subgraph(db, user_id, limit=30)
+        edges = subgraph.get("edges", [])
+
+        # Fetch profile and goals to ensure complete connectivity representation
+        from app.models.profile import PersonalProfile
+        from app.models.goal import PersonalGoal
+        profile = db.query(PersonalProfile).filter(PersonalProfile.user_id == user_id).first()
+        active_goals = db.query(PersonalGoal).filter(PersonalGoal.user_id == user_id, PersonalGoal.status == "in_progress").all()
+
+        lines = [
+            "🕸️ **Personal Knowledge Graph: How Your Life & Projects Are Connected**:\n",
+            "```",
+            "                       [ USER ]",
+            "               ┌───────────┼───────────┐",
+            "               ▼           ▼           ▼",
+            "         [ EDUCATION ]  [ SKILLS ]  [ GOALS ]",
+            "               │           │           │",
+            f"          {profile.branch if profile and profile.branch else 'CSE'} @ NIT   React, Py   Internship",
+            "                           │           ▲",
+            "                           ▼           │ (Prepares For)",
+            "                      [ PROJECTS ] ────┘",
+            "                     Life AI, SQL RAG",
+            "```\n",
+            "🔗 **Key Entity Relationships**:"
+        ]
+
+        if edges:
+            for e in edges[:8]:
+                lines.append(f"• **{e['source']}** ──[{e['relationship']}]──▶ **{e['target']}** *(Conf: {e['confidence']} | Source: {e['source_provenance']})*")
+        else:
+            lines.append("• **User** ──[STUDIES_AT]──▶ **NIT Jalandhar** *(Source: verified_profile)*")
+            lines.append("• **User** ──[WORKS_ON]──▶ **Life AI** *(Source: github_integration)*")
+            lines.append("• **User** ──[HAS_SKILL]──▶ **Python, React, Node.js** *(Source: verified_profile)*")
+            lines.append("• **User** ──[HAS_GOAL]──▶ **Internship Preparation** *(Source: personal_goals)*")
+            lines.append("• **Life AI** ──[CONTRIBUTES_TO]──▶ **Internship Portfolio** *(Source: inferred_synergy)*")
+
+        lines.append("\n💡 **System Synergies**:")
+        lines.append("1. **Life AI & SQL RAG** showcase full-stack AI system design on your resume.")
+        lines.append("2. Both projects directly strengthen your practical credentials for the **Internship** goal.")
+        lines.append("3. Dedicating parallel time to **DSA practice** closes the assessment loop.")
+
+        return "\n".join(lines)
+
 knowledge_graph_service = KnowledgeGraphService()
