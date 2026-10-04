@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useVoice } from '../context/VoiceContext';
-import { WakeWordIndicator } from '../components/WakeWordIndicator';
-import { VoiceWaveform } from '../components/VoiceWaveform';
+import { CompanionStage } from '../components/CompanionStage';
 import {
   Sparkles,
   FileText,
@@ -192,52 +191,8 @@ export const HomeVoicePage: React.FC = () => {
         </div>
       )}
 
-      {/* Futuristic Centerpiece: Glowing Orb */}
-      <div className="w-full flex flex-col items-center">
-        <WakeWordIndicator
-          state={voiceState}
-          detailedState={detailedVoiceState}
-          wakeWordEnabled={isWakeWordEnabled}
-          isHandsFreeMode={isHandsFreeMode}
-          wakeWord={wakeWord}
-          onToggleWakeWord={toggleWakeWord}
-          onToggleHandsFree={toggleHandsFreeMode}
-          onManualTrigger={triggerManualListen}
-        />
-
-        {/* Live Audio Waveform */}
-        <div className="mt-2">
-          <VoiceWaveform isActive={voiceState === 'listening' || voiceState === 'speaking'} />
-        </div>
-
-        {/* Live Speech Feedback Area */}
-        {(voiceState !== 'idle' || transcript || assistantResponse) && (
-          <div className="w-full mt-4 p-4 rounded-2xl border border-[#202B3D] bg-[#101722]/90 backdrop-blur-md flex flex-col justify-center text-center shadow-lg transition-all">
-            {voiceState === 'listening' && (
-              <div className="space-y-1">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-[#00D9FF]">Live Speech Input</span>
-                <p className="text-sm text-slate-100 font-medium italic">
-                  "{transcript || 'Listening... Speak now'}"
-                </p>
-              </div>
-            )}
-
-            {voiceState === 'thinking' && (
-              <div className="flex items-center justify-center gap-2 text-[#8B5CF6] text-xs font-medium py-1">
-                <span className="w-2 h-2 rounded-full bg-[#8B5CF6] animate-ping" />
-                Querying memory vault & document intelligence...
-              </div>
-            )}
-
-            {voiceState === 'speaking' && (
-              <div className="space-y-1">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-[#00D9FF]">Life AI Response</span>
-                <p className="text-xs text-slate-200 font-normal leading-relaxed">{assistantResponse}</p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Life AI Virtual Companion Stage (Primary Visual Reference) */}
+      <CompanionStage onOpenChat={() => navigate('/chat')} />
 
       {/* 4 Quick Action Pills / Cards */}
       <div className="w-full mt-6 space-y-2">

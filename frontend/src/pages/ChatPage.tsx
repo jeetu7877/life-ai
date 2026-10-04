@@ -26,6 +26,7 @@ import {
   AlertCircle,
   RefreshCw
 } from 'lucide-react';
+import companionImg from '../assets/companion/companion-idle.jpg';
 import { useVoice } from '../context/VoiceContext';
 import { useToast } from '../components/ui/Toast';
 import { ConfirmationDialog } from '../components/ui/ConfirmationDialog';
@@ -337,11 +338,11 @@ export const ChatPage: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
           {messages.length === 0 ? (
             <div className="py-8 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#00A8FF]/20 via-[#00D9FF]/20 to-[#8B5CF6]/20 border border-[#00D9FF]/40 flex items-center justify-center text-[#00D9FF] shadow-[0_0_24px_rgba(0,217,255,0.25)]">
-                <Sparkles className="w-7 h-7" />
+              <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-[#00D9FF]/40 shadow-[0_0_24px_rgba(0,217,255,0.3)] bg-black">
+                <img src={companionImg} alt="Life AI Companion" className="w-full h-full object-cover object-top" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Chat with Life AI</h3>
+                <h3 className="text-lg font-bold text-white">Chat with Life AI Companion</h3>
                 <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
                   Instant answers from your uploaded college IDs, marksheet, resume, and personal memories.
                 </p>
@@ -379,13 +380,17 @@ export const ChatPage: React.FC = () => {
                   className={`flex gap-3 max-w-2xl ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
                 >
                   <div
-                    className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center text-xs font-bold ${
+                    className={`w-8 h-8 rounded-xl shrink-0 overflow-hidden flex items-center justify-center text-xs font-bold ${
                       isUser
                         ? 'bg-gradient-to-tr from-[#00A8FF] to-[#0066FF] text-white shadow-[0_0_12px_rgba(0,168,255,0.4)]'
-                        : 'bg-[#101722] text-[#00D9FF] border border-[#202B3D] shadow-[0_0_12px_rgba(0,217,255,0.2)]'
+                        : 'bg-black border border-[#00D9FF]/30 shadow-[0_0_12px_rgba(0,217,255,0.2)]'
                     }`}
                   >
-                    {isUser ? <UserIcon className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                    {isUser ? (
+                      <UserIcon className="w-4 h-4" />
+                    ) : (
+                      <img src={companionImg} alt="Life Companion" className="w-full h-full object-cover object-top" />
+                    )}
                   </div>
 
                   <div className="space-y-1.5 max-w-[85%]">
