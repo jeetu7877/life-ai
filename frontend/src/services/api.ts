@@ -165,11 +165,26 @@ export const api = {
   deleteVaultItem: (id: string) =>
     apiClient.delete(`/vault/${id}`).then(r => r.data),
 
-  // Voice
+  // Voice & STT
   getWakeStatus: () =>
     apiClient.get<{ wake_word: string; status: string; greeting: string; silence_timeout_seconds: number }>('/voice/wake-status').then(r => r.data),
   synthesizeSpeech: (text: string, voice?: string) =>
     apiClient.post<{ audio_url: string }>('/voice/synthesize', { text, voice }).then(r => r.data),
+  transcribeAudio: (audioBlob: Blob) => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'speech.webm');
+    return apiClient.post<{ transcript: string }>('/voice/transcribe', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }).then(r => r.data);
+  },
+  transcribeAndRespond: (audioBlob: Blob, timezone?: string) => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'speech.webm');
+    if (timezone) formData.append('timezone', timezone);
+    return apiClient.post<{ transcript: string; response: string; audio_url?: string; conversation_id?: string }>('/voice/transcribe-and-respond', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }).then(r => r.data);
+  },
 
   // GitHub
   getGitHubStatus: () =>

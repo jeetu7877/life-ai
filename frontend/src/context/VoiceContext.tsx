@@ -1,33 +1,59 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { VoiceState, DetailedVoiceState } from '../types';
 import { api, getServerHostUrl } from '../services/api';
 import { handsFreeService } from '../services/handsFreeService';
+
+export interface VoiceDiagnosticsState {
+  micAvailable: boolean;
+  permissionGranted: boolean;
+  permissionDenied: boolean;
+  streamActive: boolean;
+  sampleRate: number;
+  channels: number;
+  inputVolume: number;
+  sttEngine: 'web_speech' | 'gemini_multimodal' | 'unavailable';
+  sttSupported: boolean;
+  wakeWordListening: boolean;
+  backendConnected: boolean;
+  ttsReady: boolean;
+  lastError: string | null;
+}
 
 interface VoiceContextType {
   voiceState: VoiceState;
   detailedVoiceState: DetailedVoiceState;
   transcript: string;
   assistantResponse: string;
+  voiceError: string | null;
   isWakeWordEnabled: boolean;
   isHandsFreeMode: boolean;
   micPermissionError: boolean;
+  micPermissionGranted: boolean;
   activeConversationId: string | null;
   wakeWord: string;
   voiceResponseEnabled: boolean;
   isNativePlatform: boolean;
   isBatteryOptimizedExempt: boolean;
   isAudioSpeaking: boolean;
-  audioEnergy: number;
+  audioEnergy: number; // 0.0 - 1.0 (TTS mouth animation)
+  inputVolume: number; // 0.0 - 1.0 (Microphone live level)
+  sttEngine: 'web_speech' | 'gemini_multimodal' | 'unavailable';
+  isBackendOnline: boolean;
+  isDiagnosticsOpen: boolean;
+  setIsDiagnosticsOpen: (open: boolean) => void;
+  diagnostics: VoiceDiagnosticsState;
   toggleWakeWord: () => void;
   toggleHandsFreeMode: () => Promise<void>;
   updateWakeWord: (word: string) => void;
   updateVoiceResponse: (enabled: boolean) => void;
-  triggerManualListen: () => void;
+  triggerManualListen: () => Promise<void>;
   stopVoice: () => void;
-  playAudioResponse: (url: string) => void;
-  requestMicPermission: () => Promise<void>;
+  playAudioResponse: (url: string, fallbackText?: string) => void;
+  requestMicPermission: () => Promise<boolean>;
   checkBatteryOptimization: () => Promise<boolean>;
   requestBatteryOptimizationExemption: () => Promise<void>;
+  testMicrophoneInput: (seconds?: number) => Promise<Blob | null>;
+  testBackendTranscription: (audioBlob: Blob) => Promise<string>;
 }
 
 const VoiceContext = createContext<VoiceContextType | undefined>(undefined);
@@ -35,62 +61,144 @@ const VoiceContext = createContext<VoiceContextType | undefined>(undefined);
 interface IWindow extends Window {
   webkitSpeechRecognition: any;
   SpeechRecognition: any;
+  _currentUtterance?: any;
 }
 
 export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Voice states
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [detailedVoiceState, setDetailedVoiceState] = useState<DetailedVoiceState>('stopped');
   const [transcript, setTranscript] = useState<string>('');
   const [assistantResponse, setAssistantResponse] = useState<string>('');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  // Settings & Toggles
   const [isWakeWordEnabled, setIsWakeWordEnabled] = useState<boolean>(true);
   const [isHandsFreeMode, setIsHandsFreeMode] = useState<boolean>(handsFreeService.isEnabledLocally());
   const [wakeWord, setWakeWordState] = useState<string>(handsFreeService.getWakeWord());
   const [voiceResponseEnabled, setVoiceResponseState] = useState<boolean>(handsFreeService.isVoiceResponseEnabled());
   const [micPermissionError, setMicPermissionError] = useState<boolean>(false);
+  const [micPermissionGranted, setMicPermissionGranted] = useState<boolean>(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isBatteryOptimizedExempt, setIsBatteryOptimizedExempt] = useState<boolean>(true);
+
+  // Audio meters
   const [isAudioSpeaking, setIsAudioSpeaking] = useState<boolean>(false);
   const [audioEnergy, setAudioEnergy] = useState<number>(0);
+  const [inputVolume, setInputVolume] = useState<number>(0);
+
+  // Diagnostics & Connectivity
+  const [sttEngine, setSttEngine] = useState<'web_speech' | 'gemini_multimodal' | 'unavailable'>('web_speech');
+  const [isBackendOnline, setIsBackendOnline] = useState<boolean>(true);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
+  const [streamActive, setStreamActive] = useState<boolean>(false);
+  const [audioSampleRate, setAudioSampleRate] = useState<number>(0);
+  const [audioChannels, setAudioChannels] = useState<number>(0);
 
   const isNative = handsFreeService.isNativeAvailable();
 
+  // Internal Refs
   const recognitionRef = useRef<any>(null);
+  const wakeRecognitionRef = useRef<any>(null);
   const isListeningRef = useRef<boolean>(false);
   const isSpeakingRef = useRef<boolean>(false);
+  const isMicGatedRef = useRef<boolean>(false);
   const isInActiveConversationRef = useRef<boolean>(false);
   const lastSpokenTextRef = useRef<string>('');
+  const finalTranscriptRef = useRef<string>('');
+  const speechDetectedRef = useRef<boolean>(false);
+  const lastSpeechTimeRef = useRef<number>(0);
 
-  const silenceTimerRef = useRef<any>(null);
-  const speechDebounceTimerRef = useRef<any>(null);
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  // Media & Recording Refs
+  const activeStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const inputAudioCtxRef = useRef<AudioContext | null>(null);
+  const inputAnalyserRef = useRef<AnalyserNode | null>(null);
+  const inputAnimFrameRef = useRef<number | null>(null);
+
+  // TTS Output Refs
+  const outputAudioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const outputAudioCtxRef = useRef<AudioContext | null>(null);
+  const outputAnimFrameRef = useRef<number | null>(null);
   const cadenceIntervalRef = useRef<any>(null);
+  const ttsSafetyTimeoutRef = useRef<any>(null);
 
-  const stopAudioAnalysis = () => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
+  // Timers
+  const silenceTimerRef = useRef<any>(null);
+  const speechPauseTimerRef = useRef<any>(null);
+
+  // Check STT capability on mount
+  useEffect(() => {
+    const SpeechRecognitionClass =
+      (window as unknown as IWindow).SpeechRecognition ||
+      (window as unknown as IWindow).webkitSpeechRecognition;
+
+    if (SpeechRecognitionClass) {
+      setSttEngine('web_speech');
+      console.log('[VOICE] STT Engine detected: Web Speech API supported.');
+    } else {
+      setSttEngine('gemini_multimodal');
+      console.log('[VOICE] STT Engine: Web Speech API not detected, defaulting to Gemini Multimodal STT.');
+    }
+
+    // Check backend connectivity ping
+    api.checkHealth()
+      .then(() => setIsBackendOnline(true))
+      .catch(() => setIsBackendOnline(false));
+  }, []);
+
+  // Stop output audio analysis
+  const stopOutputAudioAnalysis = () => {
+    if (outputAnimFrameRef.current) {
+      cancelAnimationFrame(outputAnimFrameRef.current);
+      outputAnimFrameRef.current = null;
     }
     if (cadenceIntervalRef.current) {
       clearInterval(cadenceIntervalRef.current);
       cadenceIntervalRef.current = null;
+    }
+    if (ttsSafetyTimeoutRef.current) {
+      clearTimeout(ttsSafetyTimeoutRef.current);
+      ttsSafetyTimeoutRef.current = null;
     }
     setIsAudioSpeaking(false);
     setAudioEnergy(0);
   };
 
   const startCadenceFallback = () => {
-    stopAudioAnalysis();
+    stopOutputAudioAnalysis();
     cadenceIntervalRef.current = setInterval(() => {
       if (isSpeakingRef.current) {
         setIsAudioSpeaking(prev => !prev);
-        setAudioEnergy(Math.random() * 0.5 + 0.4);
+        setAudioEnergy(Math.random() * 0.45 + 0.35);
       } else {
-        stopAudioAnalysis();
+        stopOutputAudioAnalysis();
       }
-    }, 180);
+    }, 160);
   };
+
+  // Stop input mic audio analysis
+  const stopInputAudioAnalysis = () => {
+    if (inputAnimFrameRef.current) {
+      cancelAnimationFrame(inputAnimFrameRef.current);
+      inputAnimFrameRef.current = null;
+    }
+    setInputVolume(0);
+  };
+
+  // Close & release active microphone stream
+  const releaseActiveMediaStream = useCallback(() => {
+    stopInputAudioAnalysis();
+    if (activeStreamRef.current) {
+      activeStreamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
+      activeStreamRef.current = null;
+      setStreamActive(false);
+      console.log('[VOICE] microphone stream stopped and tracks released');
+    }
+  }, []);
 
   // Sync with native Android HandsFreeVoice service events when running inside Android APK
   useEffect(() => {
@@ -150,6 +258,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
 
         subError = await handsFreeService.addListener('voiceError', (data: { error: string }) => {
+          console.error('[VOICE ERROR] Native error:', data.error);
+          setVoiceError(data.error);
           if (data.error && (data.error.toLowerCase().includes('permission') || data.error.toLowerCase().includes('denied'))) {
             setMicPermissionError(true);
           }
@@ -174,7 +284,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (subResponse?.remove) subResponse.remove();
       if (subError?.remove) subError.remove();
     };
-  }, [isNative]);
+  }, [isNative, isWakeWordEnabled]);
 
   const checkBatteryOptimization = async (): Promise<boolean> => {
     if (isNative) {
@@ -195,100 +305,452 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Request microphone permission explicitly
-  const requestMicPermission = async () => {
+  // Acquire active microphone stream & setup real-time AudioContext energy meter
+  const startLiveMicrophoneStream = async (): Promise<MediaStream> => {
+    console.log('[VOICE] checking microphone permission');
+    setDetailedVoiceState('starting_mic');
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('navigator.mediaDevices.getUserMedia is not supported on this browser.');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      const audioTracks = stream.getAudioTracks();
+      if (!audioTracks || audioTracks.length === 0 || audioTracks[0].readyState !== 'live') {
+        throw new Error('No live audio track received from microphone.');
+      }
+
+      console.log(`[VOICE] microphone permission granted (Track: ${audioTracks[0].label || 'Default Mic'})`);
+      console.log('[VOICE] microphone stream started');
+      activeStreamRef.current = stream;
+      setMicPermissionGranted(true);
+      setMicPermissionError(false);
+      setStreamActive(true);
+
+      const trackSettings = audioTracks[0].getSettings ? audioTracks[0].getSettings() : {};
+      setAudioSampleRate(trackSettings.sampleRate || 48000);
+      setAudioChannels(trackSettings.channelCount || 1);
+
+      // Connect to AudioContext for live decibel / energy metering
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          if (!inputAudioCtxRef.current || inputAudioCtxRef.current.state === 'closed') {
+            inputAudioCtxRef.current = new AudioCtx();
+          }
+          if (inputAudioCtxRef.current.state === 'suspended') {
+            await inputAudioCtxRef.current.resume();
+          }
+
+          const ctx = inputAudioCtxRef.current;
+          const source = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.3;
+          source.connect(analyser);
+          inputAnalyserRef.current = analyser;
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+          const sampleInputAudio = () => {
+            if (!activeStreamRef.current || isMicGatedRef.current) {
+              setInputVolume(0);
+              inputAnimFrameRef.current = requestAnimationFrame(sampleInputAudio);
+              return;
+            }
+
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / dataArray.length;
+            // Normalize volume 0.0 to 1.0 with responsive curve
+            const vol = Math.min(1.0, (avg / 128) * 1.8);
+            setInputVolume(vol);
+
+            // Speech threshold detection (> 0.07 energy)
+            if (vol > 0.07) {
+              if (!speechDetectedRef.current) {
+                console.log(`[VOICE] speech detected (mic volume: ${(vol * 100).toFixed(0)}%)`);
+                speechDetectedRef.current = true;
+                setDetailedVoiceState('speech_detected');
+              }
+              lastSpeechTimeRef.current = Date.now();
+            }
+
+            inputAnimFrameRef.current = requestAnimationFrame(sampleInputAudio);
+          };
+
+          inputAnimFrameRef.current = requestAnimationFrame(sampleInputAudio);
+        }
+      } catch (audioCtxErr) {
+        console.warn('[VOICE] Input AudioContext analysis note:', audioCtxErr);
+      }
+
+      return stream;
+    } catch (err: any) {
+      console.error('[VOICE ERROR] Microphone permission or capture failed:', err);
+      setMicPermissionError(true);
+      setMicPermissionGranted(false);
+      setStreamActive(false);
+      setVoiceError(err.message || 'Microphone access denied');
+      setDetailedVoiceState('error');
+      setVoiceState('error');
+      throw err;
+    }
+  };
+
+  // Explicit mic permission request
+  const requestMicPermission = async (): Promise<boolean> => {
     try {
       if (isNative) {
         await handsFreeService.start();
         setIsHandsFreeMode(true);
         setMicPermissionError(false);
+        setMicPermissionGranted(true);
+        return true;
       } else {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
-        setMicPermissionError(false);
-        startRecognition();
+        const stream = await startLiveMicrophoneStream();
+        // Keep active or release gracefully if not currently listening
+        if (!isListeningRef.current) {
+          releaseActiveMediaStream();
+        }
+        return true;
       }
     } catch (err) {
-      console.error('Microphone permission denied:', err);
       setMicPermissionError(true);
+      return false;
     }
   };
 
-  const startRecognition = () => {
-    // If running on native Android, native HandsFreeVoiceService manages audio capture exclusively
-    if (isNative) return;
-    if (!recognitionRef.current || isListeningRef.current || isSpeakingRef.current) return;
-    try {
-      recognitionRef.current.start();
-      isListeningRef.current = true;
-      setMicPermissionError(false);
-    } catch (e: any) {
-      if (e.name !== 'InvalidStateError') {
-        console.warn('Recognition start warning:', e);
+  // Reset silence timeout: after 8 seconds of absolute silence, return to idle
+  const resetSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = setTimeout(() => {
+      console.log('[VOICE] silence timeout reached. stopping listening gracefully.');
+      if (isListeningRef.current && !isSpeakingRef.current) {
+        stopListeningSession(false);
       }
-    }
-  };
+    }, 8000);
+  }, []);
 
+  // Stop any active Web Speech recognition instance
   const stopRecognitionGracefully = () => {
-    if (!recognitionRef.current) return;
-    try {
-      recognitionRef.current.stop();
-    } catch (_) {}
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (_) {}
+      recognitionRef.current = null;
+    }
+    if (wakeRecognitionRef.current) {
+      try {
+        wakeRecognitionRef.current.abort();
+      } catch (_) {}
+      wakeRecognitionRef.current = null;
+    }
     isListeningRef.current = false;
   };
 
-  // Initialize Web Speech Recognition for Web / Browser Mode ONLY
-  useEffect(() => {
+  // Stop listening session and process results
+  const stopListeningSession = async (userRequestedStop: boolean = false) => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    if (speechPauseTimerRef.current) clearTimeout(speechPauseTimerRef.current);
+
+    isListeningRef.current = false;
+    console.log('[VOICE] speech recognition ended');
+
+    // 1. Stop Web Speech recognition
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (_) {}
+    }
+
+    // 2. Stop MediaRecorder and grab audio blob if available
+    let recordedBlob: Blob | null = null;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        await new Promise<void>((resolve) => {
+          if (!mediaRecorderRef.current) return resolve();
+          mediaRecorderRef.current.onstop = () => resolve();
+          mediaRecorderRef.current.stop();
+        });
+        if (recordedChunksRef.current.length > 0) {
+          recordedBlob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+          console.log(`[VOICE] MediaRecorder captured audio blob (${recordedBlob.size} bytes)`);
+        }
+      } catch (recErr) {
+        console.warn('[VOICE] MediaRecorder stop note:', recErr);
+      }
+    }
+
+    releaseActiveMediaStream();
+
+    // 3. Evaluate transcript: First Web Speech, then Backend Gemini STT fallback
+    let candidateTranscript = (finalTranscriptRef.current || transcript || '').trim();
+
+    // If Web Speech gave nothing but speech was detected or audio recorded, invoke Gemini STT!
+    if (!candidateTranscript && recordedBlob && recordedBlob.size > 800) {
+      console.log('[VOICE] Web Speech yielded no transcript. Invoking backend Gemini Multimodal STT fallback...');
+      setDetailedVoiceState('transcribing');
+      try {
+        const backendRes = await api.transcribeAudio(recordedBlob);
+        if (backendRes && backendRes.transcript && backendRes.transcript.trim()) {
+          candidateTranscript = backendRes.transcript.trim();
+          console.log(`[VOICE] transcript received (Gemini STT): "${candidateTranscript}"`);
+          setTranscript(candidateTranscript);
+        }
+      } catch (sttErr: any) {
+        console.warn('[VOICE ERROR] Gemini STT transcription error:', sttErr);
+      }
+    }
+
+    // 4. Handle Result
+    if (candidateTranscript) {
+      console.log(`[VOICE] final transcript: "${candidateTranscript}"`);
+      await handleUserUtterance(candidateTranscript);
+    } else {
+      console.log('[VOICE] empty transcript detected');
+      setTranscript('');
+      setAssistantResponse("I couldn't hear that. Please try again.");
+      setVoiceState('idle');
+      setDetailedVoiceState(isWakeWordEnabled ? 'wake_listening' : 'idle');
+      isInActiveConversationRef.current = false;
+
+      // Resume wake listening if enabled
+      if (isWakeWordEnabled && !isSpeakingRef.current && !isNative) {
+        startWakeWordListener();
+      }
+    }
+  };
+
+  // Start manual voice interaction (mic button tapped)
+  const triggerManualListen = async () => {
+    console.log('[VOICE] microphone button pressed');
+
     if (isNative) {
-      // In native Android APK, HandsFreeVoiceService handles ALL mic input and speech recognition.
-      // Running Web Speech Recognition in WebView causes AudioRecord collisions (ERROR_CLIENT / ERROR_RECOGNIZER_BUSY).
-      stopRecognitionGracefully();
+      try {
+        await handsFreeService.start();
+        setIsHandsFreeMode(true);
+        setMicPermissionError(false);
+      } catch (err: any) {
+        console.error('[VOICE ERROR] Failed to trigger native listen:', err);
+        setMicPermissionError(true);
+      }
       return;
     }
 
-    const SpeechRecognition =
+    // If currently speaking, stop TTS output immediately
+    if (isSpeakingRef.current) {
+      stopVoice();
+      return;
+    }
+
+    // If currently listening, tap finishes utterance manually
+    if (isListeningRef.current) {
+      await stopListeningSession(true);
+      return;
+    }
+
+    // Reset transcription state
+    setTranscript('');
+    setAssistantResponse('');
+    setVoiceError(null);
+    finalTranscriptRef.current = '';
+    lastSpokenTextRef.current = '';
+    speechDetectedRef.current = false;
+    recordedChunksRef.current = [];
+    isInActiveConversationRef.current = true;
+
+    // Stop wake word listener while in active query
+    if (wakeRecognitionRef.current) {
+      try {
+        wakeRecognitionRef.current.abort();
+      } catch (_) {}
+      wakeRecognitionRef.current = null;
+    }
+
+    try {
+      // 1. Acquire live microphone stream
+      const stream = await startLiveMicrophoneStream();
+
+      // 2. Start MediaRecorder fallback buffer
+      try {
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : '';
+
+        const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            recordedChunksRef.current.push(e.data);
+          }
+        };
+        recorder.start(200);
+        mediaRecorderRef.current = recorder;
+        console.log('[VOICE] audio capture started (MediaRecorder recording active)');
+      } catch (recStartErr) {
+        console.warn('[VOICE] MediaRecorder init note:', recStartErr);
+      }
+
+      // 3. Initialize Web Speech Recognition
+      const SpeechRecognitionClass =
+        (window as unknown as IWindow).SpeechRecognition ||
+        (window as unknown as IWindow).webkitSpeechRecognition;
+
+      if (SpeechRecognitionClass) {
+        const recognition = new SpeechRecognitionClass();
+        recognition.continuous = false; // single focused utterance for crisp response
+        recognition.interimResults = true;
+        recognition.lang = 'en-IN'; // Indian accents, Hindi & Hinglish
+
+        recognition.onstart = () => {
+          isListeningRef.current = true;
+          console.log('[VOICE] speech recognition started');
+          setVoiceState('listening');
+          setDetailedVoiceState('listening');
+          resetSilenceTimer();
+        };
+
+        recognition.onspeechstart = () => {
+          console.log('[VOICE] speech detected by recognition engine');
+          speechDetectedRef.current = true;
+          setDetailedVoiceState('speech_detected');
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        };
+
+        recognition.onresult = (event: any) => {
+          let interim = '';
+          let finalStr = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const text = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalStr += text;
+            } else {
+              interim += text;
+            }
+          }
+
+          const currentText = (finalStr || interim).trim();
+          if (currentText) {
+            setTranscript(currentText);
+            lastSpokenTextRef.current = currentText;
+            if (finalStr) {
+              finalTranscriptRef.current = finalStr;
+              console.log(`[VOICE] transcript received (Web Speech final): "${finalStr}"`);
+            }
+
+            // Debounce pause: if user pauses speaking for 1.3 seconds, finish listening
+            if (speechPauseTimerRef.current) clearTimeout(speechPauseTimerRef.current);
+            speechPauseTimerRef.current = setTimeout(() => {
+              if (isListeningRef.current) {
+                console.log('[VOICE] user pause detected after speech. Completing utterance...');
+                stopListeningSession();
+              }
+            }, 1300);
+          }
+        };
+
+        recognition.onerror = (e: any) => {
+          console.warn(`[VOICE ERROR] Speech recognition error: ${e.error}`);
+          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+            setMicPermissionError(true);
+            setVoiceError('Microphone permission denied by browser.');
+          }
+          // For network or no-speech error, allow MediaRecorder fallback
+        };
+
+        recognition.onend = () => {
+          if (isListeningRef.current) {
+            stopListeningSession();
+          }
+        };
+
+        recognitionRef.current = recognition;
+        try {
+          recognition.start();
+        } catch (startErr: any) {
+          if (startErr.name !== 'InvalidStateError') {
+            console.warn('[VOICE] Recognition start error:', startErr);
+          }
+          setVoiceState('listening');
+          setDetailedVoiceState('listening');
+          resetSilenceTimer();
+        }
+      } else {
+        // Fallback for browsers without Web Speech (MediaRecorder + Gemini STT exclusively)
+        isListeningRef.current = true;
+        setVoiceState('listening');
+        setDetailedVoiceState('listening');
+        resetSilenceTimer();
+
+        // Check periodic pause via AudioContext speech detector
+        const checkSpeechDoneInterval = setInterval(() => {
+          if (!isListeningRef.current) {
+            clearInterval(checkSpeechDoneInterval);
+            return;
+          }
+          if (speechDetectedRef.current && Date.now() - lastSpeechTimeRef.current > 1500) {
+            clearInterval(checkSpeechDoneInterval);
+            console.log('[VOICE] Speech pause detected via audio energy analyzer. Stopping...');
+            stopListeningSession();
+          }
+        }, 200);
+      }
+    } catch (err: any) {
+      console.error('[VOICE ERROR] Failed to start manual listen:', err);
+      isInActiveConversationRef.current = false;
+      setVoiceState('idle');
+      setDetailedVoiceState(isWakeWordEnabled ? 'wake_listening' : 'idle');
+    }
+  };
+
+  // Lightweight continuous Wake Word Listener ("Hey Life" / "Life" / "Jeet")
+  const startWakeWordListener = useCallback(() => {
+    if (isNative || !isWakeWordEnabled || isListeningRef.current || isSpeakingRef.current) return;
+
+    const SpeechRecognitionClass =
       (window as unknown as IWindow).SpeechRecognition ||
       (window as unknown as IWindow).webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
-      console.warn('SpeechRecognition API not available in this browser environment.');
-      return;
-    }
+    if (!SpeechRecognitionClass) return;
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-IN'; // Indian accents, English words & Hinglish phrases cleanly
+    stopRecognitionGracefully();
 
-    recognition.onstart = () => {
-      isListeningRef.current = true;
-      setMicPermissionError(false);
-    };
+    try {
+      const wakeRec = new SpeechRecognitionClass();
+      wakeRec.continuous = true;
+      wakeRec.interimResults = true;
+      wakeRec.lang = 'en-IN';
 
-    recognition.onresult = (event: any) => {
-      let interim = '';
-      let finalStr = '';
+      wakeRec.onstart = () => {
+        console.log('[WAKE] listener initialized');
+        console.log('[WAKE] microphone active');
+        console.log('[WAKE] listening');
+        setDetailedVoiceState('wake_listening');
+      };
 
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        const text = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalStr += text;
-        } else {
-          interim += text;
+      wakeRec.onresult = (event: any) => {
+        let transcriptText = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          transcriptText += event.results[i][0].transcript;
         }
-      }
 
-      const heardText = (finalStr || interim).trim();
-      if (!heardText) return;
-
-      setTranscript(heardText);
-      lastSpokenTextRef.current = heardText;
-
-      const lower = heardText.toLowerCase();
-
-      // 1. Idle State: Wake Word Detection ("Hey Life" / "Life" / "Jeet")
-      if (!isInActiveConversationRef.current) {
+        const lower = transcriptText.toLowerCase().trim();
         const targetWake = wakeWord.toLowerCase();
+
         if (
           lower.includes(targetWake) ||
           lower.includes('hey life') ||
@@ -300,83 +762,89 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           lower.includes('jeet') ||
           lower.includes('जीत')
         ) {
+          console.log(`[WAKE] phrase detected: "${lower}"`);
+          console.log('[WAKE] callback fired');
+          console.log('[WAKE] entering listening state');
+
+          try {
+            wakeRec.abort();
+          } catch (_) {}
+          wakeRecognitionRef.current = null;
+
           handleWakeWordTriggered();
         }
-      } else {
-        // 2. Active Conversation: Debounce speech to auto-submit when user pauses
-        resetSilenceTimer();
+      };
 
-        if (speechDebounceTimerRef.current) {
-          clearTimeout(speechDebounceTimerRef.current);
+      wakeRec.onerror = (e: any) => {
+        if (e.error !== 'aborted' && e.error !== 'no-speech') {
+          console.warn('[WAKE] error:', e.error);
         }
+      };
 
-        // When user pauses speaking for 1.2 seconds, automatically submit!
-        speechDebounceTimerRef.current = setTimeout(() => {
-          const textToSubmit = lastSpokenTextRef.current;
-          if (textToSubmit && textToSubmit.length > 1 && !isSpeakingRef.current) {
-            handleUserUtterance(textToSubmit);
-          }
-        }, 1200);
+      wakeRec.onend = () => {
+        // Automatically recover wake listener if still enabled and not speaking
+        if (isWakeWordEnabled && !isListeningRef.current && !isSpeakingRef.current && !isNative) {
+          setTimeout(() => {
+            startWakeWordListener();
+          }, 300);
+        }
+      };
+
+      wakeRecognitionRef.current = wakeRec;
+      wakeRec.start();
+    } catch (err: any) {
+      if (err.name !== 'InvalidStateError') {
+        console.warn('[WAKE] start note:', err);
       }
-    };
+    }
+  }, [isNative, isWakeWordEnabled, wakeWord]);
 
-    recognition.onerror = (e: any) => {
-      if (e.error === 'aborted' || e.error === 'no-speech') {
-        isListeningRef.current = false;
-        return;
+  // Start wake listener on state change
+  useEffect(() => {
+    if (isWakeWordEnabled && !isNative && !isListeningRef.current && !isSpeakingRef.current) {
+      startWakeWordListener();
+    } else {
+      if (wakeRecognitionRef.current) {
+        try {
+          wakeRecognitionRef.current.abort();
+        } catch (_) {}
+        wakeRecognitionRef.current = null;
       }
-
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        setMicPermissionError(true);
-      } else {
-        console.warn('Speech recognition status:', e.error);
-      }
-      isListeningRef.current = false;
-    };
-
-    recognition.onend = () => {
-      isListeningRef.current = false;
-      // Auto-restart recognition after 150ms unless assistant is currently speaking or native mode took over
-      if (isWakeWordEnabled && !isSpeakingRef.current && !(isNative && isHandsFreeMode)) {
-        setTimeout(() => {
-          startRecognition();
-        }, 150);
-      }
-    };
-
-    recognitionRef.current = recognition;
-    startRecognition();
+    }
 
     return () => {
-      stopRecognitionGracefully();
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      if (speechDebounceTimerRef.current) clearTimeout(speechDebounceTimerRef.current);
+      if (wakeRecognitionRef.current) {
+        try {
+          wakeRecognitionRef.current.abort();
+        } catch (_) {}
+        wakeRecognitionRef.current = null;
+      }
     };
-  }, [isWakeWordEnabled, isHandsFreeMode, isNative, wakeWord]);
+  }, [isWakeWordEnabled, isNative, startWakeWordListener]);
 
+  // When wake word triggers: speak fast greeting and listen for query
   const handleWakeWordTriggered = async () => {
-    console.log(`Wake word '${wakeWord}' detected!`);
-    isInActiveConversationRef.current = true;
-    setVoiceState('listening');
-    setDetailedVoiceState('user_listening');
+    setDetailedVoiceState('wake_detected');
     setTranscript('');
-    lastSpokenTextRef.current = '';
+    setAssistantResponse('');
+    setVoiceError(null);
 
-    // Fast local greeting with 0ms network latency
-    speakText("Haan, bolo.");
-    resetSilenceTimer();
+    // Speak fast greeting "Haan, bolo." with microphone gated
+    speakText('Haan, bolo.', () => {
+      // Once greeting is finished, automatically enter manual listen!
+      triggerManualListen();
+    });
   };
 
+  // Submit valid user utterance to Agent API and play TTS response
   const handleUserUtterance = async (userText: string) => {
     if (!userText || isSpeakingRef.current) return;
     const cleanText = userText.trim();
-    const cleanLow = cleanText.toLowerCase();
-    if (cleanLow === 'hey life' || cleanLow === 'life' || cleanLow === 'लाइफ' || cleanLow === 'jeet' || cleanLow === 'जीत') return;
+    if (!cleanText) return;
 
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    if (speechDebounceTimerRef.current) clearTimeout(speechDebounceTimerRef.current);
-
+    console.log(`[VOICE] life ai agent api request: "${cleanText}"`);
     setVoiceState('thinking');
+    setDetailedVoiceState('processing');
 
     try {
       const res = await api.sendMessage({
@@ -386,75 +854,83 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         voice_mode: true
       });
 
+      console.log(`[VOICE] response received: "${(res.response || '').substring(0, 60)}..."`);
       setActiveConversationId(res.conversation_id);
       setAssistantResponse(res.response);
+      setVoiceError(null);
 
+      // Play synthesized audio response (with mic gated)
       if (res.audio_url) {
         playAudioResponse(res.audio_url, res.response);
       } else {
-        speakText(res.response);
+        speakText(res.response, () => {
+          finishSpeakingAndReturnToIdle();
+        });
       }
     } catch (err: any) {
-      console.error('Failed to get answer:', err);
-      let errMsg = 'Kshama kijiye, mujhe response process karne mein dikkat aayi.';
-      if (!navigator.onLine) {
-        errMsg = 'Internet connection nahi hai.';
-      } else if (err?.message?.includes('timeout')) {
-        errMsg = 'Response lene mein thoda problem aa raha hai.';
-      }
-      speakText(errMsg);
-      setVoiceState('idle');
-      isInActiveConversationRef.current = false;
+      console.error('[VOICE ERROR] Agent API request failed:', err);
+      const errMsg = err?.message || 'Server communication failed';
+      setVoiceError(`Life AI Backend error: ${errMsg}`);
+      setIsBackendOnline(false);
+
+      const voiceReply = !navigator.onLine
+        ? 'Internet connection nahi hai. Kripya apna network check karein.'
+        : 'Kshama kijiye, mujhe response process karne mein dikkat aayi.';
+
+      setAssistantResponse(voiceReply);
+      speakText(voiceReply, () => {
+        finishSpeakingAndReturnToIdle();
+      });
     }
   };
 
+  // Play audio response from URL (backend Edge-TTS or PyTTSx3)
   const playAudioResponse = (url: string, fallbackText: string = '') => {
+    gateMicrophone(true);
     setVoiceState('speaking');
+    setDetailedVoiceState('tts');
     isSpeakingRef.current = true;
-    stopRecognitionGracefully();
+    console.log('[VOICE] tts started (audio stream playback)');
 
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
+    if (outputAudioPlayerRef.current) {
+      outputAudioPlayerRef.current.pause();
     }
+
     const host = getServerHostUrl();
     const resolvedUrl = url.startsWith('http') ? url : `${host}${url.startsWith('/') ? '' : '/'}${url}`;
     const audio = new Audio(resolvedUrl);
     audio.crossOrigin = 'anonymous';
-    audioPlayerRef.current = audio;
+    outputAudioPlayerRef.current = audio;
 
     const onFinish = () => {
-      stopAudioAnalysis();
-      isSpeakingRef.current = false;
-      setVoiceState('listening');
-      setTranscript('');
-      lastSpokenTextRef.current = '';
-      resetSilenceTimer();
-      setTimeout(() => {
-        startRecognition();
-      }, 200);
+      console.log('[VOICE] tts ended');
+      stopOutputAudioAnalysis();
+      finishSpeakingAndReturnToIdle();
     };
 
     audio.onended = onFinish;
     audio.onerror = () => {
-      stopAudioAnalysis();
+      console.warn('[VOICE] Audio playback failed, falling back to browser speech synthesis.');
+      stopOutputAudioAnalysis();
       if (fallbackText) {
-        speakText(fallbackText);
+        speakText(fallbackText, () => finishSpeakingAndReturnToIdle());
       } else {
         onFinish();
       }
     };
 
-    // Attach audio analyzer for synchronized lip-sync
+    // Connect audio element to AudioContext Analyser for synchronized avatar lip-sync
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioCtx();
+        if (!outputAudioCtxRef.current || outputAudioCtxRef.current.state === 'closed') {
+          outputAudioCtxRef.current = new AudioCtx();
         }
-        const ctx = audioContextRef.current;
+        const ctx = outputAudioCtxRef.current;
         if (ctx.state === 'suspended') {
           ctx.resume();
         }
+
         const source = ctx.createMediaElementSource(audio);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 64;
@@ -464,7 +940,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         const sampleAudio = () => {
           if (!isSpeakingRef.current) {
-            stopAudioAnalysis();
+            stopOutputAudioAnalysis();
             return;
           }
           analyser.getByteFrequencyData(dataArray);
@@ -473,12 +949,12 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             sum += dataArray[i];
           }
           const avg = sum / dataArray.length;
-          const energy = Math.min(1, avg / 110);
+          const energy = Math.min(1.0, avg / 100);
           setAudioEnergy(energy);
-          setIsAudioSpeaking(avg > 8);
-          animationFrameRef.current = requestAnimationFrame(sampleAudio);
+          setIsAudioSpeaking(avg > 10);
+          outputAnimFrameRef.current = requestAnimationFrame(sampleAudio);
         };
-        animationFrameRef.current = requestAnimationFrame(sampleAudio);
+        outputAnimFrameRef.current = requestAnimationFrame(sampleAudio);
       } else {
         startCadenceFallback();
       }
@@ -487,44 +963,50 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     audio.play().catch(() => {
-      stopAudioAnalysis();
+      startCadenceFallback();
       if (fallbackText) {
-        speakText(fallbackText);
+        speakText(fallbackText, () => finishSpeakingAndReturnToIdle());
       } else {
         onFinish();
       }
     });
   };
 
-  const speakText = (text: string) => {
+  // Browser SpeechSynthesis fallback
+  const speakText = (text: string, onCompleted?: () => void) => {
     if (!window.speechSynthesis) {
-      stopAudioAnalysis();
-      setVoiceState('listening');
-      resetSilenceTimer();
+      stopOutputAudioAnalysis();
+      if (onCompleted) onCompleted();
       return;
     }
+
+    gateMicrophone(true);
     window.speechSynthesis.cancel();
     setVoiceState('speaking');
+    setDetailedVoiceState('tts');
     isSpeakingRef.current = true;
-    stopRecognitionGracefully();
+    console.log('[VOICE] tts started (browser SpeechSynthesis)');
 
     const utterance = new SpeechSynthesisUtterance(text);
+    (window as unknown as IWindow)._currentUtterance = utterance; // Prevent Chrome GC bug
+
     const voices = window.speechSynthesis.getVoices();
-    const indianFemaleVoice = voices.find(v => 
+    const indianFemaleVoice = voices.find(v =>
       (v.lang.toLowerCase().includes('in') || v.name.toLowerCase().includes('india') || v.name.toLowerCase().includes('hindi')) &&
       (v.name.toLowerCase().includes('swara') ||
-       v.name.toLowerCase().includes('neerja') ||
-       v.name.toLowerCase().includes('ananya') ||
-       v.name.toLowerCase().includes('heera') ||
-       v.name.toLowerCase().includes('kalpana') ||
-       (v as any).gender === 'female')
-    ) || voices.find(v => 
+        v.name.toLowerCase().includes('neerja') ||
+        v.name.toLowerCase().includes('ananya') ||
+        v.name.toLowerCase().includes('heera') ||
+        v.name.toLowerCase().includes('kalpana') ||
+        (v as any).gender === 'female')
+    ) || voices.find(v =>
       v.name.toLowerCase().includes('zira') ||
       v.name.toLowerCase().includes('female') ||
       (v as any).gender === 'female' ||
       v.lang.toLowerCase() === 'hi-in' ||
       v.lang.toLowerCase() === 'en-in'
     );
+
     if (indianFemaleVoice) {
       utterance.voice = indianFemaleVoice;
       utterance.lang = indianFemaleVoice.lang;
@@ -534,84 +1016,97 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     utterance.rate = 0.95;
 
     const onFinish = () => {
-      stopAudioAnalysis();
-      isSpeakingRef.current = false;
-      setVoiceState('listening');
-      setTranscript('');
-      lastSpokenTextRef.current = '';
-      resetSilenceTimer();
-      setTimeout(() => {
-        startRecognition();
-      }, 200);
+      console.log('[VOICE] tts ended');
+      stopOutputAudioAnalysis();
+      (window as unknown as IWindow)._currentUtterance = null;
+      if (onCompleted) {
+        onCompleted();
+      } else {
+        finishSpeakingAndReturnToIdle();
+      }
     };
 
     utterance.onstart = () => {
+      console.log('[VOICE] avatar mouth sync active');
       startCadenceFallback();
     };
 
     utterance.onboundary = () => {
       setIsAudioSpeaking(true);
-      setAudioEnergy(0.85);
+      setAudioEnergy(0.8);
       setTimeout(() => {
         if (isSpeakingRef.current) {
           setIsAudioSpeaking(false);
           setAudioEnergy(0.1);
         }
-      }, 120);
+      }, 100);
     };
 
     utterance.onend = onFinish;
     utterance.onerror = onFinish;
+
+    // Safety timeout: In case SpeechSynthesis onend drops in Chrome
+    const estimatedDuration = Math.max(3000, text.length * 85);
+    ttsSafetyTimeoutRef.current = setTimeout(() => {
+      if (isSpeakingRef.current) {
+        console.warn('[VOICE] SpeechSynthesis safety timeout triggered.');
+        onFinish();
+      }
+    }, estimatedDuration);
+
     window.speechSynthesis.speak(utterance);
   };
 
-  const resetSilenceTimer = () => {
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    silenceTimerRef.current = setTimeout(() => {
-      console.log('Silence timeout reached. Returning to idle state.');
-      isInActiveConversationRef.current = false;
-      setVoiceState('idle');
-      setTranscript('');
-      lastSpokenTextRef.current = '';
-    }, 8000);
-  };
-
-  const triggerManualListen = async () => {
-    isInActiveConversationRef.current = true;
-    setVoiceState('listening');
-    setTranscript('');
-    lastSpokenTextRef.current = '';
-
-    if (isNative) {
-      try {
-        await handsFreeService.start();
-        setIsHandsFreeMode(true);
-        setMicPermissionError(false);
-      } catch (err: any) {
-        console.error('Failed to trigger native listen:', err);
-        setMicPermissionError(true);
-      }
-      return;
+  // Microphone Gating: Temporarily mute/disable mic input while TTS is playing to prevent audio feedback loop
+  const gateMicrophone = (gate: boolean) => {
+    isMicGatedRef.current = gate;
+    if (gate) {
+      console.log('[VOICE] microphone gated during TTS output (preventing feedback loop)');
+      stopRecognitionGracefully();
+      releaseActiveMediaStream();
+    } else {
+      console.log('[VOICE] microphone un-gated');
     }
-
-    requestMicPermission();
-    setDetailedVoiceState('user_listening');
-    resetSilenceTimer();
-    startRecognition();
   };
 
+  // Return to idle state after speaking
+  const finishSpeakingAndReturnToIdle = () => {
+    isSpeakingRef.current = false;
+    gateMicrophone(false);
+    setVoiceState('idle');
+    setDetailedVoiceState(isWakeWordEnabled ? 'wake_listening' : 'idle');
+    isInActiveConversationRef.current = false;
+
+    // Resume wake listening if enabled
+    if (isWakeWordEnabled && !isNative) {
+      setTimeout(() => {
+        startWakeWordListener();
+      }, 400);
+    }
+  };
+
+  // Full stop: Stop all voice actions, mic, TTS, and reset
   const stopVoice = () => {
+    console.log('[VOICE] stopVoice called: terminating all speech and audio');
     isInActiveConversationRef.current = false;
     isSpeakingRef.current = false;
+    isListeningRef.current = false;
+    gateMicrophone(false);
+
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    if (speechDebounceTimerRef.current) clearTimeout(speechDebounceTimerRef.current);
-    if (audioPlayerRef.current) audioPlayerRef.current.pause();
+    if (speechPauseTimerRef.current) clearTimeout(speechPauseTimerRef.current);
+    if (outputAudioPlayerRef.current) outputAudioPlayerRef.current.pause();
     if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+    stopOutputAudioAnalysis();
     stopRecognitionGracefully();
+    releaseActiveMediaStream();
+
     setVoiceState('idle');
     setDetailedVoiceState(isHandsFreeMode ? 'wake_listening' : 'stopped');
   };
 
+  // Toggles
   const toggleWakeWord = () => {
     setIsWakeWordEnabled(prev => !prev);
   };
@@ -639,7 +1134,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     handsFreeService.setWakeWord(word);
     setWakeWordState(word);
     if (isHandsFreeMode && isNative) {
-      handsFreeService.start(); // restart service with updated wake word
+      handsFreeService.start();
     }
   };
 
@@ -651,6 +1146,48 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Diagnostic Test Helpers
+  const testMicrophoneInput = async (seconds: number = 3): Promise<Blob | null> => {
+    console.log(`[VOICE DIAGNOSTICS] Testing microphone for ${seconds}s...`);
+    const stream = await startLiveMicrophoneStream();
+    const chunks: Blob[] = [];
+    const rec = new MediaRecorder(stream);
+    rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.start();
+
+    await new Promise(r => setTimeout(r, seconds * 1000));
+    rec.stop();
+    await new Promise(r => { rec.onstop = () => r(null); });
+    releaseActiveMediaStream();
+
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    console.log(`[VOICE DIAGNOSTICS] Test recorded blob size: ${blob.size} bytes`);
+    return blob;
+  };
+
+  const testBackendTranscription = async (audioBlob: Blob): Promise<string> => {
+    console.log('[VOICE DIAGNOSTICS] Testing backend Gemini STT endpoint...');
+    const res = await api.transcribeAudio(audioBlob);
+    console.log(`[VOICE DIAGNOSTICS] Backend transcription result: "${res.transcript}"`);
+    return res.transcript;
+  };
+
+  const diagnostics: VoiceDiagnosticsState = {
+    micAvailable: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+    permissionGranted: micPermissionGranted,
+    permissionDenied: micPermissionError,
+    streamActive: streamActive,
+    sampleRate: audioSampleRate,
+    channels: audioChannels,
+    inputVolume: inputVolume,
+    sttEngine: sttEngine,
+    sttSupported: !!((window as unknown as IWindow).SpeechRecognition || (window as unknown as IWindow).webkitSpeechRecognition),
+    wakeWordListening: isWakeWordEnabled && detailedVoiceState === 'wake_listening',
+    backendConnected: isBackendOnline,
+    ttsReady: !!(window.speechSynthesis || isNative),
+    lastError: voiceError
+  };
+
   return (
     <VoiceContext.Provider
       value={{
@@ -658,9 +1195,11 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         detailedVoiceState,
         transcript,
         assistantResponse,
+        voiceError,
         isWakeWordEnabled,
         isHandsFreeMode,
         micPermissionError,
+        micPermissionGranted,
         activeConversationId,
         wakeWord,
         voiceResponseEnabled,
@@ -668,6 +1207,12 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         isBatteryOptimizedExempt,
         isAudioSpeaking,
         audioEnergy,
+        inputVolume,
+        sttEngine,
+        isBackendOnline,
+        isDiagnosticsOpen,
+        setIsDiagnosticsOpen,
+        diagnostics,
         toggleWakeWord,
         toggleHandsFreeMode,
         updateWakeWord,
@@ -677,7 +1222,9 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         playAudioResponse,
         requestMicPermission,
         checkBatteryOptimization,
-        requestBatteryOptimizationExemption
+        requestBatteryOptimizationExemption,
+        testMicrophoneInput,
+        testBackendTranscription
       }}
     >
       {children}

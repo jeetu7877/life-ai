@@ -252,11 +252,18 @@ export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error
 
 export type DetailedVoiceState =
   | 'stopped'
+  | 'idle'
+  | 'mic_permission'
+  | 'starting_mic'
   | 'wake_listening'
   | 'wake_detected'
   | 'greeting'
   | 'user_listening'
+  | 'listening'
+  | 'speech_detected'
+  | 'transcribing'
   | 'processing'
   | 'tts'
+  | 'speaking'
   | 'cooldown'
   | 'error';

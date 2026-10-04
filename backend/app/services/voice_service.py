@@ -103,25 +103,30 @@ class VoiceService:
 
     def transcribe_audio_file(self, file_path: str) -> str:
         """
-        Transcribe user's speech audio into text using Gemini multimodal or Whisper.
+        Transcribe user's speech audio into text using Gemini multimodal.
+        Accurately recognizes English, Hindi, and Hinglish.
         """
         api_key = (os.getenv("GEMINI_API_KEY") or settings.GEMINI_API_KEY or "").strip().strip('"').strip("'")
-        if api_key:
+        if api_key and os.path.exists(file_path) and os.path.getsize(file_path) > 100:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=api_key)
                 uploaded_file = genai.upload_file(file_path)
                 model = genai.GenerativeModel("gemini-2.5-flash")
                 prompt = (
-                    "Transcribe this spoken audio accurately. The speech may be in English, Hindi, or Hinglish. "
-                    "Return ONLY the verbatim transcript without any surrounding markdown or explanation."
+                    "Transcribe this spoken user voice accurately. The speech may be in English, Hindi, or conversational Hinglish. "
+                    "Return ONLY the plain verbatim transcript of what was spoken. "
+                    "If the audio is silent or only contains static noise, return nothing (empty string). "
+                    "Do not add any explanations, notes, or punctuation marks unless spoken."
                 )
                 response = model.generate_content([uploaded_file, prompt])
                 if response and response.text:
-                    return response.text.strip()
+                    cleaned = response.text.strip().strip('"').strip("'").strip()
+                    logger.info(f"[VOICE_STT_GEMINI] Transcribed: '{cleaned}'")
+                    return cleaned
             except Exception as e:
                 logger.warning(f"Gemini audio transcription error: {e}")
 
-        return "Audio transcribed from user microphone."
+        return ""
 
 voice_service = VoiceService()
