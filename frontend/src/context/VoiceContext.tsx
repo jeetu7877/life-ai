@@ -25,6 +25,8 @@ interface VoiceContextType {
   transcript: string;
   assistantResponse: string;
   voiceError: string | null;
+  isVoiceModeEnabled: boolean;
+  isConversationActive: boolean;
   isWakeWordEnabled: boolean;
   isHandsFreeMode: boolean;
   micPermissionError: boolean;
@@ -42,6 +44,7 @@ interface VoiceContextType {
   isDiagnosticsOpen: boolean;
   setIsDiagnosticsOpen: (open: boolean) => void;
   diagnostics: VoiceDiagnosticsState;
+  toggleVoiceMode: () => void;
   toggleWakeWord: () => void;
   toggleHandsFreeMode: () => Promise<void>;
   updateWakeWord: (word: string) => void;
@@ -75,6 +78,10 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       unsubscribe();
     };
   }, []);
+
+  const toggleVoiceMode = () => {
+    voiceEngine.setVoiceModeEnabled(!snapshot.isVoiceModeEnabled);
+  };
 
   const toggleWakeWord = () => {
     voiceEngine.setWakeWordEnabled(!snapshot.isWakeWordEnabled);
@@ -149,7 +156,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     inputVolume: snapshot.inputVolume,
     sttEngine: snapshot.sttEngine,
     sttSupported: !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition),
-    wakeWordListening: snapshot.isWakeWordEnabled && snapshot.detailedVoiceState === 'wake_listening',
+    wakeWordListening: snapshot.isVoiceModeEnabled && snapshot.detailedVoiceState === 'wake_listening',
     backendConnected: snapshot.isBackendOnline,
     ttsReady: !!(window.speechSynthesis || snapshot.isNativePlatform),
     lastError: snapshot.voiceError
@@ -163,6 +170,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         transcript: snapshot.transcript,
         assistantResponse: snapshot.assistantResponse,
         voiceError: snapshot.voiceError,
+        isVoiceModeEnabled: snapshot.isVoiceModeEnabled,
+        isConversationActive: snapshot.isConversationActive,
         isWakeWordEnabled: snapshot.isWakeWordEnabled,
         isHandsFreeMode: snapshot.isHandsFreeMode,
         micPermissionError: snapshot.micPermissionError,
@@ -180,6 +189,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         isDiagnosticsOpen,
         setIsDiagnosticsOpen,
         diagnostics,
+        toggleVoiceMode,
         toggleWakeWord,
         toggleHandsFreeMode,
         updateWakeWord,

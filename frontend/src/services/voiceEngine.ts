@@ -1,7 +1,7 @@
 /**
- * Life AI — Singleton Voice Engine
- * Single Source of Truth for hands-free wake word, STT, TTS, microphone stream,
- * audio energy metering, and state machine transitions.
+ * Life AI — Central VoiceEngine & Continuous Conversation Controller
+ * Single Source of Truth for hands-free continuous multi-turn human conversation,
+ * wake-word detection, speech-end VAD, acoustic echo gating, and resilient state transitions.
  */
 
 import { VoiceState, DetailedVoiceState } from '../types';
@@ -14,6 +14,8 @@ export interface VoiceEngineSnapshot {
   transcript: string;
   assistantResponse: string;
   voiceError: string | null;
+  isVoiceModeEnabled: boolean;
+  isConversationActive: boolean;
   isWakeWordEnabled: boolean;
   isHandsFreeMode: boolean;
   micPermissionError: boolean;
@@ -45,14 +47,16 @@ class VoiceEngine {
   // Subscribers
   private listeners: Set<(snapshot: VoiceEngineSnapshot) => void> = new Set();
 
-  // Primary State
+  // Primary State Machine
   private voiceState: VoiceState = 'idle';
   private detailedVoiceState: DetailedVoiceState = 'idle';
   private transcript: string = '';
   private assistantResponse: string = '';
   private voiceError: string | null = null;
 
-  // Settings
+  // Conversation Controller Flags
+  private isVoiceModeEnabled: boolean = true;
+  private isConversationActive: boolean = false;
   private isWakeWordEnabled: boolean = true;
   private isHandsFreeMode: boolean = false;
   private wakeWord: string = 'Hey Life';
@@ -70,13 +74,13 @@ class VoiceEngine {
   private isBackendOnline: boolean = true;
   private activeConversationId: string | null = null;
 
-  // Metering
+  // Audio Meters & Lip-Sync
   private isAudioSpeaking: boolean = false;
   private audioEnergy: number = 0;
   private inputVolume: number = 0;
   private lastVolUpdate: number = 0;
 
-  // Media Streams & Audio Contexts
+  // Persistent Media Stream & Web Audio Context
   private activeStream: MediaStream | null = null;
   private inputAudioCtx: AudioContext | null = null;
   private inputAnalyser: AnalyserNode | null = null;
@@ -86,18 +90,19 @@ class VoiceEngine {
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
 
-  // Speech Recognition (Web Speech)
+  // Active Recognition Instance & Exclusive Locks
   private activeRecognition: any = null;
   private isTransitioning: boolean = false;
+  private isRestarting: boolean = false;
   private isMicGated: boolean = false;
   private isSpeaking: boolean = false;
   private isListeningSession: boolean = false;
 
-  // Speech accumulators
+  // Utterance Accumulation Refs
   private accumulatedTranscript: string = '';
   private lastSpokenText: string = '';
   private speechDetected: boolean = false;
-  private lastSpeechTime: number = 0;
+  private speechStartTime: number = 0;
 
   // TTS Output
   private outputAudioPlayer: HTMLAudioElement | null = null;
@@ -107,9 +112,15 @@ class VoiceEngine {
   private ttsSafetyTimeout: any = null;
 
   // Watchdogs & Timers
-  private silenceTimer: any = null;
   private speechPauseTimer: any = null;
+  private conversationTimeoutTimer: any = null;
   private wakeRecoveryTimer: any = null;
+  private echoCooldownTimer: any = null;
+
+  // Configurable Parameters
+  private readonly ECHO_COOLDOWN_MS = 750;
+  private readonly END_SILENCE_MS = 950;
+  private readonly CONVERSATION_SILENCE_TIMEOUT_MS = 16000;
 
   private isInitialized: boolean = false;
 
@@ -119,7 +130,14 @@ class VoiceEngine {
     this.wakeWord = handsFreeService.getWakeWord();
     this.voiceResponseEnabled = handsFreeService.isVoiceResponseEnabled();
 
-    // Check stored wake word toggle (defaults to true)
+    // Check stored voice activation mode (defaults to true)
+    const storedVoiceMode = localStorage.getItem('life_voice_mode_enabled');
+    if (storedVoiceMode !== null) {
+      this.isVoiceModeEnabled = storedVoiceMode === 'true';
+    } else {
+      this.isVoiceModeEnabled = true;
+    }
+
     const storedWake = localStorage.getItem('life_wake_word_enabled');
     if (storedWake !== null) {
       this.isWakeWordEnabled = storedWake === 'true';
@@ -168,8 +186,8 @@ class VoiceEngine {
     if (this.isNative) {
       this.setupNativeListeners();
     } else {
-      // In web browser: If wake word is enabled, start wake listening immediately
-      if (this.isWakeWordEnabled) {
+      if (this.isVoiceModeEnabled) {
+        console.log('[VOICE] mode enabled');
         this.setDetailedState('wake_listening');
         this.startWakeWordListening();
       } else {
@@ -198,6 +216,8 @@ class VoiceEngine {
       transcript: this.transcript,
       assistantResponse: this.assistantResponse,
       voiceError: this.voiceError,
+      isVoiceModeEnabled: this.isVoiceModeEnabled,
+      isConversationActive: this.isConversationActive,
       isWakeWordEnabled: this.isWakeWordEnabled,
       isHandsFreeMode: this.isHandsFreeMode,
       micPermissionError: this.micPermissionError,
@@ -242,9 +262,11 @@ class VoiceEngine {
       case 'listening':
       case 'user_listening':
       case 'speech_detected':
+      case 'rearming':
         this.voiceState = 'listening';
         break;
       case 'processing':
+      case 'thinking':
       case 'transcribing':
         this.voiceState = 'thinking';
         break;
@@ -269,7 +291,7 @@ class VoiceEngine {
   // =========================================================================
 
   private async ensureLiveMicrophoneStream(): Promise<MediaStream> {
-    if (this.activeStream && this.activeStream.active && this.activeStream.getAudioTracks().some(t => t.readyState === 'live')) {
+    if (this.activeStream && this.activeStream.active && this.activeStream.getAudioTracks().some((t) => t.readyState === 'live')) {
       return this.activeStream;
     }
 
@@ -294,6 +316,7 @@ class VoiceEngine {
 
       console.log(`[VOICE] microphone permission granted (Track: ${audioTracks[0].label || 'Default Mic'})`);
       console.log('[VOICE] microphone ready');
+      console.log('[VOICE] microphone started');
       this.activeStream = stream;
       this.micPermissionGranted = true;
       this.micPermissionError = false;
@@ -307,7 +330,7 @@ class VoiceEngine {
       this.notify();
       return stream;
     } catch (err: any) {
-      console.error('[VOICE ERROR] microphone:', err);
+      console.error('[VOICE ERROR] microphone error:', err);
       this.micPermissionError = true;
       this.micPermissionGranted = false;
       this.streamActive = false;
@@ -364,15 +387,6 @@ class VoiceEngine {
           this.notify();
         }
 
-        if (vol > 0.08) {
-          if (!this.speechDetected && this.isListeningSession) {
-            console.log(`[VOICE] speech detected (mic volume: ${(vol * 100).toFixed(0)}%)`);
-            this.speechDetected = true;
-            this.setDetailedState('speech_detected');
-          }
-          this.lastSpeechTime = Date.now();
-        }
-
         this.inputAnimFrame = requestAnimationFrame(sampleLoop);
       };
 
@@ -403,17 +417,14 @@ class VoiceEngine {
   }
 
   // =========================================================================
-  // MIC GATING DURING TTS (PREVENT FEEDBACK LOOP)
+  // ACOUSTIC ECHO GATING (PREVENTS LIFE AI FROM HEARING ITSELF)
   // =========================================================================
 
   private gateMicrophone(gate: boolean): void {
     this.isMicGated = gate;
     if (gate) {
-      console.log('[VOICE] microphone gated during TTS output (preventing feedback loop)');
       this.inputVolume = 0;
       this.stopCurrentRecognition();
-    } else {
-      console.log('[VOICE] microphone un-gated');
     }
     this.notify();
   }
@@ -423,7 +434,7 @@ class VoiceEngine {
   // =========================================================================
 
   public async startWakeWordListening(): Promise<void> {
-    if (this.isNative || !this.isWakeWordEnabled || this.isSpeaking || this.isListeningSession) {
+    if (this.isNative || !this.isVoiceModeEnabled || this.isSpeaking || this.isListeningSession) {
       return;
     }
 
@@ -444,7 +455,6 @@ class VoiceEngine {
       return;
     }
 
-    // Ensure mic is active and metering
     try {
       await this.ensureLiveMicrophoneStream();
     } catch (err) {
@@ -489,7 +499,7 @@ class VoiceEngine {
           lower.includes('jeet') ||
           lower.includes('जीत')
         ) {
-          console.log(`[VOICE] wake phrase detected: "${lower}"`);
+          console.log(`[VOICE] wake word detected: "${lower}"`);
           this.stopCurrentRecognition();
           this.handleWakeDetected();
         }
@@ -497,17 +507,17 @@ class VoiceEngine {
 
       wakeRec.onerror = (e: any) => {
         if (e.error !== 'aborted' && e.error !== 'no-speech') {
-          console.warn('[VOICE ERROR] wake listener:', e.error);
+          console.warn('[VOICE ERROR] wake listener error:', e.error);
         }
       };
 
       wakeRec.onend = () => {
         this.activeRecognition = null;
-        // Auto-recover wake listener if still enabled and not speaking/listening
-        if (this.isWakeWordEnabled && !this.isSpeaking && !this.isListeningSession && !this.isNative) {
+        // Auto-recover wake listener if still enabled and not in conversation/speaking/listening
+        if (this.isVoiceModeEnabled && !this.isConversationActive && !this.isSpeaking && !this.isListeningSession && !this.isNative) {
           this.wakeRecoveryTimer = setTimeout(() => {
-            if (this.isWakeWordEnabled && !this.isSpeaking && !this.isListeningSession) {
-              console.log('[VOICE] wake listener restarted');
+            if (this.isVoiceModeEnabled && !this.isConversationActive && !this.isSpeaking && !this.isListeningSession) {
+              console.log('[VOICE] automatic restart (wake listener)');
               this.startWakeWordListening();
             }
           }, 300);
@@ -542,26 +552,27 @@ class VoiceEngine {
   }
 
   // =========================================================================
-  // WAKE DETECTED -> GREETING ("Haan, bolo?") -> LISTENING
+  // WAKE DETECTED -> GREETING ("Haan, bolo.") -> ENTER CONVERSATION
   // =========================================================================
 
   private async handleWakeDetected(): Promise<void> {
-    console.log('[VOICE] greeting started');
+    console.log('[VOICE] conversation started');
+    this.isConversationActive = true;
     this.setDetailedState('wake_detected');
     this.transcript = '';
     this.assistantResponse = '';
     this.voiceError = null;
     this.notify();
 
-    // Play "Haan, bolo?" with mic gated
-    this.speakText('Haan, bolo?', () => {
-      // Once greeting completes, transition immediately to query listening
+    // Play "Haan, bolo." with mic gated
+    this.speakText('Haan, bolo.', () => {
+      // Once greeting completes, transition immediately to active listening
       this.startQueryListening();
     });
   }
 
   // =========================================================================
-  // QUERY LISTENING MODE (User Speaks)
+  // QUERY LISTENING MODE (Continuous Multi-Turn Conversation)
   // =========================================================================
 
   public async triggerManualListen(): Promise<void> {
@@ -579,27 +590,39 @@ class VoiceEngine {
       return;
     }
 
-    // If currently speaking, stop TTS output immediately
+    // Interruption: If currently speaking, stop TTS immediately and start listening (Barge-in)
     if (this.isSpeaking) {
+      console.log('[VOICE] barge-in interruption triggered by user');
+      this.stopTTSOutput();
+      this.isSpeaking = false;
+      this.gateMicrophone(false);
+      this.isConversationActive = true;
+      await this.startQueryListening();
+      return;
+    }
+
+    // If already in an active listening session, pressing mic toggles voice conversation OFF
+    if (this.isListeningSession) {
+      console.log('[VOICE] conversation stopped by user action');
       this.stopVoice();
       return;
     }
 
-    // If currently listening, tap finishes utterance manually
-    if (this.isListeningSession) {
-      await this.stopListeningSession(true);
-      return;
-    }
-
-    // Start query listening
+    // Otherwise, start continuous voice conversation mode
+    this.isConversationActive = true;
+    this.isVoiceModeEnabled = true;
+    localStorage.setItem('life_voice_mode_enabled', 'true');
     await this.startQueryListening();
   }
 
   private async startQueryListening(): Promise<void> {
+    if (!this.isVoiceModeEnabled) return;
+
     this.stopWakeWordListening();
     this.gateMicrophone(false);
 
     this.isListeningSession = true;
+    this.isRestarting = false;
     this.transcript = '';
     this.accumulatedTranscript = '';
     this.lastSpokenText = '';
@@ -607,8 +630,9 @@ class VoiceEngine {
     this.recordedChunks = [];
     this.voiceError = null;
 
-    console.log('[VOICE] listening started');
+    console.log('[VOICE] listening again');
     this.setDetailedState('listening');
+    this.resetConversationSilenceTimeout();
 
     try {
       const stream = await this.ensureLiveMicrophoneStream();
@@ -645,18 +669,22 @@ class VoiceEngine {
         recognition.lang = 'en-IN';
 
         recognition.onstart = () => {
-          console.log('[VOICE] query speech recognition online');
-          this.resetSilenceTimer();
+          console.log('[VOICE] speech recognition online');
         };
 
         recognition.onspeechstart = () => {
-          console.log('[VOICE] speech detected by recognition engine');
-          this.speechDetected = true;
-          this.setDetailedState('speech_detected');
-          if (this.silenceTimer) clearTimeout(this.silenceTimer);
+          if (!this.speechDetected) {
+            console.log('[VOICE] speech started');
+            this.speechDetected = true;
+            this.speechStartTime = Date.now();
+            this.setDetailedState('speech_detected');
+          }
+          if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
         };
 
         recognition.onresult = (event: any) => {
+          if (this.isMicGated || this.isSpeaking) return;
+
           let interim = '';
           let finalStr = '';
 
@@ -671,46 +699,60 @@ class VoiceEngine {
 
           const currentText = (finalStr || interim).trim();
           if (currentText) {
+            if (!this.speechDetected) {
+              console.log('[VOICE] speech started');
+              this.speechDetected = true;
+              this.speechStartTime = Date.now();
+              this.setDetailedState('speech_detected');
+            }
+
             this.accumulatedTranscript = currentText;
             this.lastSpokenText = currentText;
             this.transcript = currentText;
             this.notify();
 
-            // Clear silence timeout
-            if (this.silenceTimer) clearTimeout(this.silenceTimer);
+            // Clear conversation inactivity timeout while user is talking
+            if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
 
-            // Auto-submit after 1.3 seconds of pause following detected speech
+            // Speech-end VAD detection: Auto-submit after 950ms of silence following speech
             if (this.speechPauseTimer) clearTimeout(this.speechPauseTimer);
             this.speechPauseTimer = setTimeout(() => {
               if (this.isListeningSession) {
-                console.log('[VOICE] speech pause detected. Auto-submitting utterance...');
+                console.log('[VOICE] speech ended');
+                console.log('[VOICE] transcription started');
                 this.stopListeningSession();
               }
-            }, 1300);
+            }, this.END_SILENCE_MS);
           }
         };
 
         recognition.onerror = (e: any) => {
           if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-            console.error('[VOICE ERROR] STT permission denied');
+            console.error('[VOICE ERROR] microphone error: permission denied');
             this.micPermissionError = true;
-            this.voiceError = 'Microphone permission denied by browser.';
+            this.voiceError = 'Microphone permission required.';
             this.setDetailedState('error');
+          } else if (e.error !== 'aborted' && e.error !== 'no-speech') {
+            console.warn('[VOICE ERROR] speech recognition error:', e.error);
           }
         };
 
         recognition.onend = () => {
-          if (this.isListeningSession) {
-            this.stopListeningSession();
+          // If recognition ended unexpectedly while in active listening (e.g. browser silence timeout)
+          if (this.isListeningSession && !this.isSpeaking && this.isConversationActive && !this.isRestarting) {
+            console.log('[VOICE] recognition ended unexpectedly');
+            this.isRestarting = true;
+            setTimeout(() => {
+              if (this.isListeningSession && !this.isSpeaking && this.isConversationActive) {
+                console.log('[VOICE] automatic restart');
+                this.startQueryListening();
+              }
+            }, 250);
           }
         };
 
         this.activeRecognition = recognition;
         recognition.start();
-        this.resetSilenceTimer();
-      } else {
-        // Fallback for browsers without Web Speech
-        this.resetSilenceTimer();
       }
     } catch (err: any) {
       console.error('[VOICE ERROR] query listen start failed:', err);
@@ -719,19 +761,22 @@ class VoiceEngine {
     }
   }
 
-  private resetSilenceTimer(): void {
-    if (this.silenceTimer) clearTimeout(this.silenceTimer);
-    this.silenceTimer = setTimeout(() => {
-      console.log('[VOICE] silence timeout reached (no speech detected)');
-      if (this.isListeningSession && !this.isSpeaking) {
-        this.stopListeningSession();
+  // Conversation silence timeout: after 16s of silence with zero speech, gracefully return to wake-word standby
+  private resetConversationSilenceTimeout(): void {
+    if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
+    this.conversationTimeoutTimer = setTimeout(() => {
+      if (this.isListeningSession && !this.speechDetected && !this.isSpeaking) {
+        console.log('[VOICE] conversation session timed out due to inactivity');
+        this.isConversationActive = false;
+        this.stopCurrentRecognition();
+        this.returnToWakeListening();
       }
-    }, 8500);
+    }, this.CONVERSATION_SILENCE_TIMEOUT_MS);
   }
 
-  private async stopListeningSession(userRequestedStop: boolean = false): Promise<void> {
-    if (this.silenceTimer) clearTimeout(this.silenceTimer);
+  private async stopListeningSession(): Promise<void> {
     if (this.speechPauseTimer) clearTimeout(this.speechPauseTimer);
+    if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
 
     this.isListeningSession = false;
 
@@ -762,7 +807,7 @@ class VoiceEngine {
 
     let candidateTranscript = (this.lastSpokenText || this.accumulatedTranscript || this.transcript || '').trim();
 
-    // If Web Speech yielded no text but speech was recorded, invoke Gemini STT fallback
+    // Fallback: If Web Speech yielded no text but speech was recorded, invoke Gemini Multimodal STT
     if (!candidateTranscript && recordedBlob && recordedBlob.size > 800) {
       console.log('[VOICE] Web Speech yielded no transcript. Invoking backend Gemini Multimodal STT fallback...');
       this.setDetailedState('transcribing');
@@ -770,7 +815,6 @@ class VoiceEngine {
         const backendRes = await api.transcribeAudio(recordedBlob);
         if (backendRes && backendRes.transcript && backendRes.transcript.trim()) {
           candidateTranscript = backendRes.transcript.trim();
-          console.log(`[VOICE] transcript received (Gemini STT): "${candidateTranscript}"`);
           this.transcript = candidateTranscript;
         }
       } catch (sttErr: any) {
@@ -779,16 +823,39 @@ class VoiceEngine {
     }
 
     if (candidateTranscript) {
-      console.log(`[VOICE] transcript received: "${candidateTranscript}"`);
+      console.log(`[VOICE] transcript: "${candidateTranscript}"`);
       this.transcript = candidateTranscript;
       this.notify();
+
+      // Check for user goodbye / stop phrases
+      const lowerCandidate = candidateTranscript.toLowerCase();
+      if (
+        lowerCandidate === 'bye' ||
+        lowerCandidate === 'bye bye' ||
+        lowerCandidate === 'goodbye' ||
+        lowerCandidate === 'alvida' ||
+        lowerCandidate === 'stop' ||
+        lowerCandidate === 'stop conversation' ||
+        lowerCandidate.includes('alvida life') ||
+        lowerCandidate.includes('chalo theek hai')
+      ) {
+        console.log('[VOICE] conversation ended by user gesture');
+        this.isConversationActive = false;
+        this.speakText('Theek hai, alvida! Jab bhi zaroorat ho, bas "Hey Life" keh dena.', () => {
+          this.returnToWakeListening();
+        });
+        return;
+      }
+
       await this.handleUserUtterance(candidateTranscript);
     } else {
       console.log('[VOICE] empty transcript detected (silence)');
-      this.transcript = '';
-      this.assistantResponse = "I couldn't hear that. Please try again.";
-      this.setDetailedState('idle');
-      this.returnToWakeListening();
+      if (this.isConversationActive) {
+        // In continuous conversation, restart listening gracefully
+        this.startQueryListening();
+      } else {
+        this.returnToWakeListening();
+      }
     }
   }
 
@@ -801,8 +868,8 @@ class VoiceEngine {
     const cleanText = userText.trim();
     if (!cleanText) return;
 
-    console.log('[VOICE] processing');
-    this.setDetailedState('processing');
+    console.log('[VOICE] request started');
+    this.setDetailedState('thinking');
 
     try {
       const res = await api.sendMessage({
@@ -812,7 +879,7 @@ class VoiceEngine {
         voice_mode: true
       });
 
-      console.log(`[VOICE] response received: "${(res.response || '').substring(0, 60)}..."`);
+      console.log(`[VOICE] first response received: "${(res.response || '').substring(0, 50)}..."`);
       this.activeConversationId = res.conversation_id;
       this.assistantResponse = res.response;
       this.voiceError = null;
@@ -822,7 +889,7 @@ class VoiceEngine {
         this.playAudioResponse(res.audio_url, res.response);
       } else {
         this.speakText(res.response, () => {
-          this.finishSpeakingAndReturnToWake();
+          this.onTTSFinished();
         });
       }
     } catch (err: any) {
@@ -838,13 +905,13 @@ class VoiceEngine {
       this.assistantResponse = voiceReply;
       this.notify();
       this.speakText(voiceReply, () => {
-        this.finishSpeakingAndReturnToWake();
+        this.onTTSFinished();
       });
     }
   }
 
   // =========================================================================
-  // TTS & AVATAR LIP-SYNC
+  // TTS PLAYBACK & SYNCHRONIZED AVATAR LIP-SYNC
   // =========================================================================
 
   public playAudioResponse(url: string, fallbackText: string = ''): void {
@@ -853,9 +920,7 @@ class VoiceEngine {
     console.log('[VOICE] TTS started');
     this.setDetailedState('speaking');
 
-    if (this.outputAudioPlayer) {
-      this.outputAudioPlayer.pause();
-    }
+    this.stopTTSOutput();
 
     const host = getServerHostUrl();
     const resolvedUrl = url.startsWith('http') ? url : `${host}${url.startsWith('/') ? '' : '/'}${url}`;
@@ -864,9 +929,7 @@ class VoiceEngine {
     this.outputAudioPlayer = audio;
 
     const onFinish = () => {
-      console.log('[VOICE] TTS finished');
-      this.stopOutputAudioAnalysis();
-      this.finishSpeakingAndReturnToWake();
+      this.onTTSFinished();
     };
 
     audio.onended = onFinish;
@@ -874,7 +937,7 @@ class VoiceEngine {
       console.warn('[VOICE] Audio playback failed, falling back to browser speech synthesis.');
       this.stopOutputAudioAnalysis();
       if (fallbackText) {
-        this.speakText(fallbackText, () => this.finishSpeakingAndReturnToWake());
+        this.speakText(fallbackText, () => this.onTTSFinished());
       } else {
         onFinish();
       }
@@ -924,7 +987,7 @@ class VoiceEngine {
     audio.play().catch(() => {
       this.startCadenceFallback();
       if (fallbackText) {
-        this.speakText(fallbackText, () => this.finishSpeakingAndReturnToWake());
+        this.speakText(fallbackText, () => this.onTTSFinished());
       } else {
         onFinish();
       }
@@ -941,7 +1004,7 @@ class VoiceEngine {
     this.gateMicrophone(true);
     window.speechSynthesis.cancel();
     this.isSpeaking = true;
-    console.log('[VOICE] TTS started (speechSynthesis)');
+    console.log('[VOICE] TTS started');
     this.setDetailedState('speaking');
 
     const utterance = new SpeechSynthesisUtterance(text);
@@ -979,13 +1042,12 @@ class VoiceEngine {
     utterance.rate = 0.95;
 
     const onFinish = () => {
-      console.log('[VOICE] TTS finished');
       this.stopOutputAudioAnalysis();
       (window as unknown as IWindow)._currentUtterance = null;
       if (onCompleted) {
         onCompleted();
       } else {
-        this.finishSpeakingAndReturnToWake();
+        this.onTTSFinished();
       }
     };
 
@@ -1009,7 +1071,6 @@ class VoiceEngine {
     utterance.onend = onFinish;
     utterance.onerror = onFinish;
 
-    // Safety timeout in Chrome
     const estimatedDuration = Math.max(3000, text.length * 85);
     this.ttsSafetyTimeout = setTimeout(() => {
       if (this.isSpeaking) {
@@ -1019,6 +1080,17 @@ class VoiceEngine {
     }, estimatedDuration);
 
     window.speechSynthesis.speak(utterance);
+  }
+
+  private stopTTSOutput(): void {
+    if (this.outputAudioPlayer) {
+      this.outputAudioPlayer.pause();
+      this.outputAudioPlayer = null;
+    }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    this.stopOutputAudioAnalysis();
   }
 
   private startCadenceFallback(): void {
@@ -1053,27 +1125,43 @@ class VoiceEngine {
   }
 
   // =========================================================================
-  // COOLDOWN & RETURN TO WAKE LISTENING
+  // AUTOMATIC RE-LISTEN AFTER TTS (CONTINUOUS HUMAN CONVERSATION)
   // =========================================================================
 
-  private finishSpeakingAndReturnToWake(): void {
+  private onTTSFinished(): void {
+    console.log('[VOICE] TTS finished');
     this.isSpeaking = false;
-    console.log('[VOICE] cooldown');
-    this.setDetailedState('cooldown');
+    this.stopOutputAudioAnalysis();
 
-    setTimeout(() => {
-      this.gateMicrophone(false);
+    if (this.echoCooldownTimer) clearTimeout(this.echoCooldownTimer);
+
+    // If conversation mode is active, automatically re-arm microphone after echo protection
+    if (this.isConversationActive && this.isVoiceModeEnabled && !this.isNative) {
+      console.log('[VOICE] echo cooldown started');
+      this.setDetailedState('rearming');
+
+      this.echoCooldownTimer = setTimeout(() => {
+        if (this.isConversationActive && this.isVoiceModeEnabled && !this.isSpeaking) {
+          console.log('[VOICE] microphone rearmed');
+          this.gateMicrophone(false);
+          this.startQueryListening(); // Automatically transitions to LISTENING for next utterance!
+        }
+      }, this.ECHO_COOLDOWN_MS);
+    } else {
       this.returnToWakeListening();
-    }, 400);
+    }
   }
 
   private returnToWakeListening(): void {
-    if (this.isWakeWordEnabled && !this.isNative) {
-      console.log('[VOICE] wake listener restarted');
+    this.isSpeaking = false;
+    this.isListeningSession = false;
+    this.gateMicrophone(false);
+
+    if (this.isVoiceModeEnabled && !this.isNative) {
       this.setDetailedState('wake_listening');
       this.startWakeWordListening();
     } else {
-      this.setDetailedState(this.isWakeWordEnabled ? 'wake_listening' : 'idle');
+      this.setDetailedState('idle');
     }
   }
 
@@ -1082,23 +1170,25 @@ class VoiceEngine {
   // =========================================================================
 
   public stopVoice(): void {
-    console.log('[VOICE] stopVoice called');
+    console.log('[VOICE] conversation stopped');
     this.isSpeaking = false;
     this.isListeningSession = false;
+    this.isConversationActive = false;
     this.gateMicrophone(false);
-    this.stopWakeWordListening();
 
-    if (this.silenceTimer) clearTimeout(this.silenceTimer);
     if (this.speechPauseTimer) clearTimeout(this.speechPauseTimer);
-    if (this.outputAudioPlayer) this.outputAudioPlayer.pause();
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
+    if (this.echoCooldownTimer) clearTimeout(this.echoCooldownTimer);
 
-    this.stopOutputAudioAnalysis();
+    this.stopTTSOutput();
     this.stopCurrentRecognition();
 
-    this.setDetailedState(this.isWakeWordEnabled ? 'wake_listening' : 'stopped');
-    if (this.isWakeWordEnabled) {
+    if (this.isVoiceModeEnabled) {
+      this.setDetailedState('wake_listening');
       this.startWakeWordListening();
+    } else {
+      this.setDetailedState('stopped');
+      this.releaseMicrophoneStream();
     }
   }
 
@@ -1106,17 +1196,32 @@ class VoiceEngine {
   // SETTINGS & TOGGLES
   // =========================================================================
 
-  public setWakeWordEnabled(enabled: boolean): void {
-    this.isWakeWordEnabled = enabled;
-    localStorage.setItem('life_wake_word_enabled', enabled ? 'true' : 'false');
-    console.log(`[VOICE] wake word mode set to: ${enabled}`);
+  public setVoiceModeEnabled(enabled: boolean): void {
+    this.isVoiceModeEnabled = enabled;
+    localStorage.setItem('life_voice_mode_enabled', enabled ? 'true' : 'false');
+    console.log(`[VOICE] mode set to: ${enabled}`);
 
     if (enabled) {
       this.setDetailedState('wake_listening');
       this.startWakeWordListening();
     } else {
-      this.stopWakeWordListening();
+      this.stopVoice();
       this.setDetailedState('disabled');
+      this.releaseMicrophoneStream();
+    }
+    this.notify();
+  }
+
+  public setWakeWordEnabled(enabled: boolean): void {
+    this.isWakeWordEnabled = enabled;
+    localStorage.setItem('life_wake_word_enabled', enabled ? 'true' : 'false');
+    console.log(`[VOICE] wake word mode set to: ${enabled}`);
+
+    if (enabled && this.isVoiceModeEnabled && !this.isConversationActive) {
+      this.setDetailedState('wake_listening');
+      this.startWakeWordListening();
+    } else if (!enabled && !this.isConversationActive) {
+      this.stopWakeWordListening();
     }
     this.notify();
   }

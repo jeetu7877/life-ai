@@ -265,8 +265,10 @@ export type DetailedVoiceState =
   | 'listening'
   | 'speech_detected'
   | 'transcribing'
+  | 'thinking'
   | 'processing'
   | 'tts'
   | 'speaking'
+  | 'rearming'
   | 'cooldown'
   | 'error';

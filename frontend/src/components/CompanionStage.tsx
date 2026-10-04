@@ -25,6 +25,8 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
     transcript,
     assistantResponse,
     voiceError,
+    isVoiceModeEnabled,
+    isConversationActive,
     isWakeWordEnabled,
     wakeWord,
     isAudioSpeaking,
@@ -47,7 +49,7 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
   // Audio-driven mouth state: open strictly when audio sound energy is present; closed on pauses/silence
   const isMouthOpen = voiceState === 'speaking' && isAudioSpeaking;
 
-  // Determine state aura colors and labels
+  // Determine state aura colors and labels (Strictly adhering to real state machine)
   const getStateMeta = () => {
     switch (voiceState) {
       case 'listening':
@@ -55,7 +57,14 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
           glowColor: 'rgba(0, 217, 255, 0.45)',
           borderColor: 'border-[#00D9FF]',
           badgeBg: 'bg-[#00D9FF]/15 text-[#00D9FF] border-[#00D9FF]/40',
-          statusText: detailedVoiceState === 'speech_detected' ? 'Speech Detected...' : 'Listening to you...',
+          statusText:
+            detailedVoiceState === 'speech_detected'
+              ? 'Hearing you...'
+              : detailedVoiceState === 'rearming'
+              ? 'Getting ready...'
+              : isConversationActive
+              ? 'Listening... (Conversation mode ON)'
+              : 'Listening...',
           pulseRing: 'ring-[#00D9FF]/40 animate-pulse'
         };
       case 'thinking':
@@ -63,7 +72,7 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
           glowColor: 'rgba(139, 92, 246, 0.45)',
           borderColor: 'border-[#8B5CF6]',
           badgeBg: 'bg-[#8B5CF6]/15 text-[#8B5CF6] border-[#8B5CF6]/40',
-          statusText: detailedVoiceState === 'transcribing' ? 'Transcribing speech...' : 'Thinking & retrieving...',
+          statusText: detailedVoiceState === 'transcribing' ? 'Transcribing...' : 'Thinking...',
           pulseRing: 'ring-[#8B5CF6]/40 animate-pulse'
         };
       case 'speaking':
@@ -71,7 +80,7 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
           glowColor: 'rgba(236, 72, 153, 0.45)',
           borderColor: 'border-[#EC4899]',
           badgeBg: 'bg-[#EC4899]/15 text-[#EC4899] border-[#EC4899]/40',
-          statusText: 'Speaking...',
+          statusText: 'Life is speaking...',
           pulseRing: 'ring-[#EC4899]/40 animate-ping'
         };
       case 'error':
@@ -84,12 +93,26 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
         };
       default:
         return {
-          glowColor: isWakeWordEnabled ? 'rgba(34, 197, 94, 0.25)' : 'rgba(148, 163, 184, 0.1)',
-          borderColor: isWakeWordEnabled ? 'border-[#22C55E]/40' : 'border-[#202B3D]',
-          badgeBg: isWakeWordEnabled
+          glowColor: isConversationActive
+            ? 'rgba(0, 217, 255, 0.35)'
+            : isWakeWordEnabled
+            ? 'rgba(34, 197, 94, 0.25)'
+            : 'rgba(148, 163, 184, 0.1)',
+          borderColor: isConversationActive
+            ? 'border-[#00D9FF]/50'
+            : isWakeWordEnabled
+            ? 'border-[#22C55E]/40'
+            : 'border-[#202B3D]',
+          badgeBg: isConversationActive
+            ? 'bg-[#00D9FF]/15 text-[#00D9FF] border-[#00D9FF]/40'
+            : isWakeWordEnabled
             ? 'bg-[#22C55E]/10 text-[#22C55E] border-[#22C55E]/30'
             : 'bg-slate-800/50 text-slate-400 border-slate-700/50',
-          statusText: isWakeWordEnabled ? `Listening for "${wakeWord}"` : 'Companion in Standby',
+          statusText: isConversationActive
+            ? 'Conversation mode ON'
+            : isWakeWordEnabled
+            ? `Listening for "${wakeWord}"...`
+            : 'Say "Hey Life"',
           pulseRing: ''
         };
     }
@@ -232,11 +255,13 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
                 <div className="text-left">
                   <span className="text-[12px] font-bold text-white block leading-tight">Life Companion</span>
                   <span className="text-[10px] text-slate-400 block leading-tight">
-                    {voiceState === 'speaking'
+                    {isConversationActive
+                      ? 'Conversation mode ON'
+                      : voiceState === 'speaking'
                       ? (isMouthOpen ? 'Speaking now...' : 'Speaking (pause)...')
                       : voiceState === 'listening'
                       ? (inputVolume > 0.08 ? 'Hearing you...' : 'Listening... Speak now')
-                      : 'Tap to talk'}
+                      : 'Say "Hey Life"'}
                   </span>
                 </div>
               </div>
@@ -249,11 +274,11 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
                   triggerManualListen();
                 }}
                 className={`p-2.5 rounded-xl transition-all shadow-md flex items-center justify-center cursor-pointer ${
-                  voiceState === 'listening'
+                  isConversationActive
                     ? 'bg-[#00D9FF] text-black shadow-[0_0_15px_rgba(0,217,255,0.6)] animate-pulse'
                     : 'bg-gradient-to-r from-[#00A8FF] to-[#8B5CF6] text-white hover:opacity-90'
                 }`}
-                title="Speak to Life AI"
+                title={isConversationActive ? 'Stop conversation mode' : 'Start conversation mode'}
               >
                 <Mic className="w-4 h-4" />
               </button>
@@ -353,15 +378,25 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
           <div className="flex items-center gap-3 py-1">
             <span
               className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                isWakeWordEnabled ? 'bg-[#22C55E] animate-pulse' : 'bg-slate-600'
+                isConversationActive
+                  ? 'bg-[#00D9FF] animate-pulse'
+                  : isWakeWordEnabled
+                  ? 'bg-[#22C55E] animate-pulse'
+                  : 'bg-slate-600'
               }`}
             />
             <div className="min-w-0 flex-1">
               <span className="text-xs text-slate-200 font-semibold block truncate">
-                {isWakeWordEnabled ? `Listening for "${wakeWord}"` : 'Companion in Standby'}
+                {isConversationActive
+                  ? 'Conversation mode ON'
+                  : isWakeWordEnabled
+                  ? `Listening for "${wakeWord}"`
+                  : 'Companion in Standby'}
               </span>
               <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {isWakeWordEnabled
+                {isConversationActive
+                  ? 'Continuous hands-free conversation active. Speak naturally.'
+                  : isWakeWordEnabled
                   ? 'Say "Hey Life" anytime to speak hands-free.'
                   : 'Tap microphone or turn on voice activation in Settings.'}
               </p>

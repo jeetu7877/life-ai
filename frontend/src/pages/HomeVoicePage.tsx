@@ -27,6 +27,7 @@ export const HomeVoicePage: React.FC = () => {
     detailedVoiceState,
     transcript,
     assistantResponse,
+    isConversationActive,
     isWakeWordEnabled,
     isHandsFreeMode,
     wakeWord,
@@ -219,12 +220,20 @@ export const HomeVoicePage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border flex items-center gap-1.5 ${
-                    isWakeWordEnabled
+                    isConversationActive
+                      ? 'bg-[#00D9FF]/15 border-[#00D9FF]/40 text-[#00D9FF]'
+                      : isWakeWordEnabled
                       ? 'bg-[#22C55E]/15 border-[#22C55E]/40 text-[#22C55E]'
                       : 'bg-slate-800/60 border-slate-700 text-slate-400'
                   }`}>
-                    <Radio className="w-3 h-3" />
-                    <span>{isWakeWordEnabled ? `"${wakeWord}" Active` : 'Muted'}</span>
+                    <Radio className={`w-3 h-3 ${isConversationActive ? 'animate-pulse' : ''}`} />
+                    <span>
+                      {isConversationActive
+                        ? 'Conversation Active'
+                        : isWakeWordEnabled
+                        ? `"${wakeWord}" Active`
+                        : 'Muted'}
+                    </span>
                   </div>
                 </div>
               </div>
