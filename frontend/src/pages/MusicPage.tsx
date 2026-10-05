@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Menu,
-  Settings,
   Search,
   Sparkles,
   Flame,
@@ -45,12 +43,10 @@ import {
   FEATURED_TRACKS,
   CURATED_PLAYLISTS
 } from '../services/musicService';
-import { useAuth } from '../context/AuthContext';
 import { useVoice } from '../context/VoiceContext';
 
 export const MusicPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { triggerManualListen, isAudioSpeaking, voiceState } = useVoice();
 
   // Primary State
@@ -81,9 +77,6 @@ export const MusicPage: React.FC = () => {
   const videoHostRef = useRef<HTMLDivElement>(null);
   const fullPlayerVideoRef = useRef<HTMLDivElement>(null);
   const searchTimerRef = useRef<any>(null);
-
-  // User avatar initials
-  const userInitial = (user?.full_name?.[0] || user?.email?.[0] || 'J').toUpperCase();
 
   // Subscribe to central musicService
   useEffect(() => {
@@ -260,7 +253,7 @@ export const MusicPage: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 min-h-screen bg-[#070B14] text-slate-100 flex flex-col relative select-none pb-36 overflow-x-hidden">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-[#070B14] text-slate-100 flex flex-col relative select-none pb-36 overflow-x-hidden custom-scrollbar">
       {/* Toast Notice */}
       {toastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-2xl bg-cyan-950/90 border border-cyan-400/40 text-cyan-200 text-xs font-medium shadow-2xl flex items-center gap-2 animate-fade-in backdrop-blur-md">
@@ -268,59 +261,6 @@ export const MusicPage: React.FC = () => {
           <span>{toastMessage}</span>
         </div>
       )}
-
-      {/* Top Header matching reference image */}
-      <header className="px-4 md:px-8 pt-4 pb-3 flex items-center justify-between gap-3 bg-[#070B14]/80 backdrop-blur-md sticky top-0 z-30 border-b border-slate-900/60">
-        <div className="flex items-center gap-3">
-          {/* Hamburger Menu Icon */}
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="w-9 h-9 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-cyan-400 hover:text-white flex items-center justify-center border border-slate-800 transition-all active:scale-95"
-            title="Menu"
-          >
-            <Menu size={20} />
-          </button>
-
-          {/* Life AI Branding with Spark Logo */}
-          <div className="flex items-center gap-2.5">
-            <div className="relative w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 p-[1px] shadow-lg shadow-cyan-500/20 shrink-0">
-              <div className="w-full h-full bg-[#091122] rounded-[15px] flex items-center justify-center text-cyan-300">
-                <Sparkles size={18} className="fill-cyan-400 text-cyan-300 animate-pulse" />
-              </div>
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#070B14]" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-1.5 leading-tight">
-                Life AI
-              </h1>
-              <p className="text-[10px] text-slate-400 font-medium leading-none">
-                Your Personal AI Companion
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Header: User Avatar & Settings */}
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => navigate('/profile')}
-            className="w-8 h-8 rounded-full bg-slate-900 border border-cyan-400/50 flex items-center justify-center text-xs font-bold text-cyan-300 shadow-md shadow-cyan-500/10 hover:border-cyan-300 transition-all"
-            title="Profile"
-          >
-            {userInitial}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/settings')}
-            className="w-8 h-8 rounded-full bg-slate-900/80 hover:bg-slate-800 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-all"
-            title="Settings"
-          >
-            <Settings size={17} />
-          </button>
-        </div>
-      </header>
 
       {/* Main Content Area */}
       <main className="flex-1 px-4 md:px-8 py-3 max-w-5xl mx-auto w-full box-border">
