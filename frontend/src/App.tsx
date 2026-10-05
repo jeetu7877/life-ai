@@ -1,11 +1,12 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import React, { useEffect, useRef } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { VoiceProvider } from './context/VoiceContext';
 import { ToastProvider } from './components/ui/Toast';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { storage } from './services/storage';
 
 import { HomeVoicePage } from './pages/HomeVoicePage';
 import { ChatPage } from './pages/ChatPage';
@@ -27,7 +28,29 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 
 const AppShell: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isAuthenticated, isLoading } = useAuth();
+  const hasRestoredRouteRef = useRef<boolean>(false);
   const isAuthRoute = ['/login', '/register', '/auth', '/verify-email'].includes(location.pathname);
+
+  // Phase 10: Exact place restoration on app reopen / launch
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && !hasRestoredRouteRef.current) {
+      hasRestoredRouteRef.current = true;
+      const lastSavedRoute = storage.getLastRoute();
+      if (lastSavedRoute && lastSavedRoute !== '/' && location.pathname === '/') {
+        console.log('[NAV] Restoring previous screen where user left off:', lastSavedRoute);
+        navigate(lastSavedRoute, { replace: true });
+      }
+    }
+  }, [isLoading, isAuthenticated, location.pathname, navigate]);
+
+  // Persist current active operational route for next launch
+  useEffect(() => {
+    if (isAuthenticated && !isAuthRoute) {
+      storage.setLastRoute(location.pathname);
+    }
+  }, [location.pathname, isAuthenticated, isAuthRoute]);
 
   // Dedicated full-viewport layout for Auth / Registration / OTP screens:
   // Zero top navbar clipping, zero fixed-height issues, fully scrollable and responsive.

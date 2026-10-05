@@ -17,7 +17,8 @@ import {
   ArrowLeft,
   RotateCcw
 } from 'lucide-react';
-import { api, getServerHostUrl } from '../services/api';
+import { api, getServerHostUrl, probeServerHealth } from '../services/api';
+import { storage } from '../services/storage';
 import axios from 'axios';
 
 interface AuthPageProps {
@@ -63,8 +64,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isEmailSendFailed, setIsEmailSendFailed] = useState<boolean>(false);
 
-  // Server health probe status: 'checking', 'online', 'offline' (NEVER hardcoded 'online')
-  const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  // Server health probe status: 'checking', 'online', 'cold_start', 'offline'
+  const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'cold_start' | 'offline'>('checking');
   const [currentServerUrl, setCurrentServerUrl] = useState<string>(() => getServerHostUrl());
   const [showServerConfig, setShowServerConfig] = useState<boolean>(false);
   const [customServerInput, setCustomServerInput] = useState<string>(() => getServerHostUrl());
@@ -85,35 +86,21 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
     return () => clearInterval(timer);
   }, [authStage]);
 
-  // Real Server Health Probe (no fake status)
+  // Real Server Health Probe with Cold-Start Detection
   const checkServerHealth = async (url: string) => {
     setServerStatus('checking');
     try {
-      const cleanUrl = url.trim().replace(/\/+$/, '');
-      let ok = false;
-      try {
-        const res = await axios.get(`${cleanUrl}/health`, { timeout: 5000 });
-        if (res.status === 200 && (res.data?.status === 'ok' || res.data?.status === 'healthy')) {
-          ok = true;
-        }
-      } catch {
-        // Try fallback prefix
-        const res2 = await axios.get(`${cleanUrl}/api/health`, { timeout: 5000 });
-        if (res2.status === 200 && (res2.data?.status === 'ok' || res2.data?.status === 'healthy')) {
-          ok = true;
-        }
-      }
-
-      setServerStatus(ok ? 'online' : 'offline');
+      const res = await probeServerHealth(url, 15000);
+      setServerStatus(res.status);
     } catch {
       setServerStatus('offline');
     }
   };
 
-  const handleSaveCustomServer = () => {
+  const handleSaveCustomServer = async () => {
     const cleanUrl = customServerInput.trim().replace(/\/+$/, '');
     if (!cleanUrl) return;
-    localStorage.setItem('life_server_url', cleanUrl);
+    await storage.setServerUrl(cleanUrl);
     setCurrentServerUrl(cleanUrl);
     setShowServerConfig(false);
     checkServerHealth(cleanUrl);
@@ -354,6 +341,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
                   <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E]" />
                   Online
                 </span>
+              ) : serverStatus === 'cold_start' ? (
+                <span className="flex items-center gap-1 text-[10px] text-amber-300 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-full font-medium">
+                  <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-400" />
+                  Waking up cloud...
+                </span>
               ) : serverStatus === 'checking' ? (
                 <span className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-full">
                   <RefreshCw className="w-2.5 h-2.5 animate-spin" />
@@ -375,6 +367,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
               </button>
             </div>
           </div>
+
+          {/* Render Cold-Start Information Notice */}
+          {serverStatus === 'cold_start' && (
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] flex items-center gap-2 animate-fadeIn">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0 text-amber-400" />
+              <span>Render cloud instance is spinning up from sleep (~15-20s). Please wait...</span>
+            </div>
+          )}
 
           {/* Server Config Expansion */}
           {showServerConfig && (
@@ -399,12 +399,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
               <div className="flex gap-2 pt-1 text-[10px]">
                 <button
                   type="button"
-                  onClick={() => {
-                    setCustomServerInput('https://life-ai-daoh.onrender.com');
-                    localStorage.setItem('life_server_url', 'https://life-ai-daoh.onrender.com');
-                    setCurrentServerUrl('https://life-ai-daoh.onrender.com');
+                  onClick={async () => {
+                    const url = 'https://life-ai-daoh.onrender.com';
+                    setCustomServerInput(url);
+                    await storage.setServerUrl(url);
+                    setCurrentServerUrl(url);
                     setShowServerConfig(false);
-                    checkServerHealth('https://life-ai-daoh.onrender.com');
+                    checkServerHealth(url);
                   }}
                   className="text-[#00D9FF] hover:underline cursor-pointer"
                 >
@@ -413,12 +414,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialMode }) => {
                 <span className="text-slate-600">•</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setCustomServerInput('http://10.10.202.55:8000');
-                    localStorage.setItem('life_server_url', 'http://10.10.202.55:8000');
-                    setCurrentServerUrl('http://10.10.202.55:8000');
+                  onClick={async () => {
+                    const url = 'http://192.168.1.16:8000';
+                    setCustomServerInput(url);
+                    await storage.setServerUrl(url);
+                    setCurrentServerUrl(url);
                     setShowServerConfig(false);
-                    checkServerHealth('http://10.10.202.55:8000');
+                    checkServerHealth(url);
                   }}
                   className="text-[#00D9FF] hover:underline cursor-pointer"
                 >

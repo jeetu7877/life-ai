@@ -21,9 +21,17 @@ from app.schemas.auth import (
     ResendVerificationRequest,
     ChangePasswordRequest,
     DeleteAccountRequest,
-    TestEmailRequest
+    TestEmailRequest,
+    RefreshTokenRequest,
+    RefreshTokenResponse
 )
-from app.security.jwt import get_password_hash, verify_password, create_access_token
+from app.security.jwt import (
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token
+)
 from app.security.dependencies import get_current_user
 from app.services.email_service import email_service
 from app.services.rag_service import rag_service
@@ -147,8 +155,10 @@ def verify_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
         )
 
     token = create_access_token({"sub": user.id})
+    refresh_token = create_refresh_token({"sub": user.id})
     return TokenResponse(
         access_token=token,
+        refresh_token=refresh_token,
         user_id=user.id,
         username=user.username,
         email=user.email,
@@ -256,8 +266,10 @@ def login(login_in: UserLogin, db: Session = Depends(get_db)):
         )
 
     token = create_access_token({"sub": user.id})
+    refresh_token = create_refresh_token({"sub": user.id})
     return TokenResponse(
         access_token=token,
+        refresh_token=refresh_token,
         user_id=user.id,
         username=user.username,
         email=user.email,
@@ -268,6 +280,43 @@ def login(login_in: UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.post("/refresh", response_model=RefreshTokenResponse)
+def refresh_session(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """
+    Validates a long-lived refresh token and issues a fresh access token + rotated refresh token.
+    Allows user session to seamlessly survive days/weeks without re-login.
+    """
+    token_data = decode_refresh_token(payload.refresh_token)
+    if not token_data or "sub" not in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token. Please sign in again."
+        )
+
+    user_id = token_data["sub"]
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account associated with this session no longer exists."
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is deactivated."
+        )
+
+    new_access_token = create_access_token({"sub": user.id})
+    new_refresh_token = create_refresh_token({"sub": user.id})
+
+    return RefreshTokenResponse(
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
+        user_id=user.id,
+        username=user.username,
+        email=user.email
+    )
 
 @router.post("/verify-email")
 def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):

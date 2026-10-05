@@ -239,11 +239,17 @@ def _ensure_default_user(db: Session):
                 email="user@jeet.ai",
                 username="jeet_user",
                 full_name="Vikash Yadav",
-                hashed_password=get_password_hash("jeet123")
+                hashed_password=get_password_hash("jeet123"),
+                is_active=True,
+                is_verified=True
             )
             db.add(user)
             db.commit()
             db.refresh(user)
+        elif not user.is_verified or not user.is_active:
+            user.is_verified = True
+            user.is_active = True
+            db.commit()
 
         profile = db.query(PersonalProfile).filter(PersonalProfile.user_id == user.id).first()
         if not profile:

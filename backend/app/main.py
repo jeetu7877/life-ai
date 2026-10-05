@@ -136,13 +136,27 @@ app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIRECTORY), name="up
 @app.get("/health")
 def top_health():
     from app.services.llm_service import get_gemini_client, get_gemini_init_error
+    from app.database import engine
+    from sqlalchemy import text
+    db_status = "connected"
+    dialect = "unknown"
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        dialect = getattr(engine.dialect, "name", "unknown")
+    except Exception as e:
+        db_status = f"unhealthy: {str(e)}"
+
     raw_env = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or getattr(settings, "GEMINI_API_KEY", "") or "").strip().strip('"').strip("'")
     key_len = len(raw_env)
     key_prefix = raw_env[:5] + "..." if key_len > 5 else (raw_env if key_len > 0 else "none")
     client = get_gemini_client()
     return {
-        "status": "ok",
+        "status": "ok" if "unhealthy" not in db_status else "degraded",
+        "service": "life-ai",
         "app": settings.PROJECT_NAME,
+        "database": db_status,
+        "database_dialect": dialect,
         "gemini_connected": client is not None,
         "key_detected": key_len > 10,
         "key_prefix": key_prefix,

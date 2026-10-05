@@ -22,11 +22,12 @@ class Settings(BaseSettings):
     )
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 90  # 90 days for long-lived session restore
 
     # Sensitive Vault Encryption Key (Fernet key - 32 url-safe base64-encoded bytes)
-    # Generates a valid key dynamically if none is provided
+    # Uses persistent default key to ensure encrypted vault data survives container and server restarts
     ENCRYPTION_KEY: str = Field(
-        default_factory=lambda: Fernet.generate_key().decode(),
+        default="5W26Pr3QWJ3BKAlMUUpLzNssviFY2hdgRXrij3g12fE=",
         description="Fernet 32-byte base64 encryption key for sensitive data vault"
     )
 

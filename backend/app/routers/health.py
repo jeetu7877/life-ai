@@ -39,10 +39,12 @@ def health_check(db: Session = Depends(get_db)):
 
     return {
         "status": overall_status,
+        "service": "life-ai",
         "app_name": settings.PROJECT_NAME,
         "companion": "Life",
         "wake_word": settings.WAKE_WORD,
         "database": db_status,
+        "database_dialect": getattr(db.bind.dialect, "name", "unknown") if hasattr(db, "bind") and db.bind else "unknown",
         "vector_db": vector_status,
         "gemini_connected": gemini_connected,
         "gemini_error": get_gemini_init_error() if not gemini_connected else None

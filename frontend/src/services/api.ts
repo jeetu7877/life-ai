@@ -10,38 +10,37 @@ import {
   VaultItem
 } from '../types';
 
+import { storage } from './storage';
+
+export const PRODUCTION_RENDER_URL = 'https://life-ai-daoh.onrender.com';
+
 export const getServerHostUrl = (): string => {
   if (typeof window !== 'undefined') {
-    // 1. Check if running inside Capacitor Android APK (Native Mobile App)
-    const isCapacitor = !!(window as any).Capacitor;
-    if (isCapacitor || window.location.protocol === 'file:') {
-      // In native app, connect to 24/7 Render cloud or user-customized URL
-      const customUrl = localStorage.getItem('life_server_url') || localStorage.getItem('jeet_server_url');
-      if (customUrl && customUrl.trim() && !customUrl.includes('192.168.1.123') && !customUrl.includes('localhost')) {
-        return customUrl.trim().replace(/\/+$/, '').replace(/\/api\/v1$/, '');
-      }
-      return 'https://life-ai-daoh.onrender.com';
-    }
-
-    // 2. Custom server URL from Settings
-    const customUrl = localStorage.getItem('life_server_url') || localStorage.getItem('jeet_server_url');
-    if (customUrl && customUrl.trim() && !customUrl.includes('192.168.1.123')) {
+    // 1. Saved custom/overridden server URL from persistent storage
+    const customUrl = storage.getServerUrl();
+    if (customUrl && customUrl.trim() && !customUrl.includes('192.168.1.123') && !customUrl.includes('10.10.202.55')) {
       return customUrl.trim().replace(/\/+$/, '').replace(/\/api\/v1$/, '');
     }
 
-    // 3. If accessing in browser on laptop localhost
+    // 2. Check if running inside Capacitor Android APK (Native Mobile App)
+    const isCapacitor = !!(window as any).Capacitor;
+    if (isCapacitor || window.location.protocol === 'file:') {
+      return PRODUCTION_RENDER_URL;
+    }
+
+    // 3. Browser on local machine development
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return 'http://localhost:8000';
     }
 
-    // 4. If accessed via browser on phone or LAN (e.g. 10.10.202.55:5173)
+    // 4. Browser on local network
     if (window.location.hostname) {
       return `http://${window.location.hostname}:8000`;
     }
 
-    return 'http://10.10.202.55:8000';
+    return PRODUCTION_RENDER_URL;
   }
-  return 'http://localhost:8000';
+  return PRODUCTION_RENDER_URL;
 };
 
 export const getApiBaseUrl = (): string => {
@@ -59,12 +58,124 @@ export const apiClient = axios.create({
 // Interceptor to attach JWT token and ensure dynamic baseURL
 apiClient.interceptors.request.use((config) => {
   config.baseURL = getApiBaseUrl();
-  const token = localStorage.getItem('life_token') || localStorage.getItem('jeet_token');
+  const token = storage.getToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
+
+// Transparent token refresh queue to handle background access token refresh on 401
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: any) => void }> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else if (token) {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    // If error is 401 and not already retried and not an auth endpoint
+    if (
+      error.response?.status === 401 &&
+      !originalRequest?._retry &&
+      originalRequest?.url &&
+      !originalRequest.url.includes('/auth/login') &&
+      !originalRequest.url.includes('/auth/register') &&
+      !originalRequest.url.includes('/auth/verify-otp') &&
+      !originalRequest.url.includes('/auth/refresh')
+    ) {
+      const refreshToken = storage.getRefreshToken();
+      if (!refreshToken) {
+        return Promise.reject(error);
+      }
+
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return apiClient(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const refreshRes = await axios.post(
+          `${getApiBaseUrl()}/auth/refresh`,
+          { refresh_token: refreshToken },
+          { timeout: 20000 }
+        );
+        const { access_token, refresh_token: newRefreshToken } = refreshRes.data;
+        await storage.setToken(access_token);
+        if (newRefreshToken) {
+          await storage.setRefreshToken(newRefreshToken);
+        }
+        processQueue(null, access_token);
+        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        return apiClient(originalRequest);
+      } catch (refreshErr) {
+        processQueue(refreshErr, null);
+        console.warn('[API] Refresh token expired or revoked. User session expired.');
+        return Promise.reject(refreshErr);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+/**
+ * Robust Server Health Probe with cold-start detection.
+ * Never falsely reports 'offline' on temporary Render spin-up delays.
+ */
+export const probeServerHealth = async (
+  url?: string,
+  timeoutMs: number = 20000
+): Promise<{ ok: boolean; status: 'online' | 'cold_start' | 'offline'; data?: any; message?: string }> => {
+  const target = (url || getServerHostUrl()).trim().replace(/\/+$/, '').replace(/\/api\/v1$/, '');
+  try {
+    // 1. Probe lightweight /health
+    const res = await axios.get(`${target}/health`, { timeout: timeoutMs });
+    if (res.status === 200 && (res.data?.status === 'ok' || res.data?.status === 'healthy')) {
+      return { ok: true, status: 'online', data: res.data };
+    }
+  } catch (err: any) {
+    // Check if timeout likely caused by Render cold start
+    if (err.code === 'ECONNABORTED' || (err.message && err.message.includes('timeout'))) {
+      return { ok: false, status: 'cold_start', message: 'Render backend is spinning up (free tier cold-start). Please wait ~20s.' };
+    }
+  }
+
+  try {
+    // 2. Fallback probe /api/v1/health
+    const res2 = await axios.get(`${target}/api/v1/health`, { timeout: timeoutMs });
+    if (res2.status === 200 && (res2.data?.status === 'ok' || res2.data?.status === 'healthy')) {
+      return { ok: true, status: 'online', data: res2.data };
+    }
+  } catch (err: any) {
+    if (err.code === 'ECONNABORTED' || (err.message && err.message.includes('timeout'))) {
+      return { ok: false, status: 'cold_start', message: 'Render backend is waking up...' };
+    }
+  }
+
+  return { ok: false, status: 'offline', message: 'Server is currently unreachable.' };
+};
 
 export const api = {
   // Auth
@@ -74,6 +185,8 @@ export const api = {
     apiClient.post<AuthResponse>('/auth/login', data).then(r => r.data),
   verifyOtp: (data: { email: string; otp: string }) =>
     apiClient.post<AuthResponse>('/auth/verify-otp', data).then(r => r.data),
+  refreshToken: (refreshToken: string) =>
+    apiClient.post<{ access_token: string; refresh_token: string; user_id: string; username: string; email: string }>('/auth/refresh', { refresh_token: refreshToken }).then(r => r.data),
   resendOtp: (email: string) =>
     apiClient.post<{ success: boolean; message: string; resend_cooldown_seconds?: number }>('/auth/resend-otp', { email }).then(r => r.data),
   getMe: () => apiClient.get<User>('/auth/me').then(r => r.data),

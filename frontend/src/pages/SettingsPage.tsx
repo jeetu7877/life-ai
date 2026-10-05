@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { api, getServerHostUrl } from '../services/api';
+import { storage } from '../services/storage';
 import { Link, useNavigate } from 'react-router-dom';
 
 type SettingsTab =
@@ -313,12 +314,13 @@ export const SettingsPage: React.FC = () => {
     const targetUrl = serverUrl.trim().replace(/\/+$/, '');
     const startTime = Date.now();
     try {
-      const res = await axios.get(`${targetUrl}/health`, { timeout: 8000 });
+      const res = await axios.get(`${targetUrl}/health`, { timeout: 15000 });
       const elapsed = Date.now() - startTime;
-      if (res.data?.status === 'ok') {
+      if (res.data?.status === 'ok' || res.data?.status === 'healthy') {
         setTestStatus('success');
-        setTestMessage(`Connected! Status: Healthy • Latency: ${elapsed}ms • DB: ${res.data.database || 'ready'}`);
+        setTestMessage(`Connected! Status: Healthy • Latency: ${elapsed}ms • DB: ${res.data.database || 'connected'}`);
         localStorage.setItem('life_server_url', targetUrl);
+        await storage.setServerUrl(targetUrl);
         success('Backend connection verified!');
       } else {
         setTestStatus('error');
@@ -1196,8 +1198,16 @@ export const SettingsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  const token = localStorage.getItem('life_token');
+                  const refresh = localStorage.getItem('life_refresh_token');
+                  const server = localStorage.getItem('life_server_url');
+                  const user = localStorage.getItem('life_user');
                   localStorage.clear();
-                  success('Local client cache cleared.');
+                  if (token) localStorage.setItem('life_token', token);
+                  if (refresh) localStorage.setItem('life_refresh_token', refresh);
+                  if (server) localStorage.setItem('life_server_url', server);
+                  if (user) localStorage.setItem('life_user', user);
+                  success('Temporary client cache cleared (session preserved).');
                   window.location.reload();
                 }}
                 className="px-4 py-2.5 rounded-xl border border-[#202B3D] bg-[#141C28] hover:bg-[#1A2332] text-xs font-semibold text-slate-300 transition-colors cursor-pointer"
