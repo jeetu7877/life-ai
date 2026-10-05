@@ -167,10 +167,15 @@ class AgentOrchestrator:
         is_music_resume = any(p in lower_msg for p in ["resume music", "gaana chalu karo", "continue music", "phir se chalao", "ye phir se chalao"])
         is_music_next = any(p in lower_msg for p in ["next song", "agla gaana", "change song", "gaana badlo", "next track"])
         is_music_prev = any(p in lower_msg for p in ["previous song", "pichhla gaana", "pichla gana"])
-        is_music_play = any(p in lower_msg for p in [
-            "gaana chalao", "gaana bajao", "music chalao", "song play", "play music",
-            "play song", "ke gaane bajao", "ke gane chalao", "chala do"
-        ]) or lower_msg.endswith(" chalao") or lower_msg.endswith(" bajao") or lower_msg.startswith("play ")
+        has_music_action = any(act in lower_msg for act in [
+            "chalao", "chlao", "chala do", "chla do", "chala de", "chla de", "chalana",
+            "bajao", "bjao", "baja do", "bja do", "baja de", "bja de",
+            "lagao", "lgao", "laga do", "lga do", "lagana", "laga de", "lga de",
+            "sunao", "suna do", "suna de", "play"
+        ])
+        is_music_play = has_music_action and any(w in lower_msg for w in [
+            "gaana", "gana", "geet", "song", "music", "track", "play", "chalao", "chlao", "bajao", "bjao", "lagao", "lgao", "sunao"
+        ])
 
         if is_music_pause:
             total_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -217,10 +222,12 @@ class AgentOrchestrator:
             }
 
         if is_music_play:
-            song_query = re.sub(r'^(hey\s*life|life|ai|plz|please)\s*', '', lower_msg, flags=re.IGNORECASE)
-            song_query = re.sub(r'(gaana chalao|gaana bajao|music chalao|song play|play music|play song|play|chalao|bajao|ke gaane bajao|ke gane chalao|chala do)', '', song_query, flags=re.IGNORECASE).strip()
-            if not song_query:
-                song_query = "Bollywood top hit"
+            song_query = re.sub(r'^(hey\s*life|life|ai|hey\s*ai|plz|please|yaar|bhai|sun|suno)\s*', '', lower_msg, flags=re.IGNORECASE)
+            song_query = re.sub(r'(gaana chalao|gana chalao|gaana chlao|gana chlao|gaana bajao|gana bajao|gaana bjao|song chalao|song chlao|music chalao|music chlao|music play|song play|play music|play song|play karo|play kar do|play|chalao|chlao|chala do|chla do|chala de|chla de|chalana|chalu karo|bajao|bjao|baja do|bja do|baja de|bja de|lagao|lgao|laga do|lga do|lagana|laga de|lga de|sunao|suna do|suna de|suno|ke gaane|ke gane)', '', song_query, flags=re.IGNORECASE)
+            song_query = re.sub(r'\b(ka|ke|ki|ko|me|mein|se|pe|par)\b', ' ', song_query, flags=re.IGNORECASE)
+            song_query = re.sub(r'\b(ye|yeh|koi|ek|achha|accha|naya|purana|favourite|favorite|top|hit|song|gaana|gana|geet|music|track)\b', ' ', song_query, flags=re.IGNORECASE).strip()
+            if not song_query or len(song_query) < 2:
+                song_query = "Bollywood Top Hits"
 
             import asyncio
             try:
@@ -246,6 +253,110 @@ class AgentOrchestrator:
                 "response": f"Theek hai! {track_title} gaana chala rahi hoon.",
                 "retrieved_sources": [{"source": "music_search", "provider": "youtube"}],
                 "tools_executed": [{"tool": "music_play", "intent": "MUSIC_PLAY", "query": song_query, "track": top_track}],
+                "timing": timing_metrics
+            }
+
+        # FAST PATH 1.7: Smart Alarm Controller (<5ms)
+        is_alarm_query = any(k in lower_msg for k in ["alarm", "alram", "elarm", "utha dena", "wake me up", "jagana", "jaga dena", "baje utha"])
+        if is_alarm_query and not any(k in lower_msg for k in ["kya hota", "kaise hota", "what is"]):
+            # Check for dismiss
+            if any(k in lower_msg for k in ["band karo", "roko", "dismiss", "stop", "off karo"]):
+                total_ms = round((time.perf_counter() - t0) * 1000, 2)
+                timing_metrics["total_ms"] = total_ms
+                timing_metrics["llm_used"] = False
+                return {
+                    "response": "Alarm band kar diya hai.",
+                    "retrieved_sources": [{"source": "alarm_controller"}],
+                    "tools_executed": [{"tool": "alarm_control", "action": "dismiss"}],
+                    "timing": timing_metrics
+                }
+
+            # Check for relative delay (e.g. 10 minute baad)
+            min_match = re.search(r'(\d+)\s*(?:minute|min|minto?)\s*(?:baad|later|me|mein)?', lower_msg)
+            if min_match:
+                mins = int(min_match.group(1))
+                from datetime import timezone as dt_tz, timedelta
+                try:
+                    from zoneinfo import ZoneInfo
+                    ist_tz = ZoneInfo("Asia/Kolkata")
+                    target_dt = datetime.now(ist_tz) + timedelta(minutes=mins)
+                except Exception:
+                    ist_tz = dt_tz(timedelta(hours=5, minutes=30))
+                    target_dt = datetime.now(ist_tz) + timedelta(minutes=mins)
+
+                time_str = target_dt.strftime("%I:%M %p")
+                target_ts = int(target_dt.timestamp() * 1000)
+                total_ms = round((time.perf_counter() - t0) * 1000, 2)
+                timing_metrics["total_ms"] = total_ms
+                timing_metrics["llm_used"] = False
+                return {
+                    "response": f"Done! {mins} minute baad ({time_str}) ka alarm set kar diya hai.",
+                    "retrieved_sources": [{"source": "alarm_controller"}],
+                    "tools_executed": [{"tool": "alarm_create", "time_str": time_str, "timestamp_ms": target_ts, "label": f"{mins} Minute Quick Alarm"}],
+                    "timing": timing_metrics
+                }
+
+            # Normalize Hindi number words
+            normalized_alarm = lower_msg
+            hindi_nums = {
+                'ek': '1', 'do': '2', 'teen': '3', 'char': '4', 'chaar': '4',
+                'paanch': '5', 'panch': '5', 'chhe': '6', 'che': '6', 'chhah': '6',
+                'saat': '7', 'sat': '7', 'aath': '8', 'ath': '8', 'nau': '9', 'no': '9',
+                'das': '10', 'dus': '10', 'gyarah': '11', 'barah': '12'
+            }
+            for hw, hn in hindi_nums.items():
+                normalized_alarm = re.sub(rf'\b{hw}\b(?=\s*(?:baje|am|pm))', hn, normalized_alarm)
+
+            time_match = re.search(r'(\d{1,2})(?::(\d{2}))?\s*(?:baje|am|pm|o\'clock)?', normalized_alarm)
+            if not time_match:
+                total_ms = round((time.perf_counter() - t0) * 1000, 2)
+                timing_metrics["total_ms"] = total_ms
+                timing_metrics["llm_used"] = False
+                return {
+                    "response": "Aapko kitne baje ka alarm lagana hai? Jaise bolein: 'kal subah 6 baje ka alarm laga do'.",
+                    "retrieved_sources": [{"source": "alarm_controller"}],
+                    "tools_executed": [],
+                    "timing": timing_metrics
+                }
+
+            hour = int(time_match.group(1))
+            minute = int(time_match.group(2)) if time_match.group(2) else 0
+            is_pm = any(p in lower_msg for p in ["pm", "shaam", "sham", "dopahar", "raat", "night", "evening"])
+            is_am = any(p in lower_msg for p in ["am", "subah", "morning", "bhor"])
+            is_tomorrow = any(p in lower_msg for p in ["kal", "tomorrow"])
+
+            if is_pm and hour < 12:
+                hour += 12
+            elif is_am and hour == 12:
+                hour = 0
+            elif not is_pm and not is_am:
+                if 8 <= hour <= 11:
+                    hour += 12
+
+            from datetime import timezone as dt_tz, timedelta
+            try:
+                from zoneinfo import ZoneInfo
+                ist_tz = ZoneInfo("Asia/Kolkata")
+                now_ist = datetime.now(ist_tz)
+            except Exception:
+                ist_tz = dt_tz(timedelta(hours=5, minutes=30))
+                now_ist = datetime.now(ist_tz)
+
+            alarm_dt = now_ist.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if is_tomorrow or alarm_dt <= now_ist:
+                alarm_dt += timedelta(days=1)
+
+            time_str = alarm_dt.strftime("%I:%M %p")
+            target_ts = int(alarm_dt.timestamp() * 1000)
+            day_word = "kal " if is_tomorrow or alarm_dt.date() > now_ist.date() else ""
+
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            return {
+                "response": f"Done! {day_word}{time_str} ka alarm set kar diya hai.",
+                "retrieved_sources": [{"source": "alarm_controller"}],
+                "tools_executed": [{"tool": "alarm_create", "time_str": time_str, "timestamp_ms": target_ts, "label": f"{day_word}{time_str} Alarm".strip()}],
                 "timing": timing_metrics
             }
 

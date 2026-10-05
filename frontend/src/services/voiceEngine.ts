@@ -8,6 +8,7 @@ import { VoiceState, DetailedVoiceState } from '../types';
 import { api, getServerHostUrl } from './api';
 import { handsFreeService } from './handsFreeService';
 import { fastIntentRouter } from './fastIntentRouter';
+import { executeServerTools } from './toolExecutor';
 
 export interface VoiceEngineSnapshot {
   voiceState: VoiceState;
@@ -918,6 +919,13 @@ class VoiceEngine {
       this.assistantResponse = res.response;
       this.voiceError = null;
       this.notify();
+
+      // Execute server-directed tools (e.g. music play, alarm scheduling)
+      if ((res as any).tools_executed) {
+        executeServerTools((res as any).tools_executed).catch((toolErr) => {
+          console.warn('[VOICE] Tool execution notice:', toolErr);
+        });
+      }
 
       if (res.audio_url) {
         this.playAudioResponse(res.audio_url, res.response);

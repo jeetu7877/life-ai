@@ -128,6 +128,9 @@ class MusicService {
   private tickerTimer: any = null;
   private hostContainer: HTMLElement | null = null;
   private isApiScriptLoading: boolean = false;
+  private dockTarget: HTMLElement | null = null;
+  private dockObserver: ResizeObserver | null = null;
+  private dockScrollHandler: (() => void) | null = null;
 
   private constructor() {
     this.initDirectAudio();
@@ -196,14 +199,18 @@ class MusicService {
     if (!host) {
       host = document.createElement('div');
       host.id = 'life-ai-music-host';
+      // Keep inside viewport with minimal opacity and pointer-events: none
+      // This ensures YouTube never pauses playback due to off-screen / 0px clipping
       host.style.position = 'fixed';
-      host.style.bottom = '-9999px';
-      host.style.left = '-9999px';
-      host.style.width = '240px';
-      host.style.height = '180px';
-      host.style.zIndex = '-9999';
-      host.style.opacity = '0.01';
+      host.style.bottom = '4px';
+      host.style.right = '4px';
+      host.style.width = '200px';
+      host.style.height = '120px';
+      host.style.zIndex = '1';
+      host.style.opacity = '0.001';
       host.style.pointerEvents = 'none';
+      host.style.visibility = 'visible';
+      host.style.display = 'block';
 
       const targetDiv = document.createElement('div');
       targetDiv.id = 'life-ai-yt-target';
@@ -261,7 +268,10 @@ class MusicService {
           onReady: (event: any) => {
             console.log('[MUSIC] YouTube Player instance onReady');
             this.ytReady = true;
-            this.ytPlayer.setVolume(this.state.volume);
+            try {
+              this.ytPlayer.unMute();
+              this.ytPlayer.setVolume(this.state.volume || 85);
+            } catch (_) {}
             try {
               const iframe = this.ytPlayer.getIframe?.();
               if (iframe) {
@@ -335,15 +345,21 @@ class MusicService {
 
   private loadAndPlayYTVideo(videoId: string): void {
     if (!this.ytPlayer || !this.ytReady) {
+      console.log(`[MUSIC] YouTube player not ready yet. Queuing video ${videoId}`);
       this.pendingVideoId = videoId;
       return;
     }
 
     try {
+      console.log(`[MUSIC] Loading and playing YouTube video ID: ${videoId}`);
       this.ytPlayer.loadVideoById({
         videoId: videoId,
         suggestedQuality: 'small'
       });
+      try {
+        this.ytPlayer.unMute();
+        this.ytPlayer.setVolume(this.state.volume || 85);
+      } catch (_) {}
       this.ytPlayer.playVideo();
     } catch (e) {
       console.warn('[MUSIC_ERROR] loadVideoById error:', e);
@@ -637,31 +653,70 @@ class MusicService {
 
   /**
    * Dock persistent YouTube player container inside a custom UI host (e.g., in MusicPage)
+   * NEVER reparents DOM with appendChild to preserve iframe JavaScript context and playback.
    */
   public dockPlayerToContainer(targetElement: HTMLElement | null): void {
     if (!this.hostContainer) return;
+
+    if (this.dockObserver) {
+      this.dockObserver.disconnect();
+      this.dockObserver = null;
+    }
+    if (this.dockScrollHandler) {
+      window.removeEventListener('scroll', this.dockScrollHandler, true);
+      window.removeEventListener('resize', this.dockScrollHandler);
+      this.dockScrollHandler = null;
+    }
+
+    this.dockTarget = targetElement;
+
     if (targetElement) {
-      // Dock into visible UI
-      this.hostContainer.style.position = 'relative';
-      this.hostContainer.style.bottom = 'auto';
-      this.hostContainer.style.left = 'auto';
-      this.hostContainer.style.width = '100%';
-      this.hostContainer.style.height = '100%';
-      this.hostContainer.style.zIndex = '1';
-      this.hostContainer.style.opacity = '1';
-      this.hostContainer.style.pointerEvents = 'auto';
-      targetElement.appendChild(this.hostContainer);
+      const syncPos = () => {
+        if (!this.hostContainer || !this.dockTarget) return;
+        const rect = this.dockTarget.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          this.hostContainer.style.position = 'fixed';
+          this.hostContainer.style.top = `${rect.top}px`;
+          this.hostContainer.style.left = `${rect.left}px`;
+          this.hostContainer.style.width = `${rect.width}px`;
+          this.hostContainer.style.height = `${rect.height}px`;
+          this.hostContainer.style.bottom = 'auto';
+          this.hostContainer.style.right = 'auto';
+          this.hostContainer.style.zIndex = '35';
+          this.hostContainer.style.opacity = '1';
+          this.hostContainer.style.pointerEvents = 'auto';
+          this.hostContainer.style.visibility = 'visible';
+          this.hostContainer.style.display = 'block';
+          this.hostContainer.style.borderRadius = '16px';
+          this.hostContainer.style.overflow = 'hidden';
+        }
+      };
+
+      syncPos();
+
+      this.dockScrollHandler = syncPos;
+      window.addEventListener('scroll', syncPos, { passive: true, capture: true });
+      window.addEventListener('resize', syncPos, { passive: true });
+
+      if (typeof ResizeObserver !== 'undefined') {
+        this.dockObserver = new ResizeObserver(() => syncPos());
+        this.dockObserver.observe(targetElement);
+      }
     } else {
-      // Undock to background
+      // Undock: keep inside viewport with minimal opacity so YouTube never suspends playback
       this.hostContainer.style.position = 'fixed';
-      this.hostContainer.style.bottom = '-9999px';
-      this.hostContainer.style.left = '-9999px';
-      this.hostContainer.style.width = '240px';
-      this.hostContainer.style.height = '180px';
-      this.hostContainer.style.zIndex = '-9999';
-      this.hostContainer.style.opacity = '0.01';
+      this.hostContainer.style.top = 'auto';
+      this.hostContainer.style.left = 'auto';
+      this.hostContainer.style.bottom = '4px';
+      this.hostContainer.style.right = '4px';
+      this.hostContainer.style.width = '200px';
+      this.hostContainer.style.height = '120px';
+      this.hostContainer.style.zIndex = '1';
+      this.hostContainer.style.opacity = '0.001';
       this.hostContainer.style.pointerEvents = 'none';
-      document.body.appendChild(this.hostContainer);
+      this.hostContainer.style.visibility = 'visible';
+      this.hostContainer.style.display = 'block';
+      this.hostContainer.style.borderRadius = '0px';
     }
   }
 

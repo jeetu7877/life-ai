@@ -36,11 +36,15 @@ export class FastIntentRouter {
     // A. Alarm Dismiss / Stop
     if (
       q.includes('alarm band karo') ||
+      q.includes('alram band karo') ||
       q.includes('alarm roko') ||
+      q.includes('alram roko') ||
       q.includes('dismiss alarm') ||
       q.includes('stop alarm') ||
       q.includes('alarm band kar do') ||
-      q.includes('alarm off karo')
+      q.includes('alram band kar do') ||
+      q.includes('alarm off karo') ||
+      q.includes('alram off karo')
     ) {
       await alarmService.dismissActiveAlarm();
       return {
@@ -103,11 +107,15 @@ export class FastIntentRouter {
     // C. List Alarms
     if (
       q.includes('mere alarm') ||
+      q.includes('mere alram') ||
       q.includes('alarms batao') ||
+      q.includes('alram batao') ||
       q.includes('show alarms') ||
       q.includes('list alarms') ||
       q.includes('kitne alarm') ||
-      q.includes('alarm dikhao')
+      q.includes('kitne alram') ||
+      q.includes('alarm dikhao') ||
+      q.includes('alram dikhao')
     ) {
       const alarms = await alarmService.getAlarms();
       const active = alarms.filter((a) => a.enabled);
@@ -127,9 +135,12 @@ export class FastIntentRouter {
     // D. Alarm Creation (Natural Language)
     const isAlarmCreation =
       q.includes('alarm') ||
+      q.includes('alram') ||
+      q.includes('elarm') ||
       q.includes('utha dena') ||
       q.includes('wake me up') ||
       q.includes('jagana') ||
+      q.includes('jaga dena') ||
       q.includes('baje utha');
 
     if (isAlarmCreation) {
@@ -265,45 +276,66 @@ export class FastIntentRouter {
     }
 
     // G. Play Specific Song or Dynamic Music Search
-    const isMusicPlay =
-      q.includes('chalao') ||
-      q.includes('bajao') ||
-      q.includes('play karo') ||
-      q.includes('play ') ||
-      q.includes('gaana') ||
-      q.includes('gana') ||
-      q.includes('music') ||
-      q.includes('song');
-
     const hasMusicAction =
       q.includes('chalao') ||
-      q.includes('bajao') ||
+      q.includes('chlao') ||
       q.includes('chala do') ||
-      q.includes('play') ||
-      q.includes('suno');
+      q.includes('chla do') ||
+      q.includes('chala de') ||
+      q.includes('chla de') ||
+      q.includes('chalana') ||
+      q.includes('chalu karo') ||
+      q.includes('bajao') ||
+      q.includes('bjao') ||
+      q.includes('baja do') ||
+      q.includes('bja do') ||
+      q.includes('baja de') ||
+      q.includes('bja de') ||
+      q.includes('lagao') ||
+      q.includes('lgao') ||
+      q.includes('laga do') ||
+      q.includes('lga do') ||
+      q.includes('lagana') ||
+      q.includes('laga de') ||
+      q.includes('lga de') ||
+      q.includes('sunao') ||
+      q.includes('suna do') ||
+      q.includes('suna de') ||
+      q.includes('suno') ||
+      q.includes('play');
+
+    const isMusicPlay =
+      hasMusicAction ||
+      q.includes('gaana') ||
+      q.includes('gana') ||
+      q.includes('geet') ||
+      q.includes('music') ||
+      q.includes('song') ||
+      q.includes('track');
 
     if (isMusicPlay && hasMusicAction) {
       // Extract clean song or artist search term
       let songQuery = q
-        .replace(/^(hey\s*life|life|ai|plz|please)\s*/i, '')
-        .replace(/(gaana chalao|gaana bajao|music chalao|song play|play music|play song|play karo|play|chalao|bajao|ke gaane bajao|ke gane chalao|chala do|suno)/gi, '')
-        .replace(/\b(ka|ke|ki|ko)\b/gi, ' ')
+        .replace(/^(hey\s*life|life|ai|hey\s*ai|plz|please|yaar|bhai|sun|suno)\s*/i, '')
+        .replace(/(gaana chalao|gana chalao|gaana chlao|gana chlao|gaana bajao|gana bajao|gaana bjao|song chalao|song chlao|music chalao|music chlao|music play|song play|play music|play song|play karo|play kar do|play|chalao|chlao|chala do|chla do|chala de|chla de|chalana|chalu karo|bajao|bjao|baja do|bja do|baja de|bja de|lagao|lgao|laga do|lga do|lagana|laga de|lga de|sunao|suna do|suna de|suno|ke gaane|ke gane)/gi, '')
+        .replace(/\b(ka|ke|ki|ko|me|mein|se|pe|par)\b/gi, ' ')
+        .replace(/\b(ye|yeh|koi|ek|achha|accha|naya|purana|favourite|favorite|top|hit|song|gaana|gana|geet|music|track)\b/gi, ' ')
         .trim();
 
-      // Normalize common inverted expressions like "Arijit Singh Channa Mereya"
-      if (!songQuery || songQuery === 'koi' || songQuery === 'kuch') {
-        const track = CURATED_TRACKS[0];
-        await musicService.play(track);
+      // If query becomes empty after removing action keywords (e.g. "ye song chlao", "gana chalao", "koi song sunao")
+      if (!songQuery || songQuery.length < 2) {
+        console.log('[FAST_INTENT] Spoken query was generic music action. Playing top hit track...');
+        const track = await musicService.searchAndPlay('Bollywood Top Hits');
         return {
           handled: true,
           responseText: `Theek hai! ${track.title} gaana chala rahi hoon.`
         };
       } else {
-        console.log(`[FAST_INTENT] Spoken query extracted: "${songQuery}"`);
+        console.log(`[FAST_INTENT] Spoken song search query extracted: "${songQuery}"`);
         const track = await musicService.searchAndPlay(songQuery);
         return {
           handled: true,
-          responseText: `Theek hai! ${track.title} chala rahi hoon.`
+          responseText: `Theek hai! ${track.title} gaana chala rahi hoon.`
         };
       }
     }
@@ -321,7 +353,7 @@ export class FastIntentRouter {
       let targetDate = new Date();
 
       const isTomorrow = q.includes('kal') || q.includes('tomorrow');
-      const isPM = q.includes('pm') || q.includes('shaam') || q.includes('sham') || q.includes('dopahar') || q.includes('raat');
+      const isPM = q.includes('pm') || q.includes('shaam') || q.includes('sham') || q.includes('dopahar') || q.includes('raat') || q.includes('night') || q.includes('evening');
       const isAM = q.includes('am') || q.includes('subah') || q.includes('morning') || q.includes('bhor');
 
       // 1. Check for "in X minutes" / "X minute baad"
@@ -349,16 +381,33 @@ export class FastIntentRouter {
         return `Done! ${mins} minute baad (${timeStr}) ka alarm set kar diya hai.`;
       }
 
-      // 2. Extract hour & optional minute (e.g., "6 baje", "6:30 baje", "6 am", "7:45 pm")
-      const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(?:baje|am|pm|o'clock)?/i;
-      const match = q.match(timeRegex);
+      // 2. Hindi number word normalization (e.g. "chhe baje" -> "6 baje", "saat baje" -> "7 baje")
+      let normalized = q;
+      const hindiNums: Record<string, string> = {
+        'ek': '1', 'do': '2', 'teen': '3', 'char': '4', 'chaar': '4',
+        'paanch': '5', 'panch': '5', 'chhe': '6', 'che': '6', 'chhah': '6',
+        'saat': '7', 'sat': '7', 'aath': '8', 'ath': '8', 'nau': '9', 'no': '9',
+        'das': '10', 'dus': '10', 'gyarah': '11', 'barah': '12'
+      };
+      for (const [w, n] of Object.entries(hindiNums)) {
+        normalized = normalized.replace(new RegExp(`\\b${w}\\b(?=\\s*(?:baje|am|pm))`, 'gi'), n);
+      }
 
-      if (!match) return null;
+      // 3. Extract hour & optional minute (e.g., "6 baje", "6:30 baje", "6 am", "7:45 pm")
+      const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(?:baje|am|pm|o'clock)?/i;
+      const match = normalized.match(timeRegex);
+
+      if (!match) {
+        // User asked for alarm without specifying time (e.g. "alram bhi aeise hi set kar de" or "alarm laga do")
+        return "Aapko kitne baje ka alarm lagana hai? Jaise bolein: 'kal subah 6 baje ka alarm laga do'.";
+      }
 
       let hour = parseInt(match[1], 10);
       const minute = match[2] ? parseInt(match[2], 10) : 0;
 
-      if (isNaN(hour) || hour < 0 || hour > 24) return null;
+      if (isNaN(hour) || hour < 0 || hour > 24) {
+        return "Aapko kitne baje ka alarm lagana hai? Jaise bolein: 'kal subah 6 baje ka alarm laga do'.";
+      }
 
       if (isPM && hour < 12) hour += 12;
       if (isAM && hour === 12) hour = 0;
@@ -397,7 +446,7 @@ export class FastIntentRouter {
       return `Done! ${dayWord}${formattedTime} ka alarm set kar diya hai.`;
     } catch (err) {
       console.error('[FAST INTENT] Alarm parse error:', err);
-      return null;
+      return "Alarm set karne mein dikkat aayi. Kripya time dobara batayein.";
     }
   }
 }

@@ -215,10 +215,52 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 };
 
-export const useVoice = () => {
+export const useVoice = (): VoiceContextType => {
   const context = useContext(VoiceContext);
   if (!context) {
-    throw new Error('useVoice must be used within a VoiceProvider');
+    const snap = voiceEngine.getSnapshot();
+    return {
+      ...snap,
+      isDiagnosticsOpen: false,
+      setIsDiagnosticsOpen: () => {},
+      diagnostics: {
+        micAvailable: snap.streamActive || snap.micPermissionGranted,
+        permissionGranted: snap.micPermissionGranted,
+        permissionDenied: snap.micPermissionError,
+        streamActive: snap.streamActive,
+        sampleRate: snap.audioSampleRate,
+        channels: snap.audioChannels,
+        inputVolume: snap.inputVolume,
+        sttEngine: snap.sttEngine,
+        sttSupported: snap.sttEngine !== 'unavailable',
+        wakeWordListening: snap.detailedVoiceState === 'wake_listening',
+        backendConnected: snap.isBackendOnline,
+        ttsReady: true,
+        lastError: snap.voiceError
+      },
+      toggleVoiceMode: () => voiceEngine.setVoiceModeEnabled(!snap.isVoiceModeEnabled),
+      toggleWakeWord: () => voiceEngine.setWakeWordEnabled(!snap.isWakeWordEnabled),
+      toggleHandsFreeMode: async () => {
+        if (snap.isHandsFreeMode) {
+          await handsFreeService.stop();
+          voiceEngine.setHandsFreeMode(false);
+        } else {
+          await handsFreeService.start();
+          voiceEngine.setHandsFreeMode(true);
+        }
+      },
+      updateWakeWord: (w: string) => voiceEngine.setWakeWord(w),
+      updateVoiceResponse: (en: boolean) => voiceEngine.setVoiceResponseEnabled(en),
+      triggerManualListen: async () => voiceEngine.triggerManualListen(),
+      stopVoice: () => voiceEngine.stopVoice(),
+      playAudioResponse: (url: string, fb?: string) => voiceEngine.playAudioResponse(url, fb),
+      requestMicPermission: async () => voiceEngine.requestMicPermission(),
+      openAppSettings: async () => voiceEngine.openNativeAppSettings(),
+      checkBatteryOptimization: async () => handsFreeService.checkBatteryOptimization(),
+      requestBatteryOptimizationExemption: async () => { await handsFreeService.requestIgnoreBatteryOptimization(); },
+      testMicrophoneInput: async () => null,
+      testBackendTranscription: async () => ''
+    };
   }
   return context;
 };

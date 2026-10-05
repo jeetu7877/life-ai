@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import companionImg from '../assets/companion/companion-idle.jpg';
 import { useVoice } from '../context/VoiceContext';
+import { executeServerTools } from '../services/toolExecutor';
 import { useToast } from '../components/ui/Toast';
 import { ConfirmationDialog } from '../components/ui/ConfirmationDialog';
 
@@ -174,6 +175,13 @@ export const ChatPage: React.FC = () => {
 
       setMessages(prev => [...prev, assistantMsg]);
       scrollToBottom();
+
+      // Execute server-directed tools (music play, alarms)
+      if ((res as any).tools_executed) {
+        executeServerTools((res as any).tools_executed).catch(toolErr => {
+          console.warn('[CHAT] Tool execution notice:', toolErr);
+        });
+      }
 
       // Play voice if audio is available
       if (res.audio_url) {
