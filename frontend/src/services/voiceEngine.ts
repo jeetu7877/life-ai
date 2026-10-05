@@ -7,6 +7,7 @@
 import { VoiceState, DetailedVoiceState } from '../types';
 import { api, getServerHostUrl } from './api';
 import { handsFreeService } from './handsFreeService';
+import { fastIntentRouter } from './fastIntentRouter';
 
 export interface VoiceEngineSnapshot {
   voiceState: VoiceState;
@@ -883,6 +884,23 @@ class VoiceEngine {
     if (!userText || this.isSpeaking) return;
     const cleanText = userText.trim();
     if (!cleanText) return;
+
+    // Fast Device Intent Interception (Alarms & Music controls executed locally in <50ms)
+    try {
+      const fastResult = await fastIntentRouter.route(cleanText);
+      if (fastResult.handled) {
+        console.log(`[VOICE] fast intent handled locally: "${fastResult.responseText}"`);
+        this.assistantResponse = fastResult.responseText;
+        this.voiceError = null;
+        this.notify();
+        this.speakText(fastResult.responseText, () => {
+          this.onTTSFinished();
+        });
+        return;
+      }
+    } catch (fastErr) {
+      console.warn('[VOICE] Fast intent evaluation notice:', fastErr);
+    }
 
     console.log('[VOICE] request started');
     this.setDetailedState('thinking');

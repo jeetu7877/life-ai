@@ -18,6 +18,14 @@ public class BootReceiver extends BroadcastReceiver {
             Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             
             Log.i(TAG, "Boot or package update detected: " + action);
+            // Always reschedule all active alarms across reboot
+            try {
+                AlarmEngine.rescheduleAllAlarms(context);
+                Log.i(TAG, "Alarms successfully rescheduled after device boot.");
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to reschedule alarms after boot: " + e.getMessage());
+            }
+
             SharedPreferences prefs = context.getSharedPreferences("life_ai_prefs", Context.MODE_PRIVATE);
             boolean isEnabled = prefs.getBoolean("hands_free_enabled", false);
 

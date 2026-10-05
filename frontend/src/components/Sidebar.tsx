@@ -18,12 +18,16 @@ import {
   Shield,
   Settings as SettingsIcon,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  AlarmClock,
+  Music
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Home Dashboard', icon: Mic },
   { to: '/chat', label: 'Daily Chat', icon: MessageSquare },
+  { to: '/alarms', label: 'Smart Alarms', icon: AlarmClock },
+  { to: '/music', label: 'Music Player', icon: Music },
   { to: '/life-map', label: 'Life Map & Twin', icon: Network },
   { to: '/what-if', label: 'What-If Simulations', icon: Sparkles },
   { to: '/journal', label: 'Journal & Retros', icon: BookMarked },

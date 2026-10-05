@@ -19,17 +19,26 @@ import {
   LayoutGrid,
   X,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  AlarmClock,
+  Music
 } from 'lucide-react';
 
 const mainNavItems = [
   { to: '/', label: 'Home', icon: Mic },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
-  { to: '/documents', label: 'Docs', icon: FileText },
-  { to: '/profile', label: 'Profile', icon: User },
+  { to: '/alarms', label: 'Alarms', icon: AlarmClock },
+  { to: '/music', label: 'Music', icon: Music },
 ];
 
 const allFeatures = [
+  {
+    category: 'Device & Media Controls',
+    items: [
+      { to: '/alarms', label: 'Smart Alarms', icon: AlarmClock, desc: 'OS-level wake-up alarms & voice timer' },
+      { to: '/music', label: 'Music Player', icon: Music, desc: 'Voice-controlled song streaming' },
+    ]
+  },
   {
     category: 'Core Assistant',
     items: [

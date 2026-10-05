@@ -383,6 +383,16 @@ export const api = {
   promoteJournalEntry: (id: string) =>
     apiClient.post<any>(`/journal/${id}/promote`).then(r => r.data),
 
+  // Smart Alarms
+  getAlarms: () =>
+    apiClient.get<any[]>('/alarms').then(r => r.data),
+  createAlarm: (data: any) =>
+    apiClient.post<any>('/alarms', data).then(r => r.data),
+  updateAlarm: (id: string, data: any) =>
+    apiClient.put<any>(`/alarms/${id}`, data).then(r => r.data),
+  deleteAlarm: (id: string) =>
+    apiClient.delete<any>(`/alarms/${id}`).then(r => r.data),
+
   // Health
   checkHealth: () =>
     apiClient.get('/health').then(r => r.data)

@@ -58,3 +58,4 @@ class User(Base):
     pattern_events = relationship("PatternEvent", back_populates="user", cascade="all, delete-orphan")
     decision_debate_sessions = relationship("DecisionDebateSession", back_populates="user", cascade="all, delete-orphan")
     bottleneck_records = relationship("BottleneckAnalysisRecord", back_populates="user", cascade="all, delete-orphan")
+    device_alarms = relationship("DeviceAlarm", back_populates="user", cascade="all, delete-orphan")

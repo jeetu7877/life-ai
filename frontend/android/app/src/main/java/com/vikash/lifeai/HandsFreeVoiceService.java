@@ -797,6 +797,14 @@ public class HandsFreeVoiceService extends Service {
     // ==================== BACKEND INTEGRATION ====================
 
     private void processUserQuery(String userQuery) {
+        // Fast local device alarm execution
+        String localAlarmReply = AlarmEngine.parseAndScheduleNaturalAlarm(this, userQuery);
+        if (localAlarmReply != null) {
+            Log.i(TAG, "[VOICE] fast_local_alarm_handled: " + localAlarmReply);
+            speakText(localAlarmReply, "local_alarm");
+            return;
+        }
+
         setState(State.PROCESSING);
         stopListeningTemporarily();
         Log.i(TAG, "[VOICE] backend_request_started");

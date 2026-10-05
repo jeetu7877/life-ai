@@ -24,6 +24,7 @@ from app.models.intelligence import (
     DecisionDebateSession,
     BottleneckAnalysisRecord
 )
+from app.models.alarm import DeviceAlarm
 
 __all__ = [
     "User",
@@ -60,6 +61,7 @@ __all__ = [
     "RiskEvent",
     "PatternEvent",
     "DecisionDebateSession",
-    "BottleneckAnalysisRecord"
+    "BottleneckAnalysisRecord",
+    "DeviceAlarm"
 ]
 

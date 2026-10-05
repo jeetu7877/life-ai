@@ -19,6 +19,7 @@ from app.routers.simulations import router as simulations_router
 from app.routers.time_machine import router as time_machine_router
 from app.routers.intelligence import router as intelligence_router
 from app.routers.journal import router as journal_router
+from app.routers.alarms import router as alarms_router
 
 __all__ = [
     "auth_router",
@@ -41,5 +42,6 @@ __all__ = [
     "simulations_router",
     "time_machine_router",
     "intelligence_router",
-    "journal_router"
+    "journal_router",
+    "alarms_router"
 ]

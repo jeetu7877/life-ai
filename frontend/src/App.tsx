@@ -24,6 +24,9 @@ import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { LifeMapPage } from './pages/LifeMapPage';
 import { WhatIfPage } from './pages/WhatIfPage';
 import { JournalPage } from './pages/JournalPage';
+import { AlarmsPage } from './pages/AlarmsPage';
+import { MusicPage } from './pages/MusicPage';
+import { NowPlayingBar } from './components/NowPlayingBar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 
 const AppShell: React.FC = () => {
@@ -188,12 +191,29 @@ const AppShell: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/alarms"
+              element={
+                <ProtectedRoute>
+                  <AlarmsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/music"
+              element={
+                <ProtectedRoute>
+                  <MusicPage />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Default fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
       </div>
+      <NowPlayingBar />
       <MobileBottomNav />
     </div>
   );

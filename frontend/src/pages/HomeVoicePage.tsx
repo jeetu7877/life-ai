@@ -16,7 +16,9 @@ import {
   Bot,
   Zap,
   Radio,
-  Volume2
+  Volume2,
+  AlarmClock,
+  Music
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -104,6 +106,24 @@ export const HomeVoicePage: React.FC = () => {
       border: "border-[#00D9FF]/30",
       bg: "bg-[#00D9FF]/10",
       action: () => triggerManualListen()
+    },
+    {
+      label: "Smart Alarms",
+      desc: "Native wake-up alarms",
+      icon: AlarmClock,
+      color: "text-amber-400",
+      border: "border-amber-400/30",
+      bg: "bg-amber-400/10",
+      action: () => navigate('/alarms')
+    },
+    {
+      label: "Music Player",
+      desc: "Voice song streaming",
+      icon: Music,
+      color: "text-emerald-400",
+      border: "border-emerald-400/30",
+      bg: "bg-emerald-400/10",
+      action: () => navigate('/music')
     },
     {
       label: "Goals & Targets",
