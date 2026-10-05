@@ -54,9 +54,17 @@ public class HandsFreeVoicePlugin extends Plugin {
 
             @Override
             public void onAssistantResponse(String responseText, String conversationId) {
+                onAssistantResponse(responseText, conversationId, null);
+            }
+
+            @Override
+            public void onAssistantResponse(String responseText, String conversationId, String toolsExecuted) {
                 JSObject ret = new JSObject();
                 ret.put("response", responseText);
                 ret.put("conversationId", conversationId);
+                if (toolsExecuted != null && !toolsExecuted.isEmpty()) {
+                    ret.put("toolsExecuted", toolsExecuted);
+                }
                 notifyListeners("assistantResponse", ret);
             }
 

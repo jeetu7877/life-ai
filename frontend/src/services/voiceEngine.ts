@@ -1373,15 +1373,44 @@ class VoiceEngine {
         this.setDetailedState(s as DetailedVoiceState);
       });
 
-      handsFreeService.addListener('transcriptUpdate', (data: { transcript: string; isFinal: boolean }) => {
+      handsFreeService.addListener('transcriptUpdate', async (data: { transcript: string; isFinal: boolean }) => {
         this.transcript = data.transcript;
         this.notify();
+
+        // When Android native SpeechRecognizer produces a final transcript,
+        // intercept fast device intents locally (e.g. music: "Channa Mereya chalao", alarm: "6 baje alarm")
+        if (data.isFinal && data.transcript && data.transcript.trim()) {
+          const clean = data.transcript.trim();
+          console.log(`[VOICE NATIVE] Final transcript from Android: "${clean}"`);
+          try {
+            const fastResult = await fastIntentRouter.route(clean);
+            if (fastResult.handled) {
+              console.log(`[VOICE NATIVE] Fast device intent executed locally: "${fastResult.responseText}"`);
+              this.assistantResponse = fastResult.responseText;
+              this.notify();
+            }
+          } catch (fastErr) {
+            console.warn('[VOICE NATIVE] Fast intent error:', fastErr);
+          }
+        }
       });
 
-      handsFreeService.addListener('assistantResponse', (data: { response: string; conversationId?: string }) => {
+      handsFreeService.addListener('assistantResponse', (data: { response: string; conversationId?: string; toolsExecuted?: string | any[] }) => {
         this.assistantResponse = data.response;
         if (data.conversationId) this.activeConversationId = data.conversationId;
         this.notify();
+
+        if (data.toolsExecuted) {
+          try {
+            const tools = typeof data.toolsExecuted === 'string' ? JSON.parse(data.toolsExecuted) : data.toolsExecuted;
+            console.log('[VOICE NATIVE] Executing server-returned tools:', tools);
+            executeServerTools(tools).catch((toolErr) => {
+              console.warn('[VOICE NATIVE] Tool execution notice:', toolErr);
+            });
+          } catch (parseErr) {
+            console.warn('[VOICE NATIVE] Failed to parse toolsExecuted payload:', parseErr);
+          }
+        }
       });
 
       handsFreeService.addListener('rmsUpdate', (data: { rmsdB: number }) => {

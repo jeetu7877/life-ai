@@ -1,16 +1,17 @@
 /**
  * Life AI Music Service
  * Multi-provider audio playback engine supporting official YouTube IFrame Player API,
- * dynamic search via YouTube Data API backend, play queue, and persistent background playback.
+ * dynamic search via YouTube Data API backend, play queue, persistent background playback,
+ * Liked Songs, Custom & Curated Playlists, Shuffle, Repeat, and Search History.
  */
 
 import { api } from './api';
-import { Track, PlayerState, PlayerStatus } from './musicProvider';
+import { Track, Playlist, PlayerState, PlayerStatus, RepeatMode } from './musicProvider';
 
-export type { Track, PlayerState, PlayerStatus };
+export type { Track, Playlist, PlayerState, PlayerStatus, RepeatMode };
 
-// Curated instant-play library for immediate offline/featured playback
-export const CURATED_TRACKS: Track[] = [
+// Core featured tracks with verified YouTube video IDs and high-res album thumbnails
+export const FEATURED_TRACKS: Track[] = [
   {
     id: '284Ov7ysmfA',
     title: 'Channa Mereya',
@@ -21,11 +22,12 @@ export const CURATED_TRACKS: Track[] = [
     durationSeconds: 289,
     source: 'youtube',
     videoId: '284Ov7ysmfA',
-    url: 'https://www.youtube.com/watch?v=284Ov7ysmfA'
+    url: 'https://www.youtube.com/watch?v=284Ov7ysmfA',
+    album: 'Ae Dil Hai Mushkil'
   },
   {
     id: 'BddP6PYo2gs',
-    title: 'Kesariya (Brahmāstra)',
+    title: 'Kesariya',
     artist: 'Arijit Singh, Pritam',
     channel: 'Sony Music India',
     thumbnail: 'https://i.ytimg.com/vi/BddP6PYo2gs/hqdefault.jpg',
@@ -33,11 +35,12 @@ export const CURATED_TRACKS: Track[] = [
     durationSeconds: 268,
     source: 'youtube',
     videoId: 'BddP6PYo2gs',
-    url: 'https://www.youtube.com/watch?v=BddP6PYo2gs'
+    url: 'https://www.youtube.com/watch?v=BddP6PYo2gs',
+    album: 'Brahmāstra'
   },
   {
     id: 'ElZfdU54Cp8',
-    title: 'Apna Bana Le (Bhediya)',
+    title: 'Apna Bana Le',
     artist: 'Arijit Singh, Sachin-Jigar',
     channel: 'Zee Music Company',
     thumbnail: 'https://i.ytimg.com/vi/ElZfdU54Cp8/hqdefault.jpg',
@@ -45,7 +48,99 @@ export const CURATED_TRACKS: Track[] = [
     durationSeconds: 261,
     source: 'youtube',
     videoId: 'ElZfdU54Cp8',
-    url: 'https://www.youtube.com/watch?v=ElZfdU54Cp8'
+    url: 'https://www.youtube.com/watch?v=ElZfdU54Cp8',
+    album: 'Bhediya'
+  },
+  {
+    id: 'sK7riqg2mr4',
+    title: 'Saiyaara',
+    artist: 'Mohit Chauhan, Taraannum Mallik',
+    channel: 'YRF',
+    thumbnail: 'https://i.ytimg.com/vi/sK7riqg2mr4/hqdefault.jpg',
+    duration: '4:13',
+    durationSeconds: 253,
+    source: 'youtube',
+    videoId: 'sK7riqg2mr4',
+    url: 'https://www.youtube.com/watch?v=sK7riqg2mr4',
+    album: 'Ek Tha Tiger'
+  },
+  {
+    id: 'Umqb9KENgmk',
+    title: 'Tum Hi Ho',
+    artist: 'Arijit Singh, Mithoon',
+    channel: 'T-Series',
+    thumbnail: 'https://i.ytimg.com/vi/Umqb9KENgmk/hqdefault.jpg',
+    duration: '4:22',
+    durationSeconds: 262,
+    source: 'youtube',
+    videoId: 'Umqb9KENgmk',
+    url: 'https://www.youtube.com/watch?v=Umqb9KENgmk',
+    album: 'Aashiqui 2'
+  },
+  {
+    id: 'sAZlWVDHL78',
+    title: 'Agar Tum Saath Ho',
+    artist: 'Alka Yagnik, Arijit Singh',
+    channel: 'T-Series',
+    thumbnail: 'https://i.ytimg.com/vi/sAZlWVDHL78/hqdefault.jpg',
+    duration: '5:41',
+    durationSeconds: 341,
+    source: 'youtube',
+    videoId: 'sAZlWVDHL78',
+    url: 'https://www.youtube.com/watch?v=sAZlWVDHL78',
+    album: 'Tamasha'
+  },
+  {
+    id: 'HqUeSjsYLNU',
+    title: 'Tujhe Kitna Chahne Lage',
+    artist: 'Arijit Singh, Mithoon',
+    channel: 'T-Series',
+    thumbnail: 'https://i.ytimg.com/vi/HqUeSjsYLNU/hqdefault.jpg',
+    duration: '4:44',
+    durationSeconds: 284,
+    source: 'youtube',
+    videoId: 'HqUeSjsYLNU',
+    url: 'https://www.youtube.com/watch?v=HqUeSjsYLNU',
+    album: 'Kabir Singh'
+  },
+  {
+    id: 'bC36hd479i8',
+    title: 'O Maahi',
+    artist: 'Arijit Singh, Pritam',
+    channel: 'T-Series',
+    thumbnail: 'https://i.ytimg.com/vi/bC36hd479i8/hqdefault.jpg',
+    duration: '3:53',
+    durationSeconds: 233,
+    source: 'youtube',
+    videoId: 'bC36hd479i8',
+    url: 'https://www.youtube.com/watch?v=bC36hd479i8',
+    album: 'Dunki'
+  },
+  {
+    id: '9n4sZ9gH_6c',
+    title: 'Zid - Saanson Ko',
+    artist: 'Shaarib Toshi, Arijit Singh',
+    channel: 'Sony Music India',
+    thumbnail: 'https://i.ytimg.com/vi/9n4sZ9gH_6c/hqdefault.jpg',
+    duration: '4:48',
+    durationSeconds: 288,
+    source: 'youtube',
+    videoId: '9n4sZ9gH_6c',
+    url: 'https://www.youtube.com/watch?v=9n4sZ9gH_6c',
+    album: 'Zid'
+  },
+  {
+    id: '1IpA8G5x-tM',
+    title: 'Sanam Teri Kasam',
+    artist: 'Himesh Reshammiya, Ankit Tiwari',
+    channel: 'Eros Now',
+    thumbnail: 'https://i.ytimg.com/vi/1IpA8G5x-tM/hqdefault.jpg',
+    duration: '5:14',
+    durationSeconds: 314,
+    source: 'youtube',
+    videoId: '1IpA8G5x-tM',
+    url: 'https://www.youtube.com/watch?v=1IpA8G5x-tM',
+    album: 'Sanam Teri Kasam'
   },
   {
     id: 'curated_3',
@@ -82,6 +177,146 @@ export const CURATED_TRACKS: Track[] = [
   }
 ];
 
+export const CURATED_TRACKS: Track[] = FEATURED_TRACKS;
+
+// Premium curated playlists styled precisely like the reference image
+export const CURATED_PLAYLISTS: Playlist[] = [
+  // Made for You
+  {
+    id: 'pl_arijit_mix',
+    title: 'Arijit Singh Mix',
+    description: 'Your emotional picks',
+    artwork: 'https://i.ytimg.com/vi/284Ov7ysmfA/hqdefault.jpg',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isCustom: false,
+    tracks: [
+      FEATURED_TRACKS[0],
+      FEATURED_TRACKS[1],
+      FEATURED_TRACKS[2],
+      FEATURED_TRACKS[4],
+      FEATURED_TRACKS[6],
+      FEATURED_TRACKS[5],
+      FEATURED_TRACKS[7],
+    ]
+  },
+  {
+    id: 'pl_lofi_vibes',
+    title: 'Lo-Fi Vibes',
+    description: 'Focus · Study · Relax',
+    artwork: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isCustom: false,
+    tracks: [
+      FEATURED_TRACKS[8],
+      FEATURED_TRACKS[9],
+      FEATURED_TRACKS[10],
+    ]
+  },
+  {
+    id: 'pl_romantic_hits',
+    title: 'Romantic Hits',
+    description: 'Feel the love',
+    artwork: 'https://i.ytimg.com/vi/BddP6PYo2gs/hqdefault.jpg',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isCustom: false,
+    tracks: [
+      FEATURED_TRACKS[1],
+      FEATURED_TRACKS[3],
+      FEATURED_TRACKS[2],
+      FEATURED_TRACKS[4],
+      FEATURED_TRACKS[5],
+    ]
+  },
+  {
+    id: 'pl_bollywood_2024',
+    title: 'Bollywood 2024',
+    description: 'Latest hits',
+    artwork: 'https://i.ytimg.com/vi/ElZfdU54Cp8/hqdefault.jpg',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isCustom: false,
+    tracks: [
+      FEATURED_TRACKS[2],
+      FEATURED_TRACKS[7],
+      FEATURED_TRACKS[1],
+      FEATURED_TRACKS[0],
+      FEATURED_TRACKS[6],
+    ]
+  },
+  // Popular Playlists
+  {
+    id: 'pl_bollywood_hits',
+    title: 'Bollywood Hits',
+    description: 'By Life AI',
+    artwork: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isCustom: false,
+    tracks: [
+      FEATURED_TRACKS[0],
+      FEATURED_TRACKS[1],
+      FEATURED_TRACKS[2],
+      FEATURED_TRACKS[3],
+      FEATURED_TRACKS[4],
+      FEATURED_TRACKS[5],
+      FEATURED_TRACKS[6],
+    ]
+  },
+  {
+    id: 'pl_chill_lofi',
+    title: 'Chill Lo-Fi',
+    description: 'By Life AI',
+    artwork: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isCustom: false,
+    tracks: [
+      FEATURED_TRACKS[8],
+      FEATURED_TRACKS[9],
+      FEATURED_TRACKS[10],
+    ]
+  },
+  {
+    id: 'pl_workout_beats',
+    title: 'Workout Beats',
+    description: 'By Life AI',
+    artwork: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=400&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isCustom: false,
+    tracks: [
+      FEATURED_TRACKS[0],
+      FEATURED_TRACKS[2],
+      FEATURED_TRACKS[4],
+      FEATURED_TRACKS[6],
+    ]
+  },
+  {
+    id: 'pl_travel_vibes',
+    title: 'Travel Vibes',
+    description: 'By Life AI',
+    artwork: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=400&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isCustom: false,
+    tracks: [
+      FEATURED_TRACKS[3],
+      FEATURED_TRACKS[1],
+      FEATURED_TRACKS[5],
+      FEATURED_TRACKS[7],
+    ]
+  },
+  {
+    id: 'pl_party_anthems',
+    title: 'Party Anthems',
+    description: 'By Life AI',
+    artwork: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=400&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    isCustom: false,
+    tracks: [
+      FEATURED_TRACKS[2],
+      FEATURED_TRACKS[0],
+      FEATURED_TRACKS[1],
+      FEATURED_TRACKS[4],
+    ]
+  }
+];
+
 type StateListener = (state: PlayerState) => void;
 
 declare global {
@@ -106,6 +341,63 @@ class MusicService {
     return [];
   }
 
+  private static loadSavedLikedTracks(): Track[] {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('life_music_liked_tracks');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    // Default initial favorites
+    return [FEATURED_TRACKS[0], FEATURED_TRACKS[6]];
+  }
+
+  private static loadSavedPlaylists(): Playlist[] {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('life_music_user_playlists');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    // Initial Starter User Playlists matching reference image
+    return [
+      {
+        id: 'user_pl_favorites',
+        title: 'My Favorites',
+        description: 'Personal favorite hits',
+        artwork: 'https://i.ytimg.com/vi/284Ov7ysmfA/hqdefault.jpg',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        isCustom: true,
+        tracks: [FEATURED_TRACKS[0], FEATURED_TRACKS[1], FEATURED_TRACKS[2], FEATURED_TRACKS[4]]
+      },
+      {
+        id: 'user_pl_study',
+        title: 'Study Mix',
+        description: 'Focus and study music',
+        artwork: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400&q=80',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        isCustom: true,
+        tracks: [FEATURED_TRACKS[8], FEATURED_TRACKS[9]]
+      }
+    ];
+  }
+
+  private static loadSavedRecentSearches(): string[] {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('life_music_recent_searches');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return ['Arijit Singh', 'Lo-Fi Chill', 'Kesariya', 'Bollywood Romantic'];
+  }
+
   private state: PlayerState = {
     currentTrack: null,
     isPlaying: false,
@@ -113,9 +405,13 @@ class MusicService {
     currentTime: 0,
     duration: 0,
     volume: 85,
-    queue: [...CURATED_TRACKS],
+    queue: [...FEATURED_TRACKS],
     queueIndex: 0,
     recentlyPlayed: MusicService.loadSavedRecentTracks(),
+    likedTracks: MusicService.loadSavedLikedTracks(),
+    playlists: MusicService.loadSavedPlaylists(),
+    repeatMode: 'off',
+    isShuffle: false,
     provider: 'youtube',
     errorMessage: null
   };
@@ -149,7 +445,9 @@ class MusicService {
     return {
       ...this.state,
       queue: [...this.state.queue],
-      recentlyPlayed: [...this.state.recentlyPlayed]
+      recentlyPlayed: [...this.state.recentlyPlayed],
+      likedTracks: [...this.state.likedTracks],
+      playlists: [...this.state.playlists]
     };
   }
 
@@ -180,7 +478,7 @@ class MusicService {
     };
 
     this.directAudio.onended = () => {
-      console.log('[MUSIC] Direct track ended -> auto-advance next');
+      console.log('[MUSIC] Direct track ended -> auto-advancing next');
       this.next();
     };
 
@@ -320,6 +618,15 @@ class MusicService {
       this.state.playerStatus = 'ENDED';
       this.stopProgressTicker();
       this.notify();
+      this.handleTrackEnded();
+    }
+  }
+
+  private handleTrackEnded(): void {
+    if (this.state.repeatMode === 'one' && this.state.currentTrack) {
+      this.seek(0);
+      this.play(this.state.currentTrack);
+    } else {
       this.next();
     }
   }
@@ -369,11 +676,13 @@ class MusicService {
   /**
    * Search for songs dynamically via official backend music router.
    */
-  public async search(query: string, limit: number = 10): Promise<Track[]> {
+  public async search(query: string, limit: number = 12): Promise<Track[]> {
     const q = query.trim();
     if (!q) return [];
 
     console.log(`[MUSIC_SEARCH] provider=youtube query="${q}"`);
+    this.addRecentSearch(q);
+
     try {
       const data = await api.searchMusic(q, limit);
       if (data && data.success && Array.isArray(data.results)) {
@@ -396,12 +705,12 @@ class MusicService {
       console.warn('[MUSIC_ERROR] Backend music search failed, falling back:', err);
     }
 
-    // Fallback search in curated catalog
+    // Fallback search in featured catalog
     const qLower = q.toLowerCase();
-    const matched = CURATED_TRACKS.filter(
+    const matched = FEATURED_TRACKS.filter(
       (t) => t.title.toLowerCase().includes(qLower) || t.artist.toLowerCase().includes(qLower)
     );
-    return matched.length > 0 ? matched : CURATED_TRACKS;
+    return matched.length > 0 ? matched : FEATURED_TRACKS;
   }
 
   /**
@@ -413,7 +722,7 @@ class MusicService {
 
     const results = await this.search(clean, 10);
     if (!results || results.length === 0) {
-      const fallback = CURATED_TRACKS[0];
+      const fallback = FEATURED_TRACKS[0];
       await this.play(fallback);
       return fallback;
     }
@@ -553,10 +862,26 @@ class MusicService {
 
   public next(): void {
     if (this.state.queue.length === 0) return;
-    const nextIdx = (this.state.queueIndex + 1) % this.state.queue.length;
-    this.state.queueIndex = nextIdx;
-    console.log(`[MUSIC] next() -> playing track #${nextIdx}: "${this.state.queue[nextIdx]?.title}"`);
-    this.play(this.state.queue[nextIdx]);
+
+    if (this.state.isShuffle && this.state.queue.length > 1) {
+      let randIdx = Math.floor(Math.random() * this.state.queue.length);
+      if (randIdx === this.state.queueIndex) {
+        randIdx = (randIdx + 1) % this.state.queue.length;
+      }
+      this.state.queueIndex = randIdx;
+    } else {
+      const nextIdx = (this.state.queueIndex + 1) % this.state.queue.length;
+      if (this.state.queueIndex + 1 >= this.state.queue.length && this.state.repeatMode === 'off') {
+        // Queue finished and repeat is off
+        this.pause();
+        this.seek(0);
+        return;
+      }
+      this.state.queueIndex = nextIdx;
+    }
+
+    console.log(`[MUSIC] next() -> track #${this.state.queueIndex}: "${this.state.queue[this.state.queueIndex]?.title}"`);
+    this.play(this.state.queue[this.state.queueIndex]);
   }
 
   public previous(): void {
@@ -568,8 +893,29 @@ class MusicService {
     }
     const prevIdx = (this.state.queueIndex - 1 + this.state.queue.length) % this.state.queue.length;
     this.state.queueIndex = prevIdx;
-    console.log(`[MUSIC] previous() -> playing track #${prevIdx}: "${this.state.queue[prevIdx]?.title}"`);
+    console.log(`[MUSIC] previous() -> track #${prevIdx}: "${this.state.queue[prevIdx]?.title}"`);
     this.play(this.state.queue[prevIdx]);
+  }
+
+  public toggleShuffle(): boolean {
+    this.state.isShuffle = !this.state.isShuffle;
+    console.log('[MUSIC] Shuffle mode is now:', this.state.isShuffle);
+    this.notify();
+    return this.state.isShuffle;
+  }
+
+  public toggleRepeat(): RepeatMode {
+    const modes: RepeatMode[] = ['off', 'all', 'one'];
+    const next = modes[(modes.indexOf(this.state.repeatMode) + 1) % modes.length];
+    this.state.repeatMode = next;
+    console.log('[MUSIC] Repeat mode is now:', next);
+    this.notify();
+    return next;
+  }
+
+  public setRepeatMode(mode: RepeatMode): void {
+    this.state.repeatMode = mode;
+    this.notify();
   }
 
   public seek(seconds: number): void {
@@ -628,6 +974,150 @@ class MusicService {
     }
     this.notify();
   }
+
+  // ==================== LIKED SONGS SYSTEM ====================
+
+  public isLiked(trackId: string): boolean {
+    return this.state.likedTracks.some((t) => t.id === trackId || (t.videoId && t.videoId === trackId));
+  }
+
+  public toggleLike(track: Track): boolean {
+    if (!track || !track.id) return false;
+    const exists = this.isLiked(track.id);
+    let updated: Track[];
+    if (exists) {
+      updated = this.state.likedTracks.filter((t) => t.id !== track.id && t.videoId !== track.id);
+    } else {
+      updated = [track, ...this.state.likedTracks];
+    }
+    this.state.likedTracks = updated;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('life_music_liked_tracks', JSON.stringify(updated));
+      } catch (_) {}
+    }
+    this.notify();
+    return !exists;
+  }
+
+  public getLikedTracks(): Track[] {
+    return [...this.state.likedTracks];
+  }
+
+  // ==================== USER PLAYLISTS SYSTEM ====================
+
+  public getPlaylists(): Playlist[] {
+    return [...this.state.playlists];
+  }
+
+  public createPlaylist(title: string, description?: string): Playlist {
+    const cleanTitle = title.trim() || 'New Playlist';
+    const newPl: Playlist = {
+      id: `pl_custom_${Date.now()}`,
+      title: cleanTitle,
+      description: description || 'Personal created playlist',
+      artwork: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&q=80',
+      createdAt: new Date().toISOString(),
+      isCustom: true,
+      tracks: []
+    };
+    const updated = [...this.state.playlists, newPl];
+    this.state.playlists = updated;
+    this.savePlaylists(updated);
+    this.notify();
+    return newPl;
+  }
+
+  public deletePlaylist(id: string): void {
+    const updated = this.state.playlists.filter((p) => p.id !== id);
+    this.state.playlists = updated;
+    this.savePlaylists(updated);
+    this.notify();
+  }
+
+  public renamePlaylist(id: string, newTitle: string): void {
+    const updated = this.state.playlists.map((p) =>
+      p.id === id ? { ...p, title: newTitle.trim() || p.title } : p
+    );
+    this.state.playlists = updated;
+    this.savePlaylists(updated);
+    this.notify();
+  }
+
+  public addTrackToPlaylist(playlistId: string, track: Track): void {
+    const updated = this.state.playlists.map((p) => {
+      if (p.id === playlistId) {
+        const exists = p.tracks.some((t) => t.id === track.id);
+        if (!exists) {
+          return { ...p, tracks: [...p.tracks, track] };
+        }
+      }
+      return p;
+    });
+    this.state.playlists = updated;
+    this.savePlaylists(updated);
+    this.notify();
+  }
+
+  public removeTrackFromPlaylist(playlistId: string, trackId: string): void {
+    const updated = this.state.playlists.map((p) => {
+      if (p.id === playlistId) {
+        return { ...p, tracks: p.tracks.filter((t) => t.id !== trackId) };
+      }
+      return p;
+    });
+    this.state.playlists = updated;
+    this.savePlaylists(updated);
+    this.notify();
+  }
+
+  public playPlaylist(playlist: Playlist, shuffle: boolean = false): void {
+    if (!playlist || playlist.tracks.length === 0) return;
+    let targetTracks = [...playlist.tracks];
+    if (shuffle) {
+      targetTracks = targetTracks.sort(() => Math.random() - 0.5);
+    }
+    this.state.queue = targetTracks;
+    this.state.queueIndex = 0;
+    this.state.isShuffle = shuffle;
+    this.play(targetTracks[0]);
+  }
+
+  private savePlaylists(playlists: Playlist[]): void {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('life_music_user_playlists', JSON.stringify(playlists));
+      } catch (_) {}
+    }
+  }
+
+  // ==================== SEARCH HISTORY SYSTEM ====================
+
+  public getRecentSearches(): string[] {
+    return MusicService.loadSavedRecentSearches();
+  }
+
+  public addRecentSearch(query: string): void {
+    if (!query || !query.trim()) return;
+    const q = query.trim();
+    const curr = this.getRecentSearches().filter((s) => s.toLowerCase() !== q.toLowerCase());
+    const updated = [q, ...curr].slice(0, 10);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('life_music_recent_searches', JSON.stringify(updated));
+      } catch (_) {}
+    }
+  }
+
+  public clearRecentSearches(): void {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('life_music_recent_searches');
+      } catch (_) {}
+    }
+  }
+
+  // ==================== RECENTLY PLAYED SYSTEM ====================
 
   private recordRecentlyPlayed(track: Track): void {
     if (!track || !track.id) return;

@@ -20,6 +20,9 @@ public class MainActivity extends BridgeActivity {
                 settings.setMediaPlaybackRequiresUserGesture(false);
                 settings.setDomStorageEnabled(true);
                 settings.setJavaScriptEnabled(true);
+                settings.setAllowFileAccess(true);
+                settings.setAllowContentAccess(true);
+                settings.setDatabaseEnabled(true);
                 CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
             }
         } catch (Exception e) {

@@ -26,7 +26,6 @@ import { WhatIfPage } from './pages/WhatIfPage';
 import { JournalPage } from './pages/JournalPage';
 import { AlarmsPage } from './pages/AlarmsPage';
 import { MusicPage } from './pages/MusicPage';
-import { NowPlayingBar } from './components/NowPlayingBar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 
 const AppShell: React.FC = () => {
@@ -213,7 +212,6 @@ const AppShell: React.FC = () => {
           </Routes>
         </main>
       </div>
-      <NowPlayingBar />
       <MobileBottomNav />
     </div>
   );

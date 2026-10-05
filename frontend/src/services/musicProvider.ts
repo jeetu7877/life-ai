@@ -15,9 +15,22 @@ export interface Track {
   videoId?: string;
   streamUrl?: string;
   url?: string;
+  album?: string;
+  genre?: string;
+}
+
+export interface Playlist {
+  id: string;
+  title: string;
+  description?: string;
+  artwork?: string;
+  tracks: Track[];
+  createdAt: string;
+  isCustom?: boolean;
 }
 
 export type PlayerStatus = 'UNSTARTED' | 'PLAYING' | 'PAUSED' | 'BUFFERING' | 'ENDED' | 'ERROR';
+export type RepeatMode = 'off' | 'all' | 'one';
 
 export interface PlayerState {
   currentTrack: Track | null;
@@ -29,6 +42,10 @@ export interface PlayerState {
   queue: Track[];
   queueIndex: number;
   recentlyPlayed: Track[];
+  likedTracks: Track[];
+  playlists: Playlist[];
+  repeatMode: RepeatMode;
+  isShuffle: boolean;
   provider: 'youtube' | 'direct';
   errorMessage: string | null;
 }

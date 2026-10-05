@@ -69,6 +69,9 @@ public class HandsFreeVoiceService extends Service {
         void onStateChanged(State newState);
         void onTranscript(String text, boolean isFinal);
         void onAssistantResponse(String responseText, String conversationId);
+        default void onAssistantResponse(String responseText, String conversationId, String toolsExecuted) {
+            onAssistantResponse(responseText, conversationId);
+        }
         void onRmsChanged(float rmsdB);
         void onError(String errorMessage);
     }
@@ -852,12 +855,17 @@ public class HandsFreeVoiceService extends Service {
                     JSONObject resObj = new JSONObject(sb.toString());
                     String answer = resObj.optString("response", "Maine aapki baat samajh li hai.");
                     activeConversationId = resObj.optString("conversation_id", activeConversationId);
+                    String toolsExecutedStr = null;
+                    if (resObj.has("tools_executed")) {
+                        toolsExecutedStr = resObj.opt("tools_executed").toString();
+                    }
+                    final String finalTools = toolsExecutedStr;
 
-                    Log.i(TAG, "[VOICE] backend_response_received");
+                    Log.i(TAG, "[VOICE] backend_response_received. Tools: " + (finalTools != null ? finalTools : "none"));
 
                     mainHandler.post(() -> {
                         if (eventListener != null) {
-                            eventListener.onAssistantResponse(answer, activeConversationId);
+                            eventListener.onAssistantResponse(answer, activeConversationId, finalTools);
                         }
                         speakText(answer, "query_answer");
                     });
