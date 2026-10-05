@@ -395,5 +395,11 @@ export const api = {
 
   // Health
   checkHealth: () =>
-    apiClient.get('/health').then(r => r.data)
+    apiClient.get('/health').then(r => r.data),
+
+  // Dynamic Music Search
+  searchMusic: (query: string, limit: number = 10) =>
+    apiClient.get<any>('/music/search', { params: { q: query, limit } }).then(r => r.data),
+  getMusicTrack: (trackId: string) =>
+    apiClient.get<any>(`/music/track/${trackId}`).then(r => r.data)
 };

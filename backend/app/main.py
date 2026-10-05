@@ -29,7 +29,8 @@ from app.routers import (
     time_machine_router,
     intelligence_router,
     journal_router,
-    alarms_router
+    alarms_router,
+    music_router
 )
 
 # Setup structured logging
@@ -129,6 +130,8 @@ app.include_router(time_machine_router, prefix=settings.API_V1_PREFIX)
 app.include_router(intelligence_router, prefix=settings.API_V1_PREFIX)
 app.include_router(journal_router, prefix=settings.API_V1_PREFIX)
 app.include_router(alarms_router, prefix=settings.API_V1_PREFIX)
+app.include_router(music_router, prefix=settings.API_V1_PREFIX)
+app.include_router(music_router, prefix="/api")  # Compatibility for /api/music/search
 
 # Serve uploaded static media (avatars, audio responses, files)
 os.makedirs(settings.UPLOAD_DIRECTORY, exist_ok=True)

@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     SENDGRID_API_KEY: Optional[str] = None
     BREVO_API_KEY: Optional[str] = None
 
+    # Music & YouTube API
+    YOUTUBE_API_KEY: Optional[str] = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -1,27 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Music,
+  Search,
   Play,
   Pause,
   SkipForward,
   SkipBack,
   Volume2,
   VolumeX,
-  Search,
-  Sparkles,
+  ListPlus,
+  ListMusic,
+  Trash2,
+  Tv,
+  TvMinimal,
   Radio,
   Disc3,
-  Heart,
-  TrendingUp,
-  Headphones
+  Sparkles,
+  RefreshCw,
+  ExternalLink,
+  X,
+  Check
 } from 'lucide-react';
 import { musicService, PlayerState, Track, CURATED_TRACKS } from '../services/musicService';
 
 export const MusicPage: React.FC = () => {
   const [playerState, setPlayerState] = useState<PlayerState>(musicService.getState());
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [debouncedQuery, setDebouncedQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<Track[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [showVideo, setShowVideo] = useState<boolean>(false);
+  const [showQueue, setShowQueue] = useState<boolean>(false);
+  const [addedNotice, setAddedNotice] = useState<string | null>(null);
 
+  const videoHostRef = useRef<HTMLDivElement>(null);
+  const debounceTimerRef = useRef<any>(null);
+
+  // Subscribe to central music service state
   useEffect(() => {
     const unsub = musicService.addListener((state) => {
       setPlayerState(state);
@@ -29,22 +44,90 @@ export const MusicPage: React.FC = () => {
     return unsub;
   }, []);
 
-  const currentTrack = playerState.currentTrack || CURATED_TRACKS[0];
+  // Dock persistent player into UI container when showVideo is true
+  useEffect(() => {
+    if (showVideo && videoHostRef.current) {
+      musicService.dockPlayerToContainer(videoHostRef.current);
+    } else {
+      musicService.dockPlayerToContainer(null);
+    }
+    return () => {
+      musicService.dockPlayerToContainer(null);
+    };
+  }, [showVideo]);
 
-  const handleSearchSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
+  // Handle search input debounce (450ms)
+  useEffect(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
-    setIsSearching(true);
-    try {
-      await musicService.searchAndPlay(searchQuery.trim());
-    } finally {
+    if (!searchQuery.trim()) {
+      setDebouncedQuery('');
+      setSearchResults([]);
       setIsSearching(false);
+      setSearchError(null);
+      return;
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim());
+    }, 450);
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [searchQuery]);
+
+  // Execute dynamic music search when debouncedQuery changes
+  useEffect(() => {
+    if (!debouncedQuery) return;
+
+    let isMounted = true;
+    setIsSearching(true);
+    setSearchError(null);
+
+    musicService
+      .search(debouncedQuery, 12)
+      .then((results) => {
+        if (!isMounted) return;
+        setSearchResults(results);
+        setIsSearching(false);
+        if (results.length === 0) {
+          setSearchError('No matching songs found on YouTube.');
+        }
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setIsSearching(false);
+        setSearchError('Music search service temporarily unavailable.');
+        console.warn('[MUSIC_UI] Search error:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [debouncedQuery]);
+
+  const handleManualSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      setDebouncedQuery(searchQuery.trim());
     }
   };
 
-  const handleTrackSelect = async (track: Track) => {
+  const handleQuickChipClick = (queryText: string) => {
+    setSearchQuery(queryText);
+    setDebouncedQuery(queryText);
+  };
+
+  const handlePlayTrack = async (track: Track) => {
     await musicService.play(track);
+  };
+
+  const handleAddToQueue = (track: Track, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    musicService.addToQueue(track);
+    setAddedNotice(`Added "${track.title}" to queue`);
+    setTimeout(() => setAddedNotice(null), 2500);
   };
 
   const formatSecs = (sec: number) => {
@@ -53,123 +136,212 @@ export const MusicPage: React.FC = () => {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const progressPercent = playerState.duration > 0
-    ? Math.min(100, (playerState.currentTime / playerState.duration) * 100)
-    : 0;
+  const currentTrack = playerState.currentTrack || CURATED_TRACKS[0];
+  const progressPercent =
+    playerState.duration > 0
+      ? Math.min(100, (playerState.currentTime / playerState.duration) * 100)
+      : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 max-w-4xl mx-auto w-full custom-scrollbar pb-28 text-slate-100">
+    <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 max-w-4xl mx-auto w-full custom-scrollbar pb-32 text-slate-100 min-w-0 box-border">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/10">
-          <Disc3 size={22} className={playerState.isPlaying ? 'animate-spin' : ''} />
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/10 shrink-0">
+            <Disc3 size={22} className={playerState.isPlaying ? 'animate-spin' : ''} />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+              Voice Music Player
+              <span className="text-[10px] font-semibold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Radio size={10} className="animate-pulse" /> Live Stream
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400">
+              Search any song on YouTube or ask hands-free with your voice.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            Voice Music Player
-            <span className="text-[10px] font-semibold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <Radio size={10} className="animate-pulse" /> Live Stream
-            </span>
-          </h1>
-          <p className="text-xs text-slate-400">
-            Powered by YouTube & direct audio. Control hands-free with your voice.
-          </p>
-        </div>
+
+        {/* Queue Toggle Button */}
+        <button
+          onClick={() => setShowQueue(!showQueue)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
+            showQueue
+              ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
+              : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
+          }`}
+          title="Play Queue"
+        >
+          <ListMusic size={15} />
+          <span>Queue ({playerState.queue.length})</span>
+        </button>
       </div>
 
       {/* Voice Tip Banner */}
-      <div className="mb-6 p-3.5 rounded-2xl bg-[#0F172A]/70 border border-[#202B3D] flex items-start gap-3">
-        <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 shrink-0">
+      <div className="mb-6 p-3.5 rounded-2xl bg-[#0F172A]/80 border border-[#202B3D] flex items-start gap-3">
+        <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 shrink-0 mt-0.5">
           <Sparkles size={16} />
         </div>
         <div className="text-xs">
-          <span className="font-semibold text-slate-200">Voice Control Commands: </span>
+          <span className="font-semibold text-slate-200">Voice Music Commands: </span>
           <span className="text-slate-400">
-            Say <span className="text-cyan-300 font-medium">"Hey Life, Kesariya chalao"</span>,{' '}
-            <span className="text-cyan-300 font-medium">"Life, gaana roko"</span>, or{' '}
+            Say <span className="text-cyan-300 font-medium">"Hey Life, Channa Mereya chalao"</span>,{' '}
+            <span className="text-cyan-300 font-medium">"Life, gaana roko"</span>,{' '}
+            <span className="text-cyan-300 font-medium">"Life, volume 50 percent karo"</span>, or{' '}
             <span className="text-cyan-300 font-medium">"Life, agla gaana"</span> anytime!
           </span>
         </div>
       </div>
 
-      {/* Search Bar */}
-      <form onSubmit={handleSearchSubmit} className="mb-6">
-        <div className="relative">
+      {/* Dynamic Search Box */}
+      <div className="mb-6 space-y-2.5">
+        <form onSubmit={handleManualSearch} className="relative">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search any song, Bollywood hit, Arijit Singh, Lo-Fi..."
-            className="w-full bg-[#0E1524] border border-[#1E293B] rounded-2xl pl-11 pr-24 py-3 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition-all shadow-inner"
+            placeholder="Search any song, artist, Bollywood hit, Lo-Fi (e.g. Channa Mereya)..."
+            className="w-full bg-[#0E1524] border border-[#1E293B] rounded-2xl pl-11 pr-24 py-3.5 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition-all shadow-inner"
           />
           <Search size={18} className="absolute left-3.5 top-3.5 text-slate-400" />
+
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setDebouncedQuery('');
+                setSearchResults([]);
+              }}
+              className="absolute right-14 top-3.5 text-slate-500 hover:text-slate-300 p-1"
+            >
+              <X size={16} />
+            </button>
+          )}
+
           <button
             type="submit"
-            disabled={isSearching || !searchQuery.trim()}
-            className="absolute right-2 top-2 px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition-all"
+            disabled={!searchQuery.trim()}
+            className="absolute right-2 top-2 px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-slate-950 font-bold text-xs transition-all shadow"
           >
-            {isSearching ? 'Playing...' : 'Play'}
+            Search
           </button>
-        </div>
-      </form>
+        </form>
 
-      {/* Hero Now Playing Deck */}
+        {/* Quick Suggestion Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] text-slate-400 custom-scrollbar">
+          <span className="shrink-0 text-slate-500 text-[10px] uppercase font-semibold">Try:</span>
+          {['Channa Mereya', 'Kesariya', 'Apna Bana Le', 'Tum Hi Ho', 'Lo-Fi Chill', 'Arijit Singh', 'Punjabi Hits'].map(
+            (tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => handleQuickChipClick(tag)}
+                className="shrink-0 px-2.5 py-1 rounded-lg bg-slate-800/60 hover:bg-slate-700/80 border border-slate-700/60 text-slate-300 hover:text-cyan-300 transition-all"
+              >
+                {tag}
+              </button>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* Temporary Toast Notice */}
+      {addedNotice && (
+        <div className="mb-4 px-3.5 py-2 rounded-xl bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-xs flex items-center gap-2 animate-fade-in shadow-lg">
+          <Check size={14} className="text-cyan-400" />
+          <span>{addedNotice}</span>
+        </div>
+      )}
+
+      {/* Now Playing Hero Deck */}
       <div className="mb-8 p-5 md:p-6 rounded-3xl bg-gradient-to-b from-[#111A2E] to-[#0A0F1D] border border-cyan-500/20 shadow-2xl relative overflow-hidden">
-        {/* Glow backdrop */}
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="flex flex-col md:flex-row items-center gap-6 relative z-10">
-          {/* Album Artwork */}
-          <div className="relative w-36 h-36 md:w-44 md:h-44 rounded-2xl overflow-hidden shadow-2xl shrink-0 border border-slate-700/80 group">
-            <img
-              src={currentTrack.thumbnail}
-              alt={currentTrack.title}
-              className={`w-full h-full object-cover transition-all ${
-                playerState.isPlaying ? 'scale-105' : 'grayscale-[20%]'
-              }`}
-            />
-            {playerState.isPlaying && (
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2 justify-center gap-1">
-                <span className="w-1 h-4 bg-cyan-400 rounded-full animate-[bounce_1s_infinite_100ms]" />
-                <span className="w-1 h-6 bg-cyan-400 rounded-full animate-[bounce_1s_infinite_300ms]" />
-                <span className="w-1 h-3 bg-cyan-400 rounded-full animate-[bounce_1s_infinite_200ms]" />
-                <span className="w-1 h-5 bg-cyan-400 rounded-full animate-[bounce_1s_infinite_400ms]" />
-              </div>
+          {/* Album Artwork or Embedded Video Preview */}
+          <div className="relative w-40 h-40 md:w-48 md:h-48 rounded-2xl overflow-hidden shadow-2xl shrink-0 border border-slate-700/80 group bg-slate-950">
+            {showVideo ? (
+              <div
+                ref={videoHostRef}
+                className="w-full h-full flex items-center justify-center bg-black"
+              />
+            ) : (
+              <>
+                <img
+                  src={currentTrack.thumbnail}
+                  alt={currentTrack.title}
+                  className={`w-full h-full object-cover transition-all ${
+                    playerState.isPlaying ? 'scale-105' : 'grayscale-[20%]'
+                  }`}
+                />
+                {playerState.isPlaying && (
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2.5 justify-center gap-1 pointer-events-none">
+                    <span className="w-1.5 h-4 bg-cyan-400 rounded-full animate-[bounce_1s_infinite_100ms]" />
+                    <span className="w-1.5 h-7 bg-cyan-400 rounded-full animate-[bounce_1s_infinite_300ms]" />
+                    <span className="w-1.5 h-3 bg-cyan-400 rounded-full animate-[bounce_1s_infinite_200ms]" />
+                    <span className="w-1.5 h-5 bg-cyan-400 rounded-full animate-[bounce_1s_infinite_400ms]" />
+                  </div>
+                )}
+              </>
             )}
+
+            {/* Toggle Video Button */}
+            <button
+              onClick={() => setShowVideo(!showVideo)}
+              className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 backdrop-blur-md text-white hover:text-cyan-300 border border-white/10 text-[10px] flex items-center gap-1 transition-all"
+              title={showVideo ? 'Hide Video' : 'Show Video'}
+            >
+              {showVideo ? <TvMinimal size={14} /> : <Tv size={14} />}
+              <span className="hidden sm:inline">{showVideo ? 'Audio' : 'Video'}</span>
+            </button>
           </div>
 
           {/* Details & Controls */}
           <div className="flex-1 w-full flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
-                  <Headphones size={12} /> Now Playing
+                  <Radio size={12} className={playerState.isPlaying ? 'animate-pulse' : ''} />
+                  {playerState.playerStatus === 'BUFFERING'
+                    ? 'Buffering...'
+                    : playerState.isPlaying
+                    ? 'Now Playing'
+                    : 'Paused'}
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
                   {currentTrack.source === 'youtube' ? 'YouTube Stream' : 'Direct Audio'}
                 </span>
               </div>
-              <h2 className="text-lg md:text-xl font-bold text-white truncate mb-0.5">
+              <h2 className="text-base md:text-xl font-bold text-white truncate mb-0.5" title={currentTrack.title}>
                 {currentTrack.title}
               </h2>
-              <p className="text-xs text-slate-400 truncate mb-4">
+              <p className="text-xs text-slate-400 truncate mb-4" title={currentTrack.artist}>
                 {currentTrack.artist}
               </p>
             </div>
 
-            {/* Scrubber */}
+            {/* Error Message if any */}
+            {playerState.errorMessage && (
+              <div className="mb-3 px-3 py-1.5 rounded-xl bg-amber-950/60 border border-amber-500/30 text-amber-300 text-[11px]">
+                {playerState.errorMessage}
+              </div>
+            )}
+
+            {/* Scrubber / Progress Bar */}
             <div className="space-y-1.5 mb-4">
               <div
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
-                  const ratio = clickX / rect.width;
-                  musicService.seek(ratio * playerState.duration);
+                  const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+                  musicService.seek(ratio * (playerState.duration || 1));
                 }}
                 className="h-2 w-full bg-slate-800 rounded-full overflow-hidden cursor-pointer relative group"
               >
                 <div
-                  className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full relative"
+                  className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full relative transition-all"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
@@ -179,7 +351,7 @@ export const MusicPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Main Buttons */}
+            {/* Controls Row */}
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <button
@@ -192,10 +364,13 @@ export const MusicPage: React.FC = () => {
 
                 <button
                   onClick={() => musicService.togglePlay()}
-                  className="w-12 h-12 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 flex items-center justify-center shadow-lg shadow-cyan-500/25 active:scale-95 transition-all"
+                  disabled={playerState.playerStatus === 'BUFFERING'}
+                  className="w-12 h-12 rounded-full bg-cyan-500 hover:bg-cyan-400 disabled:opacity-75 text-slate-950 flex items-center justify-center shadow-lg shadow-cyan-500/25 active:scale-95 transition-all"
                   title={playerState.isPlaying ? 'Pause' : 'Play'}
                 >
-                  {playerState.isPlaying ? (
+                  {playerState.playerStatus === 'BUFFERING' ? (
+                    <RefreshCw size={20} className="animate-spin text-slate-950" />
+                  ) : playerState.isPlaying ? (
                     <Pause size={22} />
                   ) : (
                     <Play size={22} className="ml-0.5" />
@@ -212,11 +387,19 @@ export const MusicPage: React.FC = () => {
               </div>
 
               {/* Volume Slider */}
-              <div className="flex items-center gap-2 max-w-[120px] w-full">
+              <div className="flex items-center gap-2 max-w-[130px] w-full">
                 {playerState.volume === 0 ? (
-                  <VolumeX size={15} className="text-slate-500 shrink-0" />
+                  <VolumeX
+                    size={16}
+                    className="text-slate-500 shrink-0 cursor-pointer"
+                    onClick={() => musicService.setVolume(50)}
+                  />
                 ) : (
-                  <Volume2 size={15} className="text-slate-400 shrink-0" />
+                  <Volume2
+                    size={16}
+                    className="text-slate-400 shrink-0 cursor-pointer"
+                    onClick={() => musicService.setVolume(0)}
+                  />
                 )}
                 <input
                   type="range"
@@ -232,10 +415,196 @@ export const MusicPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Curated Recommendations */}
+      {/* Queue Drawer (Collapsible) */}
+      {showQueue && (
+        <div className="mb-8 p-4 rounded-2xl bg-[#0D1527] border border-[#1F2C45] shadow-xl animate-fade-in">
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+            <h3 className="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <ListMusic size={15} className="text-cyan-400" />
+              Playback Queue ({playerState.queue.length} songs)
+            </h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => musicService.clearQueue()}
+                className="text-[11px] text-slate-400 hover:text-red-400 flex items-center gap-1 transition-all"
+                title="Clear Queue"
+              >
+                <Trash2 size={13} /> Clear
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1.5 max-h-60 overflow-y-auto custom-scrollbar">
+            {playerState.queue.map((track, idx) => {
+              const isCurrent = playerState.currentTrack?.id === track.id;
+              return (
+                <div
+                  key={`${track.id}_${idx}`}
+                  onClick={() => musicService.play(track)}
+                  className={`p-2 rounded-xl flex items-center justify-between gap-3 cursor-pointer text-xs transition-all ${
+                    isCurrent
+                      ? 'bg-cyan-950/50 border border-cyan-500/40 text-cyan-300'
+                      : 'hover:bg-slate-800/60 text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-[10px] font-mono text-slate-500 w-4 text-center">
+                      {idx + 1}
+                    </span>
+                    <img
+                      src={track.thumbnail}
+                      alt={track.title}
+                      className="w-8 h-8 rounded-lg object-cover shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{track.title}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{track.artist}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {track.duration || formatSecs(track.durationSeconds || 0)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        musicService.removeFromQueue(track.id);
+                      }}
+                      className="p-1 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-700"
+                      title="Remove from Queue"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Search Results Section */}
+      {debouncedQuery && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Search size={14} className="text-cyan-400" />
+              Search Results for "{debouncedQuery}"
+            </h3>
+            {isSearching && (
+              <span className="text-[11px] text-cyan-400 flex items-center gap-1 animate-pulse">
+                <RefreshCw size={12} className="animate-spin" /> Searching YouTube...
+              </span>
+            )}
+          </div>
+
+          {searchError && (
+            <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
+              {searchError}
+            </div>
+          )}
+
+          {isSearching && searchResults.length === 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[1, 2, 3, 4].map((n) => (
+                <div
+                  key={n}
+                  className="p-3 rounded-2xl bg-[#0E1524] border border-[#1E293B] flex items-center gap-3 animate-pulse"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-slate-800 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 bg-slate-800 rounded w-3/4" />
+                    <div className="h-2 bg-slate-800 rounded w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {searchResults.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {searchResults.map((track) => {
+                const isCurrent = playerState.currentTrack?.id === track.id;
+                return (
+                  <div
+                    key={track.id}
+                    onClick={() => handlePlayTrack(track)}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 group ${
+                      isCurrent
+                        ? 'bg-cyan-950/40 border-cyan-500/40 shadow-lg shadow-cyan-500/5'
+                        : 'bg-[#0E1524] border-[#1E293B] hover:border-slate-700 hover:bg-[#121B2F]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-slate-800">
+                        <img
+                          src={track.thumbnail}
+                          alt={track.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                        {isCurrent && playerState.isPlaying && (
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <span className="w-1 h-3 bg-cyan-400 animate-pulse" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <h4
+                          className={`text-xs md:text-sm font-semibold truncate ${
+                            isCurrent ? 'text-cyan-400' : 'text-white group-hover:text-cyan-300'
+                          }`}
+                          title={track.title}
+                        >
+                          {track.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 truncate" title={track.artist}>
+                          {track.artist}
+                        </p>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {track.duration || '3:30'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Add to Queue Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleAddToQueue(track, e)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition-all"
+                        title="Add to Queue"
+                      >
+                        <ListPlus size={16} />
+                      </button>
+
+                      {/* Play / Pause Button */}
+                      <button
+                        type="button"
+                        className="p-2 rounded-xl text-slate-400 group-hover:text-cyan-400 transition-all"
+                        title="Play Now"
+                      >
+                        {isCurrent && playerState.isPlaying ? (
+                          <Pause size={18} />
+                        ) : (
+                          <Play size={18} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Featured & Curated Songs Section */}
       <div>
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-          <TrendingUp size={14} className="text-cyan-400" /> Featured & Curated Songs
+          <Disc3 size={14} className="text-cyan-400" /> Featured & Curated Songs
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -244,45 +613,66 @@ export const MusicPage: React.FC = () => {
             return (
               <div
                 key={track.id}
-                onClick={() => handleTrackSelect(track)}
-                className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 group ${
+                onClick={() => handlePlayTrack(track)}
+                className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 group ${
                   isCurrent
                     ? 'bg-cyan-950/40 border-cyan-500/40 shadow-lg shadow-cyan-500/5'
-                    : 'bg-[#0E1524] border-[#1E293B] hover:border-slate-700'
+                    : 'bg-[#0E1524] border-[#1E293B] hover:border-slate-700 hover:bg-[#121B2F]'
                 }`}
               >
-                <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-slate-800">
-                  <img
-                    src={track.thumbnail}
-                    alt={track.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                  />
-                  {isCurrent && playerState.isPlaying && (
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                      <span className="w-1 h-3 bg-cyan-400 animate-pulse" />
-                    </div>
-                  )}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-slate-800">
+                    <img
+                      src={track.thumbnail}
+                      alt={track.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    />
+                    {isCurrent && playerState.isPlaying && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <span className="w-1 h-3 bg-cyan-400 animate-pulse" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <h4
+                      className={`text-xs md:text-sm font-semibold truncate ${
+                        isCurrent ? 'text-cyan-400' : 'text-white group-hover:text-cyan-300'
+                      }`}
+                      title={track.title}
+                    >
+                      {track.title}
+                    </h4>
+                    <p className="text-[11px] text-slate-400 truncate" title={track.artist}>
+                      {track.artist}
+                    </p>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {track.duration || '3:30'}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="min-w-0 flex-1">
-                  <h4
-                    className={`text-xs md:text-sm font-semibold truncate ${
-                      isCurrent ? 'text-cyan-400' : 'text-white group-hover:text-cyan-300'
-                    }`}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => handleAddToQueue(track, e)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition-all"
+                    title="Add to Queue"
                   >
-                    {track.title}
-                  </h4>
-                  <p className="text-[11px] text-slate-400 truncate">
-                    {track.artist}
-                  </p>
-                </div>
+                    <ListPlus size={16} />
+                  </button>
 
-                <div className="shrink-0 text-slate-400 group-hover:text-cyan-400">
-                  {isCurrent && playerState.isPlaying ? (
-                    <Pause size={18} />
-                  ) : (
-                    <Play size={18} />
-                  )}
+                  <button
+                    type="button"
+                    className="p-2 rounded-xl text-slate-400 group-hover:text-cyan-400 transition-all"
+                    title="Play Now"
+                  >
+                    {isCurrent && playerState.isPlaying ? (
+                      <Pause size={18} />
+                    ) : (
+                      <Play size={18} />
+                    )}
+                  </button>
                 </div>
               </div>
             );

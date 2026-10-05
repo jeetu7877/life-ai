@@ -154,7 +154,11 @@ export class FastIntentRouter {
       q.includes('stop music') ||
       q.includes('music band karo') ||
       q.includes('music roko') ||
-      q.includes('song pause')
+      q.includes('song pause') ||
+      q.includes('ye gaana pause karo') ||
+      q.includes('isko band karo') ||
+      q === 'stop' ||
+      q === 'pause'
     ) {
       musicService.pause();
       return {
@@ -169,12 +173,17 @@ export class FastIntentRouter {
       q === 'resume karo' ||
       q === 'gaana chalu karo' ||
       q === 'play karo' ||
-      q === 'continue music'
+      q === 'continue music' ||
+      q.includes('phir se chalao') ||
+      q.includes('ye phir se chalao') ||
+      q.includes('resume music')
     ) {
       musicService.resume();
+      const current = musicService.getState().currentTrack;
+      const title = current ? current.title : 'gaana';
       return {
         handled: true,
-        responseText: 'Gaana resume kar diya.'
+        responseText: `${title} resume kar diya.`
       };
     }
 
@@ -184,7 +193,9 @@ export class FastIntentRouter {
       q.includes('agla gaana') ||
       q.includes('change song') ||
       q.includes('gaana badlo') ||
-      q.includes('next track')
+      q.includes('next track') ||
+      q === 'agla' ||
+      q === 'next'
     ) {
       musicService.next();
       const current = musicService.getState().currentTrack;
@@ -196,54 +207,91 @@ export class FastIntentRouter {
     }
 
     // D. Previous Song
-    if (q.includes('previous song') || q.includes('pichhla gaana') || q.includes('pichla gana')) {
+    if (
+      q.includes('previous song') ||
+      q.includes('pichhla gaana') ||
+      q.includes('pichla gana') ||
+      q === 'previous' ||
+      q === 'pichhla'
+    ) {
       musicService.previous();
+      const current = musicService.getState().currentTrack;
+      const title = current ? current.title : 'pichhla track';
       return {
         handled: true,
-        responseText: 'Pichhla gaana chala rahi hoon.'
+        responseText: `Pichhla gaana chala rahi hoon: ${title}.`
       };
     }
 
     // E. Volume Control
-    if (q.includes('volume badhao') || q.includes('aawaz badhao') || q.includes('increase volume')) {
-      const cur = musicService.getState().volume;
-      musicService.setVolume(Math.min(100, cur + 20));
+    const volumeMatch = q.match(/volume\s*(\d{1,3})\s*(percent|%)?/i);
+    if (volumeMatch && volumeMatch[1]) {
+      const volNum = parseInt(volumeMatch[1], 10);
+      musicService.setVolume(volNum);
       return {
         handled: true,
-        responseText: 'Volume badha diya hai.'
+        responseText: `Volume ${volNum} percent kar diya hai.`
+      };
+    }
+    if (q.includes('volume badhao') || q.includes('aawaz badhao') || q.includes('increase volume')) {
+      const cur = musicService.getState().volume;
+      const targetVol = Math.min(100, cur + 20);
+      musicService.setVolume(targetVol);
+      return {
+        handled: true,
+        responseText: `Volume badha diya hai (${targetVol}%).`
       };
     }
     if (q.includes('volume kam karo') || q.includes('aawaz kam karo') || q.includes('decrease volume')) {
       const cur = musicService.getState().volume;
-      musicService.setVolume(Math.max(10, cur - 20));
+      const targetVol = Math.max(10, cur - 20);
+      musicService.setVolume(targetVol);
       return {
         handled: true,
-        responseText: 'Volume kam kar diya hai.'
+        responseText: `Volume kam kar diya hai (${targetVol}%).`
       };
     }
 
-    // F. Play Specific Song or General Music
-    const isMusicPlay =
-      q.includes('gaana chalao') ||
-      q.includes('gaana bajao') ||
-      q.includes('music chalao') ||
-      q.includes('song play') ||
-      q.includes('play music') ||
-      q.includes('ke gaane bajao') ||
-      q.includes('ke gane chalao') ||
-      q.includes('chala do') ||
-      q.endsWith('chalao') ||
-      q.endsWith('bajao');
+    // F. Add to Queue Intent
+    if (q.includes('queue me daal do') || q.includes('queue me add karo') || q.includes('add to queue')) {
+      const current = musicService.getState().currentTrack;
+      if (current) {
+        musicService.addToQueue(current);
+        return {
+          handled: true,
+          responseText: `${current.title} ko queue me add kar diya hai.`
+        };
+      }
+    }
 
-    if (isMusicPlay) {
+    // G. Play Specific Song or Dynamic Music Search
+    const isMusicPlay =
+      q.includes('chalao') ||
+      q.includes('bajao') ||
+      q.includes('play karo') ||
+      q.includes('play ') ||
+      q.includes('gaana') ||
+      q.includes('gana') ||
+      q.includes('music') ||
+      q.includes('song');
+
+    const hasMusicAction =
+      q.includes('chalao') ||
+      q.includes('bajao') ||
+      q.includes('chala do') ||
+      q.includes('play') ||
+      q.includes('suno');
+
+    if (isMusicPlay && hasMusicAction) {
       // Extract clean song or artist search term
       let songQuery = q
         .replace(/^(hey\s*life|life|ai|plz|please)\s*/i, '')
-        .replace(/(gaana chalao|gaana bajao|music chalao|song play|play music|play song|play|chalao|bajao|ke gaane bajao|ke gane chalao)/gi, '')
+        .replace(/(gaana chalao|gaana bajao|music chalao|song play|play music|play song|play karo|play|chalao|bajao|ke gaane bajao|ke gane chalao|chala do|suno)/gi, '')
+        .replace(/\b(ka|ke|ki|ko)\b/gi, ' ')
         .trim();
 
+      // Normalize common inverted expressions like "Arijit Singh Channa Mereya"
       if (!songQuery || songQuery === 'koi' || songQuery === 'kuch') {
-        // Play first curated track or resume
         const track = CURATED_TRACKS[0];
         await musicService.play(track);
         return {
@@ -251,6 +299,7 @@ export class FastIntentRouter {
           responseText: `Theek hai! ${track.title} gaana chala rahi hoon.`
         };
       } else {
+        console.log(`[FAST_INTENT] Spoken query extracted: "${songQuery}"`);
         const track = await musicService.searchAndPlay(songQuery);
         return {
           handled: true,

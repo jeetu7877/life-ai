@@ -36,6 +36,7 @@ from app.services.bottleneck_engine import bottleneck_engine
 from app.services.project_health_service import project_health_service
 from app.services.decision_debate_service import decision_debate_service
 from app.services.pattern_detector_service import pattern_detector_service
+from app.services.music_service import music_backend_service
 
 logger = logging.getLogger("life.orchestrator")
 
@@ -158,6 +159,93 @@ class AgentOrchestrator:
                 "response": reply,
                 "retrieved_sources": [{"source": "india_standard_time"}],
                 "tools_executed": [],
+                "timing": timing_metrics
+            }
+
+        # FAST PATH 1.6: Music Search & Playback Controller (<15ms)
+        is_music_pause = any(p in lower_msg for p in ["gaana roko", "gaana pause", "pause music", "stop music", "music band karo", "music roko", "song pause", "isko band karo"])
+        is_music_resume = any(p in lower_msg for p in ["resume music", "gaana chalu karo", "continue music", "phir se chalao", "ye phir se chalao"])
+        is_music_next = any(p in lower_msg for p in ["next song", "agla gaana", "change song", "gaana badlo", "next track"])
+        is_music_prev = any(p in lower_msg for p in ["previous song", "pichhla gaana", "pichla gana"])
+        is_music_play = any(p in lower_msg for p in [
+            "gaana chalao", "gaana bajao", "music chalao", "song play", "play music",
+            "play song", "ke gaane bajao", "ke gane chalao", "chala do"
+        ]) or lower_msg.endswith(" chalao") or lower_msg.endswith(" bajao") or lower_msg.startswith("play ")
+
+        if is_music_pause:
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            return {
+                "response": "Gaana pause kar diya hai.",
+                "retrieved_sources": [{"source": "music_controller"}],
+                "tools_executed": [{"tool": "music_control", "action": "pause"}],
+                "timing": timing_metrics
+            }
+
+        if is_music_resume:
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            return {
+                "response": "Gaana resume kar diya hai.",
+                "retrieved_sources": [{"source": "music_controller"}],
+                "tools_executed": [{"tool": "music_control", "action": "resume"}],
+                "timing": timing_metrics
+            }
+
+        if is_music_next:
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            return {
+                "response": "Agla gaana chala rahi hoon.",
+                "retrieved_sources": [{"source": "music_controller"}],
+                "tools_executed": [{"tool": "music_control", "action": "next"}],
+                "timing": timing_metrics
+            }
+
+        if is_music_prev:
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            return {
+                "response": "Pichhla gaana chala rahi hoon.",
+                "retrieved_sources": [{"source": "music_controller"}],
+                "tools_executed": [{"tool": "music_control", "action": "previous"}],
+                "timing": timing_metrics
+            }
+
+        if is_music_play:
+            song_query = re.sub(r'^(hey\s*life|life|ai|plz|please)\s*', '', lower_msg, flags=re.IGNORECASE)
+            song_query = re.sub(r'(gaana chalao|gaana bajao|music chalao|song play|play music|play song|play|chalao|bajao|ke gaane bajao|ke gane chalao|chala do)', '', song_query, flags=re.IGNORECASE).strip()
+            if not song_query:
+                song_query = "Bollywood top hit"
+
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    search_res = concurrent.futures.ThreadPoolExecutor().submit(
+                        asyncio.run, music_backend_service.search(song_query, client_id=f"user_{user_id}", limit=5)
+                    ).result(timeout=4.0)
+                else:
+                    search_res = loop.run_until_complete(music_backend_service.search(song_query, client_id=f"user_{user_id}", limit=5))
+            except Exception as se:
+                logger.warning(f"[MUSIC_FAST] Search execution note: {se}")
+                search_res = {"results": []}
+
+            results = search_res.get("results", [])
+            top_track = results[0] if results else None
+            track_title = top_track.get("title", song_query) if top_track else song_query
+
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            return {
+                "response": f"Theek hai! {track_title} gaana chala rahi hoon.",
+                "retrieved_sources": [{"source": "music_search", "provider": "youtube"}],
+                "tools_executed": [{"tool": "music_play", "intent": "MUSIC_PLAY", "query": song_query, "track": top_track}],
                 "timing": timing_metrics
             }
 
