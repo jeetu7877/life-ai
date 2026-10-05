@@ -139,8 +139,8 @@ export const ChatPage: React.FC = () => {
       role: 'user',
       content: userText,
       timestamp: new Date().toISOString(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      local_time_str: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timezone: 'Asia/Kolkata',
+      local_time_str: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
     };
     setMessages(prev => [...prev, tempUserMsg]);
     scrollToBottom(true);
@@ -149,7 +149,7 @@ export const ChatPage: React.FC = () => {
       const res = await api.sendMessage({
         content: userText,
         conversation_id: activeConvId || undefined,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        timezone: 'Asia/Kolkata'
       });
 
       if (!activeConvId) {
@@ -164,8 +164,8 @@ export const ChatPage: React.FC = () => {
         content: res.response,
         audio_url: res.audio_url,
         timestamp: new Date().toISOString(),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        local_time_str: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timezone: 'Asia/Kolkata',
+        local_time_str: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }),
         metadata_json: {
           sources: res.retrieved_sources,
           timing: res.timing
@@ -356,7 +356,7 @@ export const ChatPage: React.FC = () => {
               <div className="truncate flex-1 pr-2">
                 <p className="truncate font-medium">{conv.title}</p>
                 <span className="text-[10px] text-slate-500">
-                  {new Date(conv.created_at).toLocaleDateString()}
+                  {new Date(conv.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' })}
                 </span>
               </div>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -533,7 +533,7 @@ export const ChatPage: React.FC = () => {
                     <div className={`flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] text-slate-500 min-w-0 max-w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
                       <span className="flex items-center gap-1 shrink-0">
                         <Clock className="w-3 h-3" />
-                        {msg.local_time_str || new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {msg.local_time_str || new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
                       </span>
 
                       {!isUser && msg.audio_url && (

@@ -63,8 +63,9 @@ public class AlarmDismissActivity extends Activity {
         iconView.setGravity(Gravity.CENTER);
         root.addView(iconView);
 
-        // Time display
-        SimpleDateFormat timeFormat = new SimpleDateFormat("hh:mm a", Locale.getDefault());
+        // Time display (Indian Standard Time - IST)
+        SimpleDateFormat timeFormat = new SimpleDateFormat("hh:mm a", Locale.ENGLISH);
+        timeFormat.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Kolkata"));
         TextView timeView = new TextView(this);
         timeView.setText(timeFormat.format(new Date()));
         timeView.setTextSize(48);

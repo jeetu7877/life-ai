@@ -176,6 +176,23 @@ public class AlarmEngine {
             }
         }
 
+        // 2.5 Time & Date queries in Indian Standard Time (IST)
+        if (q.contains("kya time") || q.contains("kitne baje") || q.contains("time batao") || 
+            q.contains("current time") || q.contains("what time") || q.contains("aaj ki date") ||
+            q.contains("aaj kya date") || q.contains("today date")) {
+            java.util.TimeZone istTz = java.util.TimeZone.getTimeZone("Asia/Kolkata");
+            java.text.SimpleDateFormat timeSdf = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.ENGLISH);
+            timeSdf.setTimeZone(istTz);
+            java.text.SimpleDateFormat dateSdf = new java.text.SimpleDateFormat("EEEE, dd MMMM yyyy", java.util.Locale.ENGLISH);
+            dateSdf.setTimeZone(istTz);
+            java.util.Date now = new java.util.Date();
+            if (q.contains("date")) {
+                return "Aaj " + dateSdf.format(now) + " hai, aur abhi Indian Standard Time ke hisab se " + timeSdf.format(now) + " ho rahe hain.";
+            } else {
+                return "Abhi Indian Standard Time ke hisab se " + timeSdf.format(now) + " ho rahe hain.";
+            }
+        }
+
         // 3. Alarm creation check
         boolean isAlarmRequest = q.contains("alarm") || q.contains("utha dena") || q.contains("wake me up") || 
                                  q.contains("jagana") || q.contains("remind me at") || q.contains("baje utha");
@@ -185,7 +202,8 @@ public class AlarmEngine {
         }
 
         try {
-            java.util.Calendar cal = java.util.Calendar.getInstance();
+            java.util.TimeZone istTz = java.util.TimeZone.getTimeZone("Asia/Kolkata");
+            java.util.Calendar cal = java.util.Calendar.getInstance(istTz);
             boolean isTomorrow = q.contains("kal") || q.contains("tomorrow");
             boolean isPM = q.contains("pm") || q.contains("shaam") || q.contains("sham") || q.contains("dopahar") || q.contains("raat");
             boolean isAM = q.contains("am") || q.contains("subah") || q.contains("bhor") || q.contains("morning");
@@ -198,7 +216,8 @@ public class AlarmEngine {
                 long targetTime = System.currentTimeMillis() + (mins * 60 * 1000L);
                 cal.setTimeInMillis(targetTime);
 
-                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault());
+                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.ENGLISH);
+                sdf.setTimeZone(istTz);
                 String timeStr = sdf.format(cal.getTime());
 
                 AlarmStorage.AlarmItem item = new AlarmStorage.AlarmItem();
@@ -267,7 +286,8 @@ public class AlarmEngine {
                 cal.add(java.util.Calendar.DAY_OF_YEAR, 1);
             }
 
-            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault());
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.ENGLISH);
+            sdf.setTimeZone(istTz);
             String formattedTime = sdf.format(cal.getTime());
 
             AlarmStorage.AlarmItem item = new AlarmStorage.AlarmItem();

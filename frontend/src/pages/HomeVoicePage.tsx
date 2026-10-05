@@ -82,7 +82,7 @@ export const HomeVoicePage: React.FC = () => {
                   realActs.push({
                     query: uMsg.content,
                     reply: aMsg.content,
-                    time: new Date(aMsg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    time: new Date(aMsg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }),
                     source: c.title
                   });
                 }

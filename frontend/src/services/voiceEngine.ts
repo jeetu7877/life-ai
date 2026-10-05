@@ -909,7 +909,7 @@ class VoiceEngine {
       const res = await api.sendMessage({
         content: cleanText,
         conversation_id: this.activeConversationId || undefined,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timezone: 'Asia/Kolkata',
         voice_mode: true
       });
 

@@ -211,7 +211,7 @@ export const api = {
       retrieved_sources: any[];
       memories_extracted: string[];
       timing?: Record<string, any>;
-    }>('/chat', data).then(r => r.data),
+    }>('/chat', { timezone: 'Asia/Kolkata', ...data }).then(r => r.data),
 
   getConversations: () =>
     apiClient.get<Conversation[]>('/chat/conversations').then(r => r.data),
@@ -293,7 +293,7 @@ export const api = {
   transcribeAndRespond: (audioBlob: Blob, timezone?: string) => {
     const formData = new FormData();
     formData.append('audio', audioBlob, 'speech.webm');
-    if (timezone) formData.append('timezone', timezone);
+    formData.append('timezone', timezone || 'Asia/Kolkata');
     return apiClient.post<{ transcript: string; response: string; audio_url?: string; conversation_id?: string }>('/voice/transcribe-and-respond', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     }).then(r => r.data);

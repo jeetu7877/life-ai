@@ -31,7 +31,7 @@ export const TimelinePage: React.FC = () => {
     try {
       const created = await api.addActivity({
         activity_date: selectedDate,
-        activity_time: newTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        activity_time: newTime || new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }),
         title: newTitle.trim(),
         project_tag: newProject.trim() || undefined
       });

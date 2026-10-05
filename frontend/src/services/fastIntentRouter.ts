@@ -58,6 +58,48 @@ export class FastIntentRouter {
       };
     }
 
+    // B.5 Indian Standard Time (IST) & Date Voice Query
+    if (
+      q.includes('kya time') ||
+      q.includes('kitne baje') ||
+      q.includes('time batao') ||
+      q.includes('current time') ||
+      q.includes('what time') ||
+      q.includes('aaj ki date') ||
+      q.includes('aaj kya date') ||
+      q.includes('today date') ||
+      q.includes('what date is today') ||
+      q.includes('aaj kaun sa din') ||
+      q.includes('what day is today')
+    ) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      const dateStr = now.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      if (q.includes('date') || q.includes('din')) {
+        return {
+          handled: true,
+          responseText: `Aaj ${dateStr} hai, aur abhi Indian Standard Time ke hisaab se ${timeStr} ho rahe hain.`
+        };
+      } else {
+        return {
+          handled: true,
+          responseText: `Abhi Indian Standard Time ke hisaab se ${timeStr} ho rahe hain.`
+        };
+      }
+    }
+
     // C. List Alarms
     if (
       q.includes('mere alarm') ||
@@ -239,7 +281,12 @@ export class FastIntentRouter {
         const mins = parseInt(minMatch[1], 10);
         const triggerMillis = Date.now() + mins * 60 * 1000;
         const target = new Date(triggerMillis);
-        const timeStr = target.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        const timeStr = target.toLocaleTimeString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
 
         await alarmService.setAlarm({
           timeStr,
@@ -279,7 +326,8 @@ export class FastIntentRouter {
         targetDate.setDate(targetDate.getDate() + 1);
       }
 
-      const formattedTime = targetDate.toLocaleTimeString([], {
+      const formattedTime = targetDate.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         hour: '2-digit',
         minute: '2-digit',
         hour12: true

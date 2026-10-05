@@ -127,6 +127,40 @@ class AgentOrchestrator:
             logger.info(f"[PERF] route=GREETING cache=MISS db=0ms vector=0ms llm=false total={total_ms}ms")
             return result
 
+        # FAST PATH 1.5: Indian Standard Time & Date Query (<2ms, IST)
+        is_time_date_query = any(p in lower_msg for p in [
+            "kya time", "kitne baje", "time batao", "current time", "what time",
+            "what is the time", "aaj kya date", "aaj ki date", "today date",
+            "what is today's date", "kaun sa din", "what day is today", "aaj kaun sa din"
+        ])
+        if is_time_date_query:
+            from datetime import timezone as dt_tz, timedelta
+            try:
+                from zoneinfo import ZoneInfo
+                ist_tz = ZoneInfo("Asia/Kolkata")
+                now_ist = datetime.now(ist_tz)
+            except Exception:
+                ist_tz = dt_tz(timedelta(hours=5, minutes=30))
+                now_ist = datetime.now(ist_tz)
+
+            time_formatted = now_ist.strftime("%I:%M %p")
+            date_formatted = now_ist.strftime("%A, %d %B %Y")
+
+            if "date" in lower_msg or "din" in lower_msg:
+                reply = f"Aaj {date_formatted} hai, aur abhi Indian Standard Time ke hisaab se {time_formatted} ho rahe hain."
+            else:
+                reply = f"Abhi Indian Standard Time ke anusaar {time_formatted} ho rahe hain ({date_formatted})."
+
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            return {
+                "response": reply,
+                "retrieved_sources": [{"source": "india_standard_time"}],
+                "tools_executed": [],
+                "timing": timing_metrics
+            }
+
         # FAST PATH 2: Level 1 Profile Memory (<10ms, direct SQL lookup)
         if intent == QueryIntent.PROFILE:
             t_profile_start = time.perf_counter()
@@ -654,9 +688,17 @@ class AgentOrchestrator:
 
         timing_metrics["tools_ms"] = round((time.perf_counter() - t_tools_start) * 1000, 2)
 
-        # Step 3: Semantic Memory & Profile Retrieval
-        now_dt = datetime.utcnow()
-        current_time_str = now_dt.strftime("%A, %d %B %Y %I:%M %p UTC")
+        # Step 3: Semantic Memory & Profile Retrieval (strictly Indian Standard Time / IST)
+        from datetime import timezone as dt_tz, timedelta
+        try:
+            from zoneinfo import ZoneInfo
+            target_tz = ZoneInfo(timezone or "Asia/Kolkata")
+            now_dt = datetime.now(target_tz)
+        except Exception:
+            target_tz = dt_tz(timedelta(hours=5, minutes=30))
+            now_dt = datetime.now(target_tz)
+
+        current_time_str = now_dt.strftime("%A, %d %B %Y, %I:%M %p (Indian Standard Time, IST)")
 
         # Fetch Structured Profile
         has_personal_intent = (intent in [QueryIntent.PROFILE, QueryIntent.MEMORY, QueryIntent.TIMELINE] or any(

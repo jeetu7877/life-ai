@@ -357,7 +357,7 @@ export const ProfilePage: React.FC = () => {
               </label>
               <input
                 type="text"
-                value={profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
+                value={profile.timezone || 'Asia/Kolkata'}
                 onChange={(e) => setProfile({ ...profile, timezone: e.target.value })}
                 placeholder="e.g. Asia/Kolkata"
                 className="w-full mt-1.5 bg-[#0A0F18] border border-[#202B3D] rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-[#00D9FF]"
