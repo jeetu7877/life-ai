@@ -94,6 +94,18 @@ declare global {
 class MusicService {
   private static instance: MusicService;
 
+  private static loadSavedRecentTracks(): Track[] {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('life_music_recently_played');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  }
+
   private state: PlayerState = {
     currentTrack: null,
     isPlaying: false,
@@ -103,6 +115,7 @@ class MusicService {
     volume: 85,
     queue: [...CURATED_TRACKS],
     queueIndex: 0,
+    recentlyPlayed: MusicService.loadSavedRecentTracks(),
     provider: 'youtube',
     errorMessage: null
   };
@@ -130,7 +143,11 @@ class MusicService {
   }
 
   public getState(): PlayerState {
-    return { ...this.state, queue: [...this.state.queue] };
+    return {
+      ...this.state,
+      queue: [...this.state.queue],
+      recentlyPlayed: [...this.state.recentlyPlayed]
+    };
   }
 
   public addListener(cb: StateListener): () => void {
@@ -245,6 +262,13 @@ class MusicService {
             console.log('[MUSIC] YouTube Player instance onReady');
             this.ytReady = true;
             this.ytPlayer.setVolume(this.state.volume);
+            try {
+              const iframe = this.ytPlayer.getIframe?.();
+              if (iframe) {
+                iframe.setAttribute('allowfullscreen', 'true');
+                iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen');
+              }
+            } catch (_) {}
             if (this.pendingVideoId) {
               const vid = this.pendingVideoId;
               this.pendingVideoId = null;
@@ -399,6 +423,7 @@ class MusicService {
     this.stopPlaybackStreams();
 
     this.state.currentTrack = target;
+    this.recordRecentlyPlayed(target);
     this.state.isPlaying = true;
     this.state.playerStatus = 'BUFFERING';
     this.state.currentTime = 0;
@@ -584,6 +609,28 @@ class MusicService {
     } else {
       this.state.queue = [];
       this.state.queueIndex = 0;
+    }
+    this.notify();
+  }
+
+  private recordRecentlyPlayed(track: Track): void {
+    if (!track || !track.id) return;
+    try {
+      const filtered = this.state.recentlyPlayed.filter((t) => t.id !== track.id);
+      const updated = [track, ...filtered].slice(0, 30);
+      this.state.recentlyPlayed = updated;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('life_music_recently_played', JSON.stringify(updated));
+      }
+    } catch (e) {
+      console.warn('[MUSIC] Failed to record recently played track:', e);
+    }
+  }
+
+  public clearRecentlyPlayed(): void {
+    this.state.recentlyPlayed = [];
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('life_music_recently_played');
     }
     this.notify();
   }

@@ -28,6 +28,7 @@ export interface PlayerState {
   volume: number; // 0 to 100
   queue: Track[];
   queueIndex: number;
+  recentlyPlayed: Track[];
   provider: 'youtube' | 'direct';
   errorMessage: string | null;
 }
