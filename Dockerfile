@@ -12,19 +12,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install python dependencies
-COPY requirements.txt .
+# Install python dependencies from backend/requirements.txt
+COPY backend/requirements.txt requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application source
-COPY . .
+# Copy backend application source
+COPY backend/ .
 
 # Ensure storage directories exist
 RUN mkdir -p uploads/audio chroma_db
 
-# Default port
+# Expose default port
 EXPOSE 8000
 
-# Start FastAPI application
+# Start FastAPI application using dynamic Render PORT
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
