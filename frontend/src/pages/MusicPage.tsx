@@ -51,7 +51,7 @@ export const MusicPage: React.FC = () => {
 
   // Primary State
   const [playerState, setPlayerState] = useState<PlayerState>(musicService.getState());
-  const [activeTab, setActiveTab] = useState<'All' | 'Music' | 'Podcasts' | 'Live'>('All');
+  const [activeTab, setActiveTab] = useState<'All' | 'Music' | 'Podcasts' | 'Live' | 'Liked'>('All');
 
   // Search State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -239,9 +239,11 @@ export const MusicPage: React.FC = () => {
   };
 
   // Filter tab content
-  const handleTabClick = (tab: 'All' | 'Music' | 'Podcasts' | 'Live') => {
+  const handleTabClick = (tab: 'All' | 'Music' | 'Podcasts' | 'Live' | 'Liked') => {
     setActiveTab(tab);
-    if (tab === 'Live') {
+    if (tab === 'Liked') {
+      handleOpenPlaylist(likedSongsPlaylist);
+    } else if (tab === 'Live') {
       setSearchQuery('Live Indian Music Radio');
     } else if (tab === 'Podcasts') {
       setSearchQuery('Hindi Podcasts');
@@ -288,6 +290,18 @@ export const MusicPage: React.FC = () => {
           >
             <Music size={14} className={activeTab === 'Music' ? 'text-slate-950' : 'text-cyan-400'} />
             <span>Music</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTabClick('Liked')}
+            className={`px-4 py-2 rounded-full text-xs font-medium flex items-center gap-1.5 transition-all shrink-0 ${
+              activeTab === 'Liked'
+                ? 'bg-rose-500 text-white font-semibold shadow-lg shadow-rose-500/25'
+                : 'bg-slate-900/80 border border-slate-800 text-slate-300 hover:text-white'
+            }`}
+          >
+            <Heart size={14} className={activeTab === 'Liked' ? 'fill-white text-white' : 'text-rose-400 fill-rose-400/30'} />
+            <span>Liked ({playerState.likedTracks.length})</span>
           </button>
           <button
             type="button"
@@ -661,6 +675,23 @@ export const MusicPage: React.FC = () => {
                         alt={pl.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
+                      {/* Heart Like button on top-right of playlist */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (pl.tracks.length > 0) {
+                            handleToggleLike(pl.tracks[0], e);
+                          }
+                        }}
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-md"
+                        title="Like"
+                      >
+                        <Heart
+                          size={14}
+                          className={pl.tracks.length > 0 && musicService.isLiked(pl.tracks[0].id) ? 'fill-rose-500 text-rose-500' : 'text-white/80'}
+                        />
+                      </button>
                       {/* White circular play button in bottom-right */}
                       <button
                         type="button"
@@ -748,6 +779,15 @@ export const MusicPage: React.FC = () => {
                             <span className="w-2 h-5 bg-cyan-400 rounded-full animate-pulse" />
                           </div>
                         )}
+                        {/* Floating Heart Button on Top-Right */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleToggleLike(track, e)}
+                          className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-md"
+                          title={isLiked ? 'Liked' : 'Like'}
+                        >
+                          <Heart size={14} className={isLiked ? 'fill-rose-500 text-rose-500' : 'text-white/80'} />
+                        </button>
                       </div>
 
                       <div>
@@ -769,18 +809,19 @@ export const MusicPage: React.FC = () => {
                           </button>
                         </div>
 
-                        <div className="flex items-center justify-between mt-0.5">
+                        <div className="flex items-center justify-between mt-1">
                           <p className="text-[11px] text-slate-400 truncate flex-1">
                             {track.artist}
                           </p>
                           <button
                             type="button"
                             onClick={(e) => handleToggleLike(track, e)}
-                            className={`p-0.5 ml-1 transition-all ${
+                            className={`p-1 rounded-full transition-all hover:scale-110 active:scale-95 ${
                               isLiked ? 'text-rose-500' : 'text-slate-500 hover:text-slate-300'
                             }`}
+                            title={isLiked ? 'Liked' : 'Like'}
                           >
-                            <Heart size={14} className={isLiked ? 'fill-rose-500' : ''} />
+                            <Heart size={16} className={isLiked ? 'fill-rose-500 text-rose-500' : ''} />
                           </button>
                         </div>
                       </div>
@@ -788,6 +829,126 @@ export const MusicPage: React.FC = () => {
                   );
                 })}
               </div>
+            </section>
+
+            {/* Dedicated Liked Songs / Liked Music Section ("Mujhe Pasand Aaye Gaane") */}
+            <section className="animate-fade-in">
+              <div className="flex items-center justify-between mb-3.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center">
+                    <Heart size={16} className="text-rose-500 fill-rose-500" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm md:text-base font-bold text-white tracking-tight flex items-center gap-2">
+                      <span>Liked Songs</span>
+                      <span className="text-[10px] font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded-full">
+                        {playerState.likedTracks.length}
+                      </span>
+                    </h2>
+                    <p className="text-[11px] text-slate-400">
+                      Mujhe pasand aaye gaane · Liked by you
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenPlaylist(likedSongsPlaylist)}
+                  className="text-xs text-slate-400 hover:text-rose-400 flex items-center gap-0.5 transition-all"
+                >
+                  <span>See all</span>
+                  <span>&gt;</span>
+                </button>
+              </div>
+
+              {/* Horizontal Scroll Tracks for Liked Songs */}
+              {playerState.likedTracks.length === 0 ? (
+                <div
+                  onClick={() => handleOpenPlaylist(likedSongsPlaylist)}
+                  className="p-5 rounded-2xl bg-[#0C1220]/70 border border-slate-800 text-center cursor-pointer hover:border-slate-700 transition-all"
+                >
+                  <Heart size={28} className="text-slate-600 mx-auto mb-2" />
+                  <p className="text-xs text-slate-300 font-semibold mb-0.5">
+                    Abhi tak koi gaana like nahi kiya gaya hai
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Kisi bhi gaane par ❤️ dabakar yahan save karein!
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-stretch gap-3.5 overflow-x-auto pb-2 no-scrollbar">
+                  {playerState.likedTracks.map((track) => {
+                    const isPlayingThis = playerState.isPlaying && playerState.currentTrack?.id === track.id;
+
+                    return (
+                      <div
+                        key={`liked_sec_${track.id}`}
+                        onClick={() => handlePlayTrack(track)}
+                        className={`w-36 md:w-44 shrink-0 rounded-2xl bg-[#0C1220] border p-2.5 transition-all group cursor-pointer flex flex-col justify-between ${
+                          isPlayingThis
+                            ? 'border-rose-500/50 bg-[#160E1A]'
+                            : 'border-slate-800/80 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="relative aspect-square w-full rounded-xl overflow-hidden mb-2.5 bg-slate-900 shadow-md">
+                          <img
+                            src={track.thumbnail}
+                            alt={track.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          {isPlayingThis && (
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                              <span className="w-2 h-5 bg-rose-500 rounded-full animate-pulse" />
+                            </div>
+                          )}
+                          {/* Floating Red Heart Badge on Thumbnail */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleToggleLike(track, e)}
+                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-md"
+                            title="Unlike"
+                          >
+                            <Heart size={14} className="fill-rose-500 text-rose-500" />
+                          </button>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between gap-1">
+                            <h3 className={`text-xs md:text-sm font-bold truncate ${
+                              isPlayingThis ? 'text-rose-400' : 'text-white group-hover:text-rose-300'
+                            }`}>
+                              {track.title}
+                            </h3>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveTrackMenu(track);
+                              }}
+                              className="text-slate-500 hover:text-slate-300 p-0.5"
+                            >
+                              <MoreVertical size={13} />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center justify-between mt-1">
+                            <p className="text-[11px] text-slate-400 truncate flex-1">
+                              {track.artist}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleLike(track, e)}
+                              className="p-1 rounded-full text-rose-500 hover:scale-110 active:scale-95 transition-all"
+                              title="Unlike"
+                            >
+                              <Heart size={16} className="fill-rose-500 text-rose-500" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
 
             {/* 3. Recently played Section */}
@@ -851,6 +1012,15 @@ export const MusicPage: React.FC = () => {
                             <span className="w-2 h-5 bg-cyan-400 rounded-full animate-pulse" />
                           </div>
                         )}
+                        {/* Floating Heart Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleToggleLike(track, e)}
+                          className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-md"
+                          title={isLiked ? 'Liked' : 'Like'}
+                        >
+                          <Heart size={14} className={isLiked ? 'fill-rose-500 text-rose-500' : 'text-white/80'} />
+                        </button>
                       </div>
 
                       <div>
@@ -872,18 +1042,19 @@ export const MusicPage: React.FC = () => {
                           </button>
                         </div>
 
-                        <div className="flex items-center justify-between mt-0.5">
+                        <div className="flex items-center justify-between mt-1">
                           <p className="text-[11px] text-slate-400 truncate flex-1">
                             {track.artist}
                           </p>
                           <button
                             type="button"
                             onClick={(e) => handleToggleLike(track, e)}
-                            className={`p-0.5 ml-1 transition-all ${
+                            className={`p-1 rounded-full transition-all hover:scale-110 active:scale-95 ${
                               isLiked ? 'text-rose-500' : 'text-slate-500 hover:text-slate-300'
                             }`}
+                            title={isLiked ? 'Liked' : 'Like'}
                           >
-                            <Heart size={14} className={isLiked ? 'fill-rose-500' : ''} />
+                            <Heart size={16} className={isLiked ? 'fill-rose-500 text-rose-500' : ''} />
                           </button>
                         </div>
                       </div>
@@ -928,6 +1099,23 @@ export const MusicPage: React.FC = () => {
                         alt={pl.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
+                      {/* Floating Heart Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (pl.tracks.length > 0) {
+                            handleToggleLike(pl.tracks[0], e);
+                          }
+                        }}
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-md"
+                        title="Like"
+                      >
+                        <Heart
+                          size={14}
+                          className={pl.tracks.length > 0 && musicService.isLiked(pl.tracks[0].id) ? 'fill-rose-500 text-rose-500' : 'text-white/80'}
+                        />
+                      </button>
                       <button
                         type="button"
                         onClick={(e) => handlePlayPlaylist(pl, false, e)}
