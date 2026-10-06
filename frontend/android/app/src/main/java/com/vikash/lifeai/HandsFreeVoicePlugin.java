@@ -81,6 +81,13 @@ public class HandsFreeVoicePlugin extends Plugin {
                 ret.put("error", errorMessage);
                 notifyListeners("voiceError", ret);
             }
+
+            @Override
+            public void onTtsFinished(String utteranceId) {
+                JSObject ret = new JSObject();
+                ret.put("utteranceId", utteranceId);
+                notifyListeners("ttsFinished", ret);
+            }
         });
     }
 
@@ -100,6 +107,7 @@ public class HandsFreeVoicePlugin extends Plugin {
     @PluginMethod
     public void requestMicPermission(PluginCall call) {
         if (getPermissionState("microphone") == PermissionState.GRANTED) {
+            android.util.Log.i(TAG, "[ANDROID-VOICE] permission granted");
             JSObject ret = new JSObject();
             ret.put("granted", true);
             call.resolve(ret);
@@ -111,6 +119,9 @@ public class HandsFreeVoicePlugin extends Plugin {
     @PermissionCallback
     private void microphonePermCallbackSimple(PluginCall call) {
         boolean granted = getPermissionState("microphone") == PermissionState.GRANTED;
+        if (granted) {
+            android.util.Log.i(TAG, "[ANDROID-VOICE] permission granted");
+        }
         JSObject ret = new JSObject();
         ret.put("granted", granted);
         call.resolve(ret);
@@ -357,6 +368,77 @@ public class HandsFreeVoicePlugin extends Plugin {
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("Failed to resume listening: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void startListening(PluginCall call) {
+        if (getPermissionState("microphone") != PermissionState.GRANTED) {
+            requestPermissionForAlias("microphone", call, "microphonePermCallbackStartListening");
+            return;
+        }
+        HandsFreeVoiceService.triggerListen(getContext());
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PermissionCallback
+    private void microphonePermCallbackStartListening(PluginCall call) {
+        if (getPermissionState("microphone") == PermissionState.GRANTED) {
+            android.util.Log.i(TAG, "[ANDROID-VOICE] permission granted");
+            HandsFreeVoiceService.triggerListen(getContext());
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } else {
+            call.reject("Microphone permission is required.");
+        }
+    }
+
+    @PluginMethod
+    public void stopListening(PluginCall call) {
+        try {
+            HandsFreeVoiceService.pauseListening(getContext());
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to stop listening: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void isListening(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("isListening", HandsFreeVoiceService.isListening());
+        ret.put("state", HandsFreeVoiceService.getCurrentState().name().toLowerCase());
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void speak(PluginCall call) {
+        try {
+            String text = call.getString("text", "");
+            String utteranceId = call.getString("utteranceId", "direct_speak_" + System.currentTimeMillis());
+            HandsFreeVoiceService.speak(getContext(), text, utteranceId);
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to speak: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void stopSpeaking(PluginCall call) {
+        try {
+            HandsFreeVoiceService.stopSpeaking(getContext());
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to stop speaking: " + e.getMessage(), e);
         }
     }
 

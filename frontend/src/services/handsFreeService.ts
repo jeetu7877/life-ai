@@ -30,6 +30,16 @@ export interface HandsFreeVoicePlugin {
 
   triggerListen(): Promise<{ success: boolean }>;
 
+  startListening(): Promise<{ success: boolean }>;
+
+  stopListening(): Promise<{ success: boolean }>;
+
+  isListening(): Promise<{ isListening: boolean; state: string }>;
+
+  speak(options: { text: string; utteranceId?: string }): Promise<{ success: boolean }>;
+
+  stopSpeaking(): Promise<{ success: boolean }>;
+
   pauseListening(): Promise<{ success: boolean }>;
 
   resumeListening(): Promise<{ success: boolean }>;
@@ -71,6 +81,11 @@ export interface HandsFreeVoicePlugin {
   addListener(
     eventName: 'voiceError',
     listenerFunc: (data: { error: string }) => void
+  ): Promise<any>;
+
+  addListener(
+    eventName: 'ttsFinished',
+    listenerFunc: (data: { utteranceId: string }) => void
   ): Promise<any>;
 }
 
@@ -151,6 +166,69 @@ class HandsFreeService {
       }
     }
     return false;
+  }
+
+  public async startListening(): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.startListening();
+        return res.success;
+      } catch (err) {
+        console.error('Failed to start native listening:', err);
+        return false;
+      }
+    }
+    return false;
+  }
+
+  public async stopListening(): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.stopListening();
+        return res.success;
+      } catch (err) {
+        console.warn('Failed to stop native listening:', err);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public async isListening(): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.isListening();
+        return res.isListening;
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  public async speak(text: string, utteranceId?: string): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.speak({ text, utteranceId });
+        return res.success;
+      } catch (err) {
+        console.error('Failed to speak via native TTS:', err);
+        return false;
+      }
+    }
+    return false;
+  }
+
+  public async stopSpeaking(): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.stopSpeaking();
+        return res.success;
+      } catch (_) {
+        return false;
+      }
+    }
+    return true;
   }
 
   public async pauseListening(): Promise<boolean> {
@@ -296,7 +374,7 @@ class HandsFreeService {
   }
 
   public addListener(
-    eventName: 'voiceStateChanged' | 'transcriptUpdate' | 'assistantResponse' | 'rmsUpdate' | 'voiceError',
+    eventName: 'voiceStateChanged' | 'transcriptUpdate' | 'assistantResponse' | 'rmsUpdate' | 'voiceError' | 'ttsFinished',
     callback: (data: any) => void
   ) {
     if (this.isNative) {

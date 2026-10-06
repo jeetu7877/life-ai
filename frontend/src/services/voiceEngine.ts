@@ -10,6 +10,7 @@ import { handsFreeService } from './handsFreeService';
 import { fastIntentRouter } from './fastIntentRouter';
 import { executeServerTools } from './toolExecutor';
 import { musicService } from './musicService';
+import { IVoiceEngineDriver, AndroidVoiceEngine, WebVoiceEngine } from './voiceDrivers';
 
 export interface VoiceEngineSnapshot {
   voiceState: VoiceState;
@@ -37,6 +38,7 @@ export interface VoiceEngineSnapshot {
   audioSampleRate: number;
   audioChannels: number;
   isLocalTesting: boolean;
+  voiceEngineDriver: 'AndroidVoiceEngine' | 'WebVoiceEngine';
 }
 
 interface IWindow extends Window {
@@ -67,6 +69,7 @@ class VoiceEngine {
   private voiceResponseEnabled: boolean = true;
   private isNative: boolean = false;
   private isBatteryOptimizedExempt: boolean = true;
+  private driver: IVoiceEngineDriver;
 
   // Hardware & Connectivity State
   private micPermissionError: boolean = false;
@@ -153,6 +156,8 @@ class VoiceEngine {
     } else {
       this.isWakeWordEnabled = true;
     }
+
+    this.driver = this.isNative ? new AndroidVoiceEngine() : new WebVoiceEngine();
   }
 
   public static getInstance(): VoiceEngine {
@@ -368,7 +373,8 @@ class VoiceEngine {
       streamActive: this.streamActive,
       audioSampleRate: this.audioSampleRate,
       audioChannels: this.audioChannels,
-      isLocalTesting: this.isLocalTesting
+      isLocalTesting: this.isLocalTesting,
+      voiceEngineDriver: this.driver ? (this.driver.name as 'AndroidVoiceEngine' | 'WebVoiceEngine') : (this.isNative ? 'AndroidVoiceEngine' : 'WebVoiceEngine')
     };
   }
 
@@ -1171,6 +1177,20 @@ class VoiceEngine {
   }
 
   public speakText(text: string, onCompleted?: () => void): void {
+    if (this.isNative) {
+      this.gateMicrophone(true);
+      this.isSpeaking = true;
+      console.log('[VOICE] TTS started');
+      this.setDetailedState('speaking');
+      handsFreeService.speak(text).then(() => {
+        if (onCompleted) onCompleted();
+      }).catch((err) => {
+        console.warn('[VOICE] Native speak error:', err);
+        if (onCompleted) onCompleted();
+      });
+      return;
+    }
+
     if (!window.speechSynthesis) {
       this.stopOutputAudioAnalysis();
       if (onCompleted) onCompleted();
@@ -1541,21 +1561,19 @@ class VoiceEngine {
         this.notify();
 
         // When Android native SpeechRecognizer produces a final transcript,
-        // intercept fast device intents locally (e.g. music: "Channa Mereya chalao", alarm: "6 baje alarm")
+        // route through handleUserUtterance which handles fast device intents and backend queries
         if (data.isFinal && data.transcript && data.transcript.trim()) {
           const clean = data.transcript.trim();
           console.log(`[VOICE NATIVE] Final transcript from Android: "${clean}"`);
-          try {
-            const fastResult = await fastIntentRouter.route(clean);
-            if (fastResult.handled) {
-              console.log(`[VOICE NATIVE] Fast device intent executed locally: "${fastResult.responseText}"`);
-              this.assistantResponse = fastResult.responseText;
-              this.notify();
-            }
-          } catch (fastErr) {
-            console.warn('[VOICE NATIVE] Fast intent error:', fastErr);
-          }
+          this.handleUserUtterance(clean);
         }
+      });
+
+      handsFreeService.addListener('ttsFinished', () => {
+        console.log('[VOICE NATIVE] TTS finished from Android');
+        this.isSpeaking = false;
+        this.isAudioSpeaking = false;
+        this.notify();
       });
 
       handsFreeService.addListener('assistantResponse', (data: { response: string; conversationId?: string; toolsExecuted?: string | any[] }) => {

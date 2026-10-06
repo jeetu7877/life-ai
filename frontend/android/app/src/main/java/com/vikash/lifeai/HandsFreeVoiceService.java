@@ -66,6 +66,8 @@ public class HandsFreeVoiceService extends Service {
     public static final String ACTION_SET_MUSIC_PLAYING = "com.vikash.lifeai.action.SET_MUSIC_PLAYING";
     public static final String ACTION_PAUSE_LISTENING = "com.vikash.lifeai.action.PAUSE_LISTENING";
     public static final String ACTION_RESUME_LISTENING = "com.vikash.lifeai.action.RESUME_LISTENING";
+    public static final String ACTION_SPEAK = "com.vikash.lifeai.action.SPEAK";
+    public static final String ACTION_STOP_SPEAKING = "com.vikash.lifeai.action.STOP_SPEAKING";
 
     public static final String EXTRA_SERVER_URL = "extra_server_url";
     public static final String EXTRA_TOKEN = "extra_token";
@@ -73,6 +75,7 @@ public class HandsFreeVoiceService extends Service {
     public static final String EXTRA_VOICE_RESPONSE = "extra_voice_response";
     public static final String EXTRA_SILENCE_TIMEOUT = "extra_silence_timeout";
     public static final String EXTRA_IS_MUSIC_PLAYING = "extra_is_music_playing";
+    public static final String EXTRA_SPEECH_TEXT = "extra_speech_text";
 
     public enum State {
         STOPPED,
@@ -103,6 +106,7 @@ public class HandsFreeVoiceService extends Service {
         }
         void onRmsChanged(float rmsdB);
         void onError(String errorMessage);
+        default void onTtsFinished(String utteranceId) {}
     }
 
     public static void setEventListener(ServiceEventListener listener) {
@@ -115,6 +119,10 @@ public class HandsFreeVoiceService extends Service {
 
     public static State getCurrentState() {
         return currentState;
+    }
+
+    public static boolean isListening() {
+        return isListeningActive && (currentState == State.USER_LISTENING || currentState == State.WAKE_LISTENING);
     }
 
     public static void triggerListen(Context context) {
@@ -158,6 +166,34 @@ public class HandsFreeVoiceService extends Service {
         }
     }
 
+    public static void speak(Context context, String text, String utteranceId) {
+        if (context == null || text == null || text.trim().isEmpty()) return;
+        try {
+            Intent intent = new Intent(context, HandsFreeVoiceService.class);
+            intent.setAction(ACTION_SPEAK);
+            intent.putExtra(EXTRA_SPEECH_TEXT, text);
+            intent.putExtra("extra_utterance_id", utteranceId != null ? utteranceId : "speak_" + System.currentTimeMillis());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isRunning()) {
+                ContextCompat.startForegroundService(context, intent);
+            } else {
+                context.startService(intent);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to send speak intent: " + e.getMessage());
+        }
+    }
+
+    public static void stopSpeaking(Context context) {
+        if (context == null) return;
+        try {
+            Intent intent = new Intent(context, HandsFreeVoiceService.class);
+            intent.setAction(ACTION_STOP_SPEAKING);
+            context.startService(intent);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to send stopSpeaking intent: " + e.getMessage());
+        }
+    }
+
     // Config & Connection
     private String serverUrl = "https://life-ai-daoh.onrender.com";
     private String authToken = "";
@@ -169,7 +205,7 @@ public class HandsFreeVoiceService extends Service {
 
     // Speech Recognition
     private SpeechRecognizer speechRecognizer;
-    private boolean isListeningActive = false;
+    private static volatile boolean isListeningActive = false;
     private int consecutiveErrorCount = 0;
     private long stateEntryTimestamp = 0;
 
@@ -326,9 +362,31 @@ public class HandsFreeVoiceService extends Service {
 
                 return START_STICKY;
             }
+
+            if (ACTION_SPEAK.equals(action)) {
+                String textToSpeak = intent.getStringExtra(EXTRA_SPEECH_TEXT);
+                String uttId = intent.getStringExtra("extra_utterance_id");
+                if (uttId == null) uttId = "direct_speak_" + System.currentTimeMillis();
+                Log.i(TAG, "[VOICE] ACTION_SPEAK received: " + textToSpeak);
+                if (textToSpeak != null && !textToSpeak.trim().isEmpty()) {
+                    speakText(textToSpeak, uttId);
+                }
+                return START_STICKY;
+            }
+
+            if (ACTION_STOP_SPEAKING.equals(action)) {
+                Log.i(TAG, "[VOICE] ACTION_STOP_SPEAKING received");
+                if (textToSpeech != null && textToSpeech.isSpeaking()) {
+                    try {
+                        textToSpeech.stop();
+                    } catch (Exception ignored) {}
+                }
+                abandonAppAudioFocus();
+                return START_STICKY;
+            }
         }
 
-        Notification notification = buildNotification("Life AI is ready for '" + wakeWord + "'");
+        Notification notification = buildNotification("Life AI is listening...");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
         } else {
@@ -337,12 +395,19 @@ public class HandsFreeVoiceService extends Service {
 
         isServiceRunning = true;
 
-        if (currentState == State.WAKE_LISTENING || currentState == State.USER_LISTENING) {
-            Log.d(TAG, "Service start requested while already in active/standby state. Preserving state.");
+        if (currentState == State.USER_LISTENING) {
+            Log.d(TAG, "Service start requested while already in active listening state. Preserving state.");
             return START_STICKY;
         }
 
-        startWakeStandbyMode();
+        // Automatic foreground listening:
+        stopVadDetector();
+        cancelAllTimers();
+        consecutiveErrorCount = 0;
+        setState(State.USER_LISTENING);
+        mainHandler.postDelayed(() -> {
+            startActiveListeningWindow();
+        }, 150);
         return START_STICKY;
     }
 
@@ -660,6 +725,7 @@ public class HandsFreeVoiceService extends Service {
 
         try {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            Log.i(TAG, "[ANDROID-VOICE] recognizer initialized");
             Log.i(TAG, "[VOICE] microphone_initialized (isWakeCheckOnly=" + isWakeCheckOnly + ")");
         } catch (Exception e) {
             Log.e(TAG, "[VOICE] microphone_error: " + e.getMessage());
@@ -672,11 +738,13 @@ public class HandsFreeVoiceService extends Service {
             public void onReadyForSpeech(Bundle params) {
                 isListeningActive = true;
                 consecutiveErrorCount = 0;
+                Log.i(TAG, "[ANDROID-VOICE] listening started");
                 Log.i(TAG, "[VOICE] SpeechRecognizer ready for speech");
             }
 
             @Override
             public void onBeginningOfSpeech() {
+                Log.i(TAG, "[ANDROID-VOICE] speech started");
                 Log.i(TAG, "[VOICE] Speech started (state=" + currentState + ")");
                 cancelSilenceTimer();
             }
@@ -693,6 +761,7 @@ public class HandsFreeVoiceService extends Service {
 
             @Override
             public void onEndOfSpeech() {
+                Log.i(TAG, "[ANDROID-VOICE] recognition ended");
                 Log.i(TAG, "[VOICE] Speech ended (state=" + currentState + ")");
                 isListeningActive = false;
             }
@@ -700,6 +769,7 @@ public class HandsFreeVoiceService extends Service {
             @Override
             public void onError(int error) {
                 isListeningActive = false;
+                Log.i(TAG, "[ANDROID-VOICE] recognition error: " + error);
                 Log.i(TAG, "[VOICE] speech_recognition_error: code=" + error + " state=" + currentState);
                 handleSpeechError(error, isWakeCheckOnly);
             }
@@ -731,9 +801,9 @@ public class HandsFreeVoiceService extends Service {
         try {
             Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN");
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "hi-IN");
-            intent.putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", new String[]{"en-IN", "hi-IN", "en-US"});
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN");
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-IN");
+            intent.putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", new String[]{"en-IN", "en-US", "hi-IN"});
             intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
             intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
             intent.putExtra("android.speech.extra.DICTATION_MODE", true);
@@ -744,7 +814,8 @@ public class HandsFreeVoiceService extends Service {
 
             speechRecognizer.startListening(intent);
             isListeningActive = true;
-            Log.i(TAG, "[VOICE] Microphone opened & listening for speech (hi-IN / en-IN)");
+            Log.i(TAG, "[ANDROID-VOICE] listening started");
+            Log.i(TAG, "[VOICE] Microphone opened & listening for speech (en-IN)");
         } catch (Exception e) {
             Log.w(TAG, "startListeningIntent error: " + e.getMessage());
             isListeningActive = false;
@@ -801,7 +872,12 @@ public class HandsFreeVoiceService extends Service {
             return;
         }
 
-        Log.d(TAG, "SpeechResult (isFinal=" + isFinal + ", state=" + currentState + "): " + recognizedText);
+        if (isFinal) {
+            Log.i(TAG, "[ANDROID-VOICE] final result: " + recognizedText);
+            Log.i(TAG, "[ANDROID-VOICE] transcript received: " + recognizedText);
+        } else {
+            Log.d(TAG, "[ANDROID-VOICE] partial result: " + recognizedText);
+        }
 
         if (eventListener != null) {
             mainHandler.post(() -> eventListener.onTranscript(recognizedText, isFinal));
@@ -816,6 +892,12 @@ public class HandsFreeVoiceService extends Service {
                 if (isDirectCommand(recognizedText)) {
                     Log.i(TAG, "[VOICE] Direct voice command recognized from standby: " + recognizedText);
                     setState(State.USER_LISTENING);
+                    if (eventListener != null) {
+                        stopListeningTemporarily();
+                        setState(State.PROCESSING);
+                        Log.i(TAG, "[VOICE] Delegating direct voice command to web VoiceEngine: " + recognizedText);
+                        return;
+                    }
                     processUserQuery(recognizedText);
                 } else {
                     Log.d(TAG, "Non-matching speech in wake standby. Returning to low-power VAD.");
@@ -846,6 +928,13 @@ public class HandsFreeVoiceService extends Service {
                 // If user says goodbye or stop
                 if (isGoodbyeMatch(cleanQuery)) {
                     speakText("Thik hai, jab bhi zaroorat ho 'Hey Life' bolein.", "farewell");
+                    return;
+                }
+
+                if (eventListener != null) {
+                    stopListeningTemporarily();
+                    setState(State.PROCESSING);
+                    Log.i(TAG, "[VOICE] Delegating turn to connected web VoiceEngine: \"" + cleanQuery + "\"");
                     return;
                 }
 
@@ -903,6 +992,7 @@ public class HandsFreeVoiceService extends Service {
     }
 
     private void scheduleRecognizerRetry(long delayMs) {
+        Log.i(TAG, "[ANDROID-VOICE] restarting");
         if (restartRecognizerRunnable != null) {
             mainHandler.removeCallbacks(restartRecognizerRunnable);
         }
@@ -992,10 +1082,10 @@ public class HandsFreeVoiceService extends Service {
         textToSpeech = new TextToSpeech(this, status -> {
             if (status == TextToSpeech.SUCCESS) {
                 ttsReady = true;
-                Locale hindiLocale = new Locale("hi", "IN");
-                int res = textToSpeech.setLanguage(hindiLocale);
+                Locale defaultLocale = new Locale("en", "IN");
+                int res = textToSpeech.setLanguage(defaultLocale);
                 if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    textToSpeech.setLanguage(new Locale("en", "IN"));
+                    textToSpeech.setLanguage(Locale.US);
                 }
                 textToSpeech.setSpeechRate(0.95f);
                 textToSpeech.setPitch(1.05f);
@@ -1003,11 +1093,13 @@ public class HandsFreeVoiceService extends Service {
                 textToSpeech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override
                     public void onStart(String utteranceId) {
+                        Log.i(TAG, "[ANDROID-VOICE] TTS started");
                         Log.i(TAG, "[VOICE] tts_started id=" + utteranceId);
                     }
 
                     @Override
                     public void onDone(String utteranceId) {
+                        Log.i(TAG, "[ANDROID-VOICE] TTS finished");
                         Log.i(TAG, "[VOICE] tts_finished id=" + utteranceId);
                         mainHandler.post(() -> onSpeakingCompleted(utteranceId));
                     }
@@ -1049,6 +1141,14 @@ public class HandsFreeVoiceService extends Service {
     private void onSpeakingCompleted(String utteranceId) {
         abandonAppAudioFocus();
         Log.i(TAG, "[VOICE] TTS completed: " + utteranceId);
+
+        if (eventListener != null) {
+            mainHandler.post(() -> {
+                if (eventListener != null) {
+                    eventListener.onTtsFinished(utteranceId);
+                }
+            });
+        }
 
         if ("wake_greeting".equals(utteranceId)) {
             // Greeting "Haan, bolo." done -> immediately transition to USER_LISTENING!
@@ -1190,9 +1290,16 @@ public class HandsFreeVoiceService extends Service {
     private void resetSilenceTimer() {
         cancelSilenceTimer();
         silenceTimeoutRunnable = () -> {
-            Log.i(TAG, "[VOICE] silence timeout (" + silenceTimeoutMs + "ms with no speech). Returning to standby.");
-            activeConversationId = null;
-            startWakeStandbyMode();
+            if (eventListener != null) {
+                Log.d(TAG, "[VOICE] App in foreground: refreshing active listening window on silence timeout.");
+                if (currentState == State.USER_LISTENING) {
+                    scheduleRecognizerRetry(300);
+                }
+            } else {
+                Log.i(TAG, "[VOICE] silence timeout (" + silenceTimeoutMs + "ms with no speech). Returning to standby.");
+                activeConversationId = null;
+                startWakeStandbyMode();
+            }
         };
         mainHandler.postDelayed(silenceTimeoutRunnable, silenceTimeoutMs);
     }

@@ -17,6 +17,8 @@ export interface VoiceDiagnosticsState {
   backendConnected: boolean;
   ttsReady: boolean;
   lastError: string | null;
+  voiceEngineDriver: 'AndroidVoiceEngine' | 'WebVoiceEngine';
+  language: string;
 }
 
 interface VoiceContextType {
@@ -175,7 +177,9 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     wakeWordListening: snapshot.isVoiceModeEnabled && (snapshot.detailedVoiceState === 'wake_listening' || (snapshot.isNativePlatform && snapshot.isHandsFreeMode)),
     backendConnected: snapshot.isBackendOnline,
     ttsReady: !!(window.speechSynthesis || snapshot.isNativePlatform),
-    lastError: snapshot.voiceError
+    lastError: snapshot.voiceError,
+    voiceEngineDriver: snapshot.voiceEngineDriver || (snapshot.isNativePlatform ? 'AndroidVoiceEngine' : 'WebVoiceEngine'),
+    language: 'en-IN'
   };
 
   return (
@@ -250,7 +254,9 @@ export const useVoice = (): VoiceContextType => {
         wakeWordListening: snap.detailedVoiceState === 'wake_listening',
         backendConnected: snap.isBackendOnline,
         ttsReady: true,
-        lastError: snap.voiceError
+        lastError: snap.voiceError,
+        voiceEngineDriver: snap.voiceEngineDriver || (snap.isNativePlatform ? 'AndroidVoiceEngine' : 'WebVoiceEngine'),
+        language: 'en-IN'
       },
       toggleVoiceMode: () => voiceEngine.setVoiceModeEnabled(!snap.isVoiceModeEnabled),
       toggleWakeWord: () => voiceEngine.setWakeWordEnabled(!snap.isWakeWordEnabled),

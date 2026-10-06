@@ -162,9 +162,9 @@ export const VoiceDiagnosticsModal: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-[11px] font-semibold">
           {/* 1. Voice Engine */}
           <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
-            <span className="text-[10px] text-slate-400 block uppercase">1. Voice Engine</span>
-            <span className={voiceError ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
-              {voiceError ? "ERROR" : detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening' ? "LISTENING" : detailedVoiceState === 'speaking' || detailedVoiceState === 'tts' ? "SPEAKING" : "READY"}
+            <span className="text-[10px] text-slate-400 block uppercase">1. Engine Driver</span>
+            <span className="text-[#00D9FF] font-bold block truncate">
+              {diagnostics.voiceEngineDriver || (isNativePlatform ? "AndroidVoiceEngine" : "WebVoiceEngine")}
             </span>
           </div>
 
@@ -186,9 +186,9 @@ export const VoiceDiagnosticsModal: React.FC = () => {
 
           {/* 4. Speech Recognizer */}
           <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
-            <span className="text-[10px] text-slate-400 block uppercase">4. Recognizer</span>
-            <span className="text-[#00A8FF] font-bold">
-              {isNativePlatform ? "ANDROID NATIVE" : "WEB SPEECH + GEMINI"}
+            <span className="text-[10px] text-slate-400 block uppercase">4. Recognizer & Lang</span>
+            <span className="text-[#00A8FF] font-bold block truncate">
+              {isNativePlatform ? "ANDROID (en-IN)" : "WEB SPEECH (en-IN)"}
             </span>
           </div>
 
