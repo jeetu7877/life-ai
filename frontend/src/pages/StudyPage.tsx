@@ -10,10 +10,14 @@ import {
   Plus,
   Sparkles,
   Flame,
-  Award
+  Award,
+  ArrowRight,
+  Play
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export const StudyPage: React.FC = () => {
+  const navigate = useNavigate();
   const [subjects, setSubjects] = useState<StudySubject[]>([]);
   const [weakTopics, setWeakTopics] = useState<any[]>([]);
   const [newSubject, setNewSubject] = useState<string>('');
@@ -92,6 +96,103 @@ export const StudyPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Screen 7: Continue Learning Horizontal Cards */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[#94A3B8] flex items-center gap-1.5">
+            <Flame className="w-4 h-4 text-amber-400" /> Continue Learning
+          </h2>
+          <span className="text-xs text-[#8B5CF6] font-medium">3 Active Modules</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { title: 'Python & AI Engineering', progress: 68, category: 'Machine Learning', modules: '14/20 Done' },
+            { title: 'System Design & Scalability', progress: 45, category: 'Architecture', modules: '9/20 Done' },
+            { title: 'Data Structures & Algorithms', progress: 82, category: 'Core CS', modules: '18/22 Done' }
+          ].map((course, cIdx) => (
+            <div
+              key={cIdx}
+              className="p-4 rounded-2xl bg-[#0E1622] border border-[#202B3D] hover:border-[#8B5CF6]/50 transition-all flex flex-col justify-between group shadow-sm"
+            >
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B5CF6] px-2 py-0.5 rounded bg-[#8B5CF6]/10 border border-[#8B5CF6]/20">
+                  {course.category}
+                </span>
+                <h3 className="text-xs font-bold text-white group-hover:text-[#8B5CF6] transition-colors leading-snug">
+                  {course.title}
+                </h3>
+                <div className="space-y-1 pt-1">
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>{course.modules}</span>
+                    <span className="font-mono text-purple-300">{course.progress}%</span>
+                  </div>
+                  <div className="w-full bg-[#05070B] h-1.5 rounded-full overflow-hidden border border-[#202B3D]">
+                    <div
+                      className="bg-gradient-to-r from-[#8B5CF6] to-[#C026D3] h-full rounded-full transition-all duration-500"
+                      style={{ width: `${course.progress}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() =>
+                  navigate('/chat', {
+                    state: {
+                      initialQuery: `Act as my AI Study Coach. Quiz me on the next module for "${course.title}".`
+                    }
+                  })
+                }
+                className="mt-3 py-1.5 px-3 rounded-xl bg-[#141C28] hover:bg-gradient-to-r hover:from-[#8B5CF6] hover:to-[#C026D3] hover:text-white border border-[#202B3D] text-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Play className="w-3 h-3 text-[#8B5CF6]" />
+                Resume Session
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Screen 7: Recommended For You Cards */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-[#94A3B8] flex items-center gap-1.5">
+          <Sparkles className="w-4 h-4 text-[#00D9FF]" /> Recommended For You
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { name: 'Distributed Systems & Raft', tag: 'Advanced', time: '12 Hours', reason: 'Matches your backend interests' },
+            { name: 'Multimodal AI Vision & RAG', tag: 'Trending', time: '8 Hours', reason: 'High leverage skill in 2026' },
+            { name: 'PostgreSQL Deep Query Tuning', tag: 'Core', time: '6 Hours', reason: 'Boosts app query throughput' }
+          ].map((rec, rIdx) => (
+            <div
+              key={rIdx}
+              className="p-4 rounded-2xl bg-[#0E1622] border border-[#202B3D] hover:border-[#00D9FF]/40 transition-all flex flex-col justify-between group shadow-sm"
+            >
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="px-2 py-0.5 rounded font-semibold bg-[#00D9FF]/10 text-[#00D9FF] border border-[#00D9FF]/20">
+                    {rec.tag}
+                  </span>
+                  <span className="text-slate-500">{rec.time}</span>
+                </div>
+                <h3 className="text-xs font-bold text-white group-hover:text-[#00D9FF] transition-colors leading-snug">
+                  {rec.name}
+                </h3>
+                <p className="text-[11px] text-slate-400">{rec.reason}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setNewSubject(rec.name);
+                }}
+                className="mt-3 py-1.5 px-3 rounded-xl bg-[#141C28] hover:bg-[#1A2639] border border-[#202B3D] text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <span>Select Topic</span>
+                <ArrowRight className="w-3 h-3 text-[#00D9FF]" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Generate New Roadmap */}
       <form onSubmit={handleCreateRoadmap} className="p-4 rounded-2xl bg-[#101722] border border-[#202B3D] space-y-3">

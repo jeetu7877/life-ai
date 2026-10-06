@@ -10,11 +10,15 @@ import {
   Sparkles,
   ChevronRight,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Flame,
+  BarChart3,
+  CheckSquare
 } from 'lucide-react';
 
 export const GoalsPage: React.FC = () => {
   const [goals, setGoals] = useState<PersonalGoal[]>([]);
+  const [activeGoalsTab, setActiveGoalsTab] = useState<'Goals' | 'Habits' | 'Stats'>('Goals');
   const [recommendation, setRecommendation] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [newGoalTitle, setNewGoalTitle] = useState<string>('');
@@ -86,20 +90,109 @@ export const GoalsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* AI Recommendation Banner */}
-      {recommendation && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-[#00A8FF]/10 to-[#8B5CF6]/10 border border-[#00D9FF]/30 flex items-start gap-3 shadow-lg">
-          <Sparkles className="w-5 h-5 text-[#00D9FF] shrink-0 mt-0.5 animate-pulse" />
-          <div className="space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#00D9FF]">
-              AI Strategic Recommendation
+      {/* Screen 11: Navigation Tabs (Goals, Habits, Stats) */}
+      <div className="flex items-center gap-2">
+        {(['Goals', 'Habits', 'Stats'] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveGoalsTab(tab)}
+            className={`px-4 py-2 rounded-2xl text-xs font-semibold transition-all cursor-pointer ${
+              activeGoalsTab === tab
+                ? 'bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-[0_0_15px_rgba(0,217,255,0.2)]'
+                : 'bg-[#101722] border border-[#202B3D] text-slate-400 hover:text-white'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {activeGoalsTab === 'Habits' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Daily Habit Consistency
+            </h3>
+            <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
+              <Flame className="w-3.5 h-3.5" /> 5 Streaks Active
             </span>
-            <p className="text-sm text-slate-200 leading-relaxed font-medium">
-              {recommendation}
-            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { name: 'Wake Up with Life AI Alarm', streak: 14, time: '06:00 AM', done: true },
+              { name: 'Morning Focus & Roadmap Review', streak: 12, time: '07:30 AM', done: true },
+              { name: 'Deep Work: 3-Hour Code Sprint', streak: 9, time: '09:00 AM', done: false },
+              { name: 'Study Flashcards & Socratic Practice', streak: 16, time: '04:00 PM', done: true },
+              { name: 'Daily Reflection & Journal Log', streak: 7, time: '10:00 PM', done: false }
+            ].map((habit, hIdx) => (
+              <div
+                key={hIdx}
+                className="p-4 rounded-2xl bg-[#0E1622] border border-[#202B3D] hover:border-[#00D9FF]/30 transition-all flex items-center justify-between shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-xl border flex items-center justify-center ${
+                    habit.done ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' : 'bg-[#141C28] border-[#202B3D] text-slate-500'
+                  }`}>
+                    <CheckSquare className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">{habit.name}</h4>
+                    <span className="text-[10px] text-slate-400">{habit.time}</span>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[10px] font-bold flex items-center gap-1">
+                  <Flame className="w-3 h-3 text-amber-400" />
+                  {habit.streak}d streak
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}
+
+      {activeGoalsTab === 'Stats' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-4 rounded-2xl bg-[#0E1622] border border-[#202B3D] text-center space-y-1">
+              <span className="text-xs text-slate-400">Total Targets</span>
+              <p className="text-xl font-bold text-white">{goals.length}</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-[#0E1622] border border-[#202B3D] text-center space-y-1">
+              <span className="text-xs text-slate-400">Consistency</span>
+              <p className="text-xl font-bold text-[#00D9FF]">94%</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-[#0E1622] border border-[#202B3D] text-center space-y-1">
+              <span className="text-xs text-slate-400">Milestones Done</span>
+              <p className="text-xl font-bold text-emerald-400">
+                {goals.reduce((acc, g) => acc + (g.milestones?.filter(m => m.status === 'completed').length || 0), 0)}
+              </p>
+            </div>
+            <div className="p-4 rounded-2xl bg-[#0E1622] border border-[#202B3D] text-center space-y-1">
+              <span className="text-xs text-slate-400">Average Velocity</span>
+              <p className="text-xl font-bold text-purple-400">4.8 / wk</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeGoalsTab === 'Goals' && (
+        <>
+          {/* AI Recommendation Banner */}
+          {recommendation && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-[#00A8FF]/10 to-[#8B5CF6]/10 border border-[#00D9FF]/30 flex items-start gap-3 shadow-lg">
+              <Sparkles className="w-5 h-5 text-[#00D9FF] shrink-0 mt-0.5 animate-pulse" />
+              <div className="space-y-1">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#00D9FF]">
+                  AI Strategic Recommendation
+                </span>
+                <p className="text-sm text-slate-200 leading-relaxed font-medium">
+                  {recommendation}
+                </p>
+              </div>
+            </div>
+          )}
 
       {/* Create New Goal Card */}
       <form onSubmit={handleCreateGoal} className="p-4 rounded-2xl bg-[#101722] border border-[#202B3D] space-y-3">
@@ -210,6 +303,8 @@ export const GoalsPage: React.FC = () => {
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
     </div>
   );

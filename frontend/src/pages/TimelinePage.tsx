@@ -80,6 +80,48 @@ export const TimelinePage: React.FC = () => {
         </button>
       </div>
 
+      {/* Screen 10: Date Filter Pills (Today, Yesterday, This Week) */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            selectedDate === new Date().toISOString().split('T')[0]
+              ? 'bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-[0_0_12px_rgba(0,217,255,0.2)]'
+              : 'bg-[#101722] border border-[#202B3D] text-slate-400 hover:text-white'
+          }`}
+        >
+          Today
+        </button>
+        <button
+          onClick={() => {
+            const y = new Date();
+            y.setDate(y.getDate() - 1);
+            setSelectedDate(y.toISOString().split('T')[0]);
+          }}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            (() => {
+              const y = new Date();
+              y.setDate(y.getDate() - 1);
+              return selectedDate === y.toISOString().split('T')[0];
+            })()
+              ? 'bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-[0_0_12px_rgba(0,217,255,0.2)]'
+              : 'bg-[#101722] border border-[#202B3D] text-slate-400 hover:text-white'
+          }`}
+        >
+          Yesterday
+        </button>
+        <button
+          onClick={() => {
+            const w = new Date();
+            w.setDate(w.getDate() - 3);
+            setSelectedDate(w.toISOString().split('T')[0]);
+          }}
+          className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[#101722] border border-[#202B3D] text-slate-400 hover:text-white transition-all cursor-pointer"
+        >
+          This Week
+        </button>
+      </div>
+
       {/* Date Navigator */}
       <div className="flex items-center justify-between p-3.5 rounded-2xl border border-[#202B3D] bg-[#101722]">
         <button

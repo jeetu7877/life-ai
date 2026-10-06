@@ -26,6 +26,11 @@ import { WhatIfPage } from './pages/WhatIfPage';
 import { JournalPage } from './pages/JournalPage';
 import { AlarmsPage } from './pages/AlarmsPage';
 import { MusicPage } from './pages/MusicPage';
+import { AIVisionPage } from './pages/AIVisionPage';
+import { GitHubPage } from './pages/GitHubPage';
+import { AgentsPage } from './pages/AgentsPage';
+import { NotesPage } from './pages/NotesPage';
+import { MoreToolsPage } from './pages/MoreToolsPage';
 import { MobileBottomNav } from './components/MobileBottomNav';
 
 const AppShell: React.FC = () => {
@@ -203,6 +208,54 @@ const AppShell: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <MusicPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/vision"
+              element={
+                <ProtectedRoute>
+                  <AIVisionPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/github"
+              element={
+                <ProtectedRoute>
+                  <GitHubPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/agents"
+              element={
+                <ProtectedRoute>
+                  <AgentsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/notes"
+              element={
+                <ProtectedRoute>
+                  <NotesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/more"
+              element={
+                <ProtectedRoute>
+                  <MoreToolsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tools"
+              element={
+                <ProtectedRoute>
+                  <MoreToolsPage />
                 </ProtectedRoute>
               }
             />

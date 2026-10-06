@@ -18,6 +18,7 @@ import { alarmService, AlarmItem } from '../services/alarmService';
 
 export const AlarmsPage: React.FC = () => {
   const [alarms, setAlarms] = useState<AlarmItem[]>([]);
+  const [activeAlarmTab, setActiveAlarmTab] = useState<'Alarms' | 'Reminders' | 'Routines'>('Alarms');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [testStatus, setTestStatus] = useState<string | null>(null);
@@ -183,6 +184,87 @@ export const AlarmsPage: React.FC = () => {
             Say <span className="text-cyan-300 font-medium">"Hey Life, mujhe kal subah 6 baje utha dena"</span> or{' '}
             <span className="text-cyan-300 font-medium">"Life, alarm band karo"</span> hands-free anytime!
           </span>
+        </div>
+      </div>
+
+      {/* Screen 4: Navigation Tabs (Alarms, Reminders, Routines) */}
+      <div className="flex items-center gap-2 mb-5">
+        {(['Alarms', 'Reminders', 'Routines'] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveAlarmTab(tab)}
+            className={`px-4 py-2 rounded-2xl text-xs font-semibold transition-all cursor-pointer ${
+              activeAlarmTab === tab
+                ? 'bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-[0_0_15px_rgba(0,217,255,0.2)]'
+                : 'bg-[#101722] border border-[#202B3D] text-slate-400 hover:text-white'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Screen 4: Quick Action Modes (Sleep, Focus, Pomodoro, Habit) */}
+      <div className="mb-6">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">
+          Quick Modes
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <button
+            onClick={() => handleQuickPreset('10:30 PM', 'Bedtime Sleep Routine')}
+            className="p-3 rounded-2xl bg-[#0E1622] hover:bg-[#141C28] border border-[#202B3D] hover:border-[#00D9FF]/40 text-left transition-all active:scale-95 group shadow-sm"
+          >
+            <div className="text-sm font-bold text-white group-hover:text-[#00D9FF]">Sleep</div>
+            <div className="text-[10px] text-slate-400">10:30 PM Bedtime</div>
+          </button>
+          <button
+            onClick={async () => {
+              const target = Date.now() + 45 * 60 * 1000;
+              const date = new Date(target);
+              const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+              const newAlarm = await alarmService.setAlarm({
+                timeStr,
+                triggerMillis: target,
+                label: '45-Min Deep Focus',
+                enabled: true,
+                sound: true,
+                vibrate: true
+              });
+              setAlarms((prev) => [newAlarm, ...prev.filter((a) => a.id !== newAlarm.id)]);
+            }}
+            className="p-3 rounded-2xl bg-[#0E1622] hover:bg-[#141C28] border border-[#202B3D] hover:border-purple-500/40 text-left transition-all active:scale-95 group shadow-sm"
+          >
+            <div className="text-sm font-bold text-purple-400">Focus</div>
+            <div className="text-[10px] text-slate-400">+45 Mins Sprint</div>
+          </button>
+          <button
+            onClick={async () => {
+              const target = Date.now() + 25 * 60 * 1000;
+              const date = new Date(target);
+              const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+              const newAlarm = await alarmService.setAlarm({
+                timeStr,
+                triggerMillis: target,
+                label: 'Pomodoro Interval',
+                enabled: true,
+                sound: true,
+                vibrate: true
+              });
+              setAlarms((prev) => [newAlarm, ...prev.filter((a) => a.id !== newAlarm.id)]);
+            }}
+            className="p-3 rounded-2xl bg-[#0E1622] hover:bg-[#141C28] border border-[#202B3D] hover:border-amber-500/40 text-left transition-all active:scale-95 group shadow-sm"
+          >
+            <div className="text-sm font-bold text-amber-400">Pomodoro</div>
+            <div className="text-[10px] text-slate-400">+25 Mins Work</div>
+          </button>
+          <button
+            onClick={() => handleQuickPreset('07:00 AM', 'Daily Morning Habit')}
+            className="p-3 rounded-2xl bg-[#0E1622] hover:bg-[#141C28] border border-[#202B3D] hover:border-emerald-500/40 text-left transition-all active:scale-95 group shadow-sm"
+          >
+            <div className="text-sm font-bold text-emerald-400">Habit</div>
+            <div className="text-[10px] text-slate-400">07:00 AM Morning</div>
+          </button>
         </div>
       </div>
 

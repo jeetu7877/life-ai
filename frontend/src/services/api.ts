@@ -401,5 +401,25 @@ export const api = {
   searchMusic: (query: string, limit: number = 10) =>
     apiClient.get<any>('/music/search', { params: { q: query, limit } }).then(r => r.data),
   getMusicTrack: (trackId: string) =>
-    apiClient.get<any>(`/music/track/${trackId}`).then(r => r.data)
+    apiClient.get<any>(`/music/track/${trackId}`).then(r => r.data),
+
+  // AI Vision Multimodal Analysis
+  analyzeVision: (imageFile: File | Blob, question: string, conversationId?: string) => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    formData.append('question', question);
+    if (conversationId) {
+      formData.append('conversation_id', conversationId);
+    }
+    return apiClient.post<{ success: boolean; answer: string; detected_text?: string; type: string; conversation_id?: string }>(
+      '/vision/analyze',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        timeout: 45000
+      }
+    ).then(r => r.data);
+  }
 };

@@ -122,10 +122,22 @@ export const DocumentsPage: React.FC = () => {
     }
   };
 
-  const filteredDocs = documents.filter((d) =>
-    d.original_filename.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    d.category.toLowerCase().includes(searchFilter.toLowerCase())
-  );
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+
+  const categoryPills = ['All', 'Resume', 'Notes', 'IDs', 'Others'];
+
+  const filteredDocs = documents.filter((d) => {
+    const matchesSearch =
+      d.original_filename.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      d.category.toLowerCase().includes(searchFilter.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (selectedCategory === 'All') return true;
+    if (selectedCategory === 'Resume') return d.category.toLowerCase().includes('resume') || d.original_filename.toLowerCase().includes('resume') || d.original_filename.toLowerCase().includes('cv');
+    if (selectedCategory === 'Notes') return d.category.toLowerCase().includes('note') || d.original_filename.toLowerCase().includes('note');
+    if (selectedCategory === 'IDs') return d.category.toLowerCase().includes('id') || d.category.toLowerCase().includes('identity') || d.original_filename.toLowerCase().includes('id') || d.original_filename.toLowerCase().includes('pan') || d.original_filename.toLowerCase().includes('aadhaar');
+    return !['resume', 'note', 'id', 'identity'].some(k => d.category.toLowerCase().includes(k) || d.original_filename.toLowerCase().includes(k));
+  });
 
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-6xl mx-auto space-y-6 pb-28 md:pb-8 min-h-0">
@@ -161,19 +173,37 @@ export const DocumentsPage: React.FC = () => {
         </label>
       </div>
 
-      {/* Search Filter */}
-      {documents.length > 0 && (
-        <div className="flex items-center gap-2 bg-[#0A0F18] border border-[#202B3D] rounded-xl px-3.5 py-2">
+      {/* Search Filter & Category Pills (Screen 5) */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 bg-[#0A0F18] border border-[#202B3D] rounded-xl px-3.5 py-2 flex-1 min-w-0">
           <Search className="w-4 h-4 text-slate-500" />
           <input
             type="text"
             value={searchFilter}
             onChange={(e) => setSearchFilter(e.target.value)}
-            placeholder="Search documents by name or category..."
+            placeholder="Search documents by filename or category..."
             className="bg-transparent border-none text-xs text-slate-200 focus:outline-none w-full"
           />
         </div>
-      )}
+
+        {/* Category Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 custom-scrollbar shrink-0">
+          {categoryPills.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer ${
+                selectedCategory === cat
+                  ? 'bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-[0_0_12px_rgba(0,217,255,0.2)]'
+                  : 'bg-[#101722] border border-[#202B3D] text-slate-400 hover:text-white'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Document Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

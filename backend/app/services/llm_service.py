@@ -504,4 +504,94 @@ Only return raw JSON, no markdown formatting.
 
         return final_list
 
+    def analyze_vision(
+        self,
+        image_bytes: bytes,
+        mime_type: str,
+        question: str = "Analyze this image and explain what is visible in detail."
+    ) -> Dict[str, Any]:
+        """
+        Analyzes an uploaded image with Gemini Multimodal Vision API.
+        Extracts visible text, mathematical problems, diagrams, objects, and answers user queries step-by-step.
+        """
+        import io
+        from PIL import Image
+
+        genai = get_gemini_client()
+        if not genai:
+            return {
+                "success": False,
+                "answer": "Google Gemini Vision is not available or API key is not configured.",
+                "detected_text": "",
+                "type": "error"
+            }
+
+        prompt = (
+            "You are Life AI Vision, an advanced visual intelligence system.\n"
+            f"User Question: {question}\n\n"
+            "Instructions:\n"
+            "1. Answer the user's question directly, accurately, and thoroughly based on the image.\n"
+            "2. If this is a math or science problem: solve it step-by-step with clear equations and explanations.\n"
+            "3. If this is a document or text: transcribe and extract the text accurately.\n"
+            "4. If this is code, architecture, or a diagram: break down the logic and components clearly.\n"
+            "5. If details in the image are unclear or blurry: state honestly what parts are unclear rather than guessing.\n"
+            "6. Answer in natural, friendly, fluent language (mirroring English or Hindi based on the user's question).\n"
+        )
+
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+        except Exception as e:
+            return {
+                "success": False,
+                "answer": f"Unable to decode image: {e}",
+                "detected_text": "",
+                "type": "error"
+            }
+
+        models_to_try = [
+            "gemini-flash-lite-latest",
+            "gemini-2.5-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-flash-latest",
+            "gemini-1.5-flash"
+        ]
+
+        last_error = None
+        for candidate in models_to_try:
+            try:
+                model = genai.GenerativeModel(model_name=candidate)
+                response = model.generate_content(
+                    [prompt, image],
+                    generation_config={"max_output_tokens": 2048, "temperature": 0.4},
+                    request_options={"timeout": 30}
+                )
+                if response and response.text:
+                    full_text = response.text.strip()
+                    ans_type = "general"
+                    lower = full_text.lower()
+                    if any(w in lower for w in ["step 1", "solution:", "equation", "\\frac", "x =", "formula"]):
+                        ans_type = "math_solution"
+                    elif any(w in lower for w in ["transcription:", "document contains", "heading:"]):
+                        ans_type = "document_extraction"
+                    elif any(w in lower for w in ["diagram", "architecture", "flowchart"]):
+                        ans_type = "diagram_explanation"
+
+                    return {
+                        "success": True,
+                        "answer": full_text,
+                        "detected_text": full_text[:400],
+                        "type": ans_type
+                    }
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Gemini Vision note with {candidate}: {e}")
+                continue
+
+        return {
+            "success": False,
+            "answer": f"Image analysis encountered an error: {str(last_error)[:120]}. Please try again.",
+            "detected_text": "",
+            "type": "error"
+        }
+
 llm_service = LLMService()

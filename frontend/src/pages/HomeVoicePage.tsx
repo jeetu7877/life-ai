@@ -18,7 +18,11 @@ import {
   Radio,
   Volume2,
   AlarmClock,
-  Music
+  Music,
+  ScanEye,
+  FolderGit2,
+  GraduationCap,
+  Sun
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -126,31 +130,49 @@ export const HomeVoicePage: React.FC = () => {
       action: () => navigate('/music')
     },
     {
-      label: "Goals & Targets",
-      desc: "Track your milestones",
-      icon: Brain,
-      color: "text-[#00A8FF]",
-      border: "border-[#00A8FF]/30",
-      bg: "bg-[#00A8FF]/10",
-      action: () => navigate('/goals')
+      label: "AI Vision",
+      desc: "Multimodal photo Q&A",
+      icon: ScanEye,
+      color: "text-[#00D9FF]",
+      border: "border-[#00D9FF]/30",
+      bg: "bg-[#00D9FF]/10",
+      action: () => navigate('/vision')
+    },
+    {
+      label: "Documents RAG",
+      desc: "PDF & OCR search",
+      icon: FileText,
+      color: "text-purple-400",
+      border: "border-purple-400/30",
+      bg: "bg-purple-400/10",
+      action: () => navigate('/documents')
+    },
+    {
+      label: "GitHub Code",
+      desc: "Index & chat with repo",
+      icon: FolderGit2,
+      color: "text-sky-400",
+      border: "border-sky-400/30",
+      bg: "bg-sky-500/10",
+      action: () => navigate('/github')
     },
     {
       label: "Study Coach",
       desc: "Flashcards & quiz",
-      icon: FileText,
+      icon: GraduationCap,
       color: "text-[#8B5CF6]",
       border: "border-[#8B5CF6]/30",
       bg: "bg-[#8B5CF6]/10",
       action: () => navigate('/study')
     },
     {
-      label: "Productivity",
-      desc: "Daily metrics & habit",
-      icon: Calendar,
-      color: "text-[#C026D3]",
-      border: "border-[#C026D3]/30",
-      bg: "bg-[#C026D3]/10",
-      action: () => navigate('/analytics')
+      label: "AI Agents",
+      desc: "8 specialized roles",
+      icon: Bot,
+      color: "text-rose-400",
+      border: "border-rose-400/30",
+      bg: "bg-rose-400/10",
+      action: () => navigate('/agents')
     }
   ];
 
@@ -236,7 +258,14 @@ export const HomeVoicePage: React.FC = () => {
                   <h2 className="text-lg font-bold text-white tracking-tight">
                     Hello, <span className="text-[#00D9FF]">{displayName}</span>
                   </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Your personal AI companion is ready.</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#05070B] border border-[#202B3D] text-[10px] text-slate-300 font-medium">
+                      <Sun className="w-3 h-3 text-amber-400" />
+                      <span>28°C Clear</span>
+                      <span className="text-slate-600">•</span>
+                      <span>{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' })}</span>
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border flex items-center gap-1.5 ${

@@ -29,6 +29,7 @@ const mainNavItems = [
   { to: '/chat', label: 'Chat', icon: MessageSquare },
   { to: '/alarms', label: 'Alarms', icon: AlarmClock },
   { to: '/music', label: 'Music', icon: Music },
+  { to: '/more', label: 'More', icon: LayoutGrid },
 ];
 
 const allFeatures = [
@@ -107,21 +108,6 @@ export const MobileBottomNav: React.FC = () => {
             </NavLink>
           );
         })}
-
-        {/* More Button */}
-        <button
-          type="button"
-          onClick={() => setIsMoreOpen(true)}
-          className={`w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all cursor-pointer text-center ${
-            isMoreOpen
-              ? 'text-white font-semibold bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 border border-[#00D9FF]/40 shadow-[0_0_12px_rgba(0,217,255,0.25)]'
-              : 'text-[#94A3B8] hover:text-[#F8FAFC]'
-          }`}
-          aria-label="More Features"
-        >
-          <LayoutGrid className="w-4 h-4 mb-0.5 text-[#00D9FF] shrink-0" />
-          <span className="text-[10px] tracking-tight text-[#00D9FF] font-semibold truncate w-full px-0.5">More</span>
-        </button>
       </nav>
 
       {/* Full Feature Bottom-Sheet Modal */}

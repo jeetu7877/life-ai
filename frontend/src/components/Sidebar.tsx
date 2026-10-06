@@ -20,26 +20,29 @@ import {
   LogOut,
   ChevronRight,
   AlarmClock,
-  Music
+  Music,
+  ScanEye,
+  FolderGit2,
+  Bot,
+  LayoutGrid
 } from 'lucide-react';
 
 const navItems = [
-  { to: '/', label: 'Home Dashboard', icon: Mic },
-  { to: '/chat', label: 'Daily Chat', icon: MessageSquare },
-  { to: '/alarms', label: 'Smart Alarms', icon: AlarmClock },
-  { to: '/music', label: 'Music Player', icon: Music },
-  { to: '/life-map', label: 'Life Map & Twin', icon: Network },
-  { to: '/what-if', label: 'What-If Simulations', icon: Sparkles },
-  { to: '/journal', label: 'Journal & Retros', icon: BookMarked },
-  { to: '/goals', label: 'Goals & Milestones', icon: Target },
-  { to: '/study', label: 'AI Study Coach', icon: GraduationCap },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/memories', label: 'Long-Term Memory', icon: Brain },
+  { to: '/', label: 'Home', icon: Mic },
+  { to: '/chat', label: 'Chat', icon: MessageSquare },
+  { to: '/music', label: 'Music', icon: Music },
+  { to: '/alarms', label: 'Alarms', icon: AlarmClock },
+  { to: '/vision', label: 'AI Vision', icon: ScanEye },
+  { to: '/documents', label: 'Documents', icon: FileText },
+  { to: '/github', label: 'GitHub', icon: FolderGit2 },
+  { to: '/study', label: 'Study', icon: GraduationCap },
+  { to: '/agents', label: 'Agents', icon: Bot },
   { to: '/timeline', label: 'Timeline', icon: Calendar },
-  { to: '/documents', label: 'Documents & RAG', icon: FileText },
-  { to: '/profile', label: 'Profile', icon: UserIcon },
-  { to: '/vault', label: 'Secure Vault', icon: Shield },
+  { to: '/goals', label: 'Goals', icon: Target },
+  { to: '/notes', label: 'Notes', icon: BookMarked },
+  { to: '/more', label: 'Tools', icon: LayoutGrid },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
+  { to: '/profile', label: 'Profile', icon: UserIcon },
 ];
 
 export const Sidebar: React.FC = () => {
