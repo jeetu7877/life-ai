@@ -45,7 +45,9 @@ export async function executeServerTools(tools: ExecutedTool[] | undefined | nul
         }
       } else if (t.tool === 'music_control') {
         console.log('[TOOL_EXECUTOR] Executing music_control action:', t.action);
-        if (t.action === 'pause') {
+        if (t.action === 'stop') {
+          musicService.stop();
+        } else if (t.action === 'pause') {
           musicService.pause();
         } else if (t.action === 'resume') {
           musicService.resume();

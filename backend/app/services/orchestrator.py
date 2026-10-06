@@ -163,10 +163,20 @@ class AgentOrchestrator:
             }
 
         # FAST PATH 1.6: Music Search & Playback Controller (<15ms)
-        is_music_pause = any(p in lower_msg for p in ["gaana roko", "gaana pause", "pause music", "stop music", "music band karo", "music roko", "song pause", "isko band karo"])
-        is_music_resume = any(p in lower_msg for p in ["resume music", "gaana chalu karo", "continue music", "phir se chalao", "ye phir se chalao"])
-        is_music_next = any(p in lower_msg for p in ["next song", "agla gaana", "change song", "gaana badlo", "next track"])
-        is_music_prev = any(p in lower_msg for p in ["previous song", "pichhla gaana", "pichla gana"])
+        is_music_stop = any(p in lower_msg for p in [
+            "stop song", "song stop", "stop music", "music stop", "gaana stop", "gana stop",
+            "music band karo", "gaana band karo", "gana band karo", "song band karo",
+            "isko band karo", "band karo isko", "gaana roko", "gana roko", "music roko", "song roko",
+            "roko isko"
+        ]) or lower_msg in ["stop", "stop karo", "band karo"]
+
+        is_music_pause = any(p in lower_msg for p in [
+            "gaana pause", "gana pause", "pause music", "pause song", "song pause", "music pause", "ye gaana pause karo"
+        ]) or lower_msg in ["pause", "pause karo"]
+
+        is_music_resume = any(p in lower_msg for p in ["resume music", "resume song", "gaana chalu karo", "gana chalu karo", "continue music", "phir se chalao", "ye phir se chalao"]) or lower_msg in ["resume", "resume karo", "continue"]
+        is_music_next = any(p in lower_msg for p in ["next song", "agla gaana", "agla gana", "change song", "gaana badlo", "gana badlo", "next track"]) or lower_msg in ["next", "agla"]
+        is_music_prev = any(p in lower_msg for p in ["previous song", "pichhla gaana", "pichla gana", "pichhla gana"]) or lower_msg in ["previous", "pichhla", "pichla"]
         has_music_action = any(act in lower_msg for act in [
             "chalao", "chlao", "chala do", "chla do", "chala de", "chla de", "chalana",
             "bajao", "bjao", "baja do", "bja do", "baja de", "bja de",
@@ -176,6 +186,17 @@ class AgentOrchestrator:
         is_music_play = has_music_action and any(w in lower_msg for w in [
             "gaana", "gana", "geet", "song", "music", "track", "play", "chalao", "chlao", "bajao", "bjao", "lagao", "lgao", "sunao"
         ])
+
+        if is_music_stop:
+            total_ms = round((time.perf_counter() - t0) * 1000, 2)
+            timing_metrics["total_ms"] = total_ms
+            timing_metrics["llm_used"] = False
+            return {
+                "response": "Music stop kar diya hai.",
+                "retrieved_sources": [{"source": "music_controller"}],
+                "tools_executed": [{"tool": "music_control", "action": "stop"}],
+                "timing": timing_metrics
+            }
 
         if is_music_pause:
             total_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -243,8 +264,23 @@ class AgentOrchestrator:
                 search_res = {"results": []}
 
             results = search_res.get("results", [])
-            top_track = results[0] if results else None
-            track_title = top_track.get("title", song_query) if top_track else song_query
+            compilation_regex = r"(jukebox|mashup|compilation|all\s*songs|nonstop|non-stop|full\s*album|collection|top\s*\d+\s*songs|hits\s*20\d\d)"
+            is_explicit_comp = bool(re.search(r"(jukebox|mashup|compilation|all\s*songs|nonstop|non-stop|collection)", song_query, flags=re.IGNORECASE))
+            single_track = None
+            if not is_explicit_comp and results:
+                for r in results:
+                    if not re.search(compilation_regex, r.get("title", ""), flags=re.IGNORECASE):
+                        single_track = r
+                        break
+            top_track = single_track if single_track else (results[0] if results else None)
+
+            if top_track:
+                raw_t = top_track.get("title", song_query)
+                clean_t = re.sub(r'\[.*?\]|\(.*?\)|\|.*$', '', raw_t)
+                clean_t = re.sub(r'(official\s*video|official\s*audio|full\s*song|video\s*song)', '', clean_t, flags=re.IGNORECASE).strip()
+                track_title = clean_t if clean_t else raw_t
+            else:
+                track_title = song_query
 
             total_ms = round((time.perf_counter() - t0) * 1000, 2)
             timing_metrics["total_ms"] = total_ms

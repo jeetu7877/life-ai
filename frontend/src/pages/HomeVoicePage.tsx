@@ -75,18 +75,26 @@ export const HomeVoicePage: React.FC = () => {
   const [feedback, setFeedback] = useState<'liked' | 'disliked' | null>(null);
 
   // Real or active conversation display in the Glass Card
-  const [cardUserText, setCardUserText] = useState<string>('pahle kya kar rahi');
-  const [cardAiText, setCardAiText] = useState<string>(
-    'Main toh bas yahin hoon, aapka intezaar kar rahi thi!'
-  );
-  const [cardTime, setCardTime] = useState<string>(() => {
-    return new Date().toLocaleTimeString('en-IN', {
+  const [cardUserText, setCardUserText] = useState<string>('');
+const [cardAiText, setCardAiText] = useState<string>('');
+  const [cardTime, setCardTime] = useState<string>('');
+  const updateConversationCard = (
+  userMessage: string,
+  aiResponse: string
+) => {
+  setCardUserText(userMessage);
+  setCardAiText(aiResponse);
+
+  setCardTime(
+    new Date().toLocaleTimeString('en-IN', {
       timeZone: 'Asia/Kolkata',
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true
-    });
-  });
+      hour12: true,
+    })
+  );
+};
+
 
   // Next Alarm display in Today's Focus
   const [nextAlarmText, setNextAlarmText] = useState<string>('Tomorrow 6:00 AM');

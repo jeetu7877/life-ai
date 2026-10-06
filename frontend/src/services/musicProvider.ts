@@ -29,12 +29,30 @@ export interface Playlist {
   isCustom?: boolean;
 }
 
-export type PlayerStatus = 'UNSTARTED' | 'PLAYING' | 'PAUSED' | 'BUFFERING' | 'ENDED' | 'ERROR';
+export type PlaybackOrigin = 'life_ai' | 'external' | 'unknown';
+export type PlayerStatus = 'UNSTARTED' | 'PLAYING' | 'PAUSED' | 'BUFFERING' | 'ENDED' | 'CUED' | 'IDLE' | 'ERROR';
 export type RepeatMode = 'off' | 'all' | 'one';
+
+export interface MusicSession {
+  sessionId: string;
+  currentTrack: Track | null;
+  isPlaying: boolean;
+  isPaused: boolean;
+  playerStatus: PlayerStatus;
+  position: number;
+  duration: number;
+  volume: number;
+  provider: 'youtube' | 'direct';
+  playbackOrigin: PlaybackOrigin;
+  playerInstanceId: string;
+  startedAt: string | null;
+  updatedAt: string | null;
+}
 
 export interface PlayerState {
   currentTrack: Track | null;
   isPlaying: boolean;
+  isPaused: boolean;
   playerStatus: PlayerStatus;
   currentTime: number;
   duration: number;
@@ -47,6 +65,9 @@ export interface PlayerState {
   repeatMode: RepeatMode;
   isShuffle: boolean;
   provider: 'youtube' | 'direct';
+  playbackOrigin: PlaybackOrigin;
+  sessionId: string;
+  playerInstanceId: string;
   errorMessage: string | null;
 }
 

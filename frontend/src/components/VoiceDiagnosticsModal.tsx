@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useVoice } from '../context/VoiceContext';
+import { musicService, PlayerState } from '../services/musicService';
 import {
   Mic,
   Activity,
@@ -12,7 +13,8 @@ import {
   RefreshCw,
   X,
   Play,
-  Square
+  Square,
+  Music
 } from 'lucide-react';
 
 export const VoiceDiagnosticsModal: React.FC = () => {
@@ -48,6 +50,14 @@ export const VoiceDiagnosticsModal: React.FC = () => {
   const [liveTestTranscript, setLiveTestTranscript] = useState<string>('');
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [testError, setTestError] = useState<string | null>(null);
+  const [musicState, setMusicState] = useState<PlayerState>(musicService.getState());
+
+  useEffect(() => {
+    const unsub = musicService.addListener((s) => {
+      setMusicState(s);
+    });
+    return unsub;
+  }, []);
 
   if (!isDiagnosticsOpen) return null;
 
@@ -536,6 +546,90 @@ export const VoiceDiagnosticsModal: React.FC = () => {
             <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-xs text-rose-300">
               <span className="font-bold block mb-1">Diagnostic Notice:</span>
               {testError}
+            </div>
+          )}
+        </div>
+
+        {/* Music Controller Diagnostics Section */}
+        <div className="mt-4 p-4 rounded-2xl bg-black/40 border border-[#202B3D] space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+              <Music className="w-3.5 h-3.5 text-[#00D9FF]" />
+              Music Controller & Player State
+            </span>
+            <span
+              className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                musicState.playerStatus === 'PLAYING'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse'
+                  : musicState.playerStatus === 'PAUSED'
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+              }`}
+            >
+              {musicState.playerStatus}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800">
+              <span className="text-[10px] text-slate-500 block">Current Track</span>
+              <span className="font-semibold text-slate-200 truncate block">
+                {musicState.currentTrack ? musicState.currentTrack.title : 'None (Idle)'}
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800">
+              <span className="text-[10px] text-slate-500 block">Artist</span>
+              <span className="font-semibold text-slate-200 truncate block">
+                {musicState.currentTrack ? musicState.currentTrack.artist : '—'}
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800">
+              <span className="text-[10px] text-slate-500 block">Origin / Provider</span>
+              <span className="font-mono text-cyan-400 truncate block">
+                {musicState.playbackOrigin} ({musicState.provider})
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800">
+              <span className="text-[10px] text-slate-500 block">Video ID</span>
+              <span className="font-mono text-slate-300 truncate block">
+                {musicState.currentTrack?.videoId || '—'}
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800">
+              <span className="text-[10px] text-slate-500 block">Position / Duration</span>
+              <span className="font-mono text-slate-300 block">
+                {Math.floor(musicState.currentTime)}s / {Math.floor(musicState.duration)}s
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800">
+              <span className="text-[10px] text-slate-500 block">Queue Count</span>
+              <span className="font-mono text-slate-300 block">
+                {musicState.queue.length} tracks
+              </span>
+            </div>
+          </div>
+
+          {musicState.currentTrack && (
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => musicState.isPlaying ? musicService.pause() : musicService.resume()}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#1E293B] hover:bg-[#2B394E] text-slate-200 border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                {musicState.isPlaying ? 'Pause Track' : 'Resume Track'}
+              </button>
+              <button
+                type="button"
+                onClick={() => musicService.stop()}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                Stop Music
+              </button>
             </div>
           )}
         </div>

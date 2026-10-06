@@ -7,9 +7,63 @@
 
 import { api } from './api';
 import { handsFreeService } from './handsFreeService';
-import { Track, Playlist, PlayerState, PlayerStatus, RepeatMode } from './musicProvider';
+import {
+  Track,
+  Playlist,
+  PlayerState,
+  PlayerStatus,
+  PlaybackOrigin,
+  MusicSession,
+  RepeatMode
+} from './musicProvider';
 
-export type { Track, Playlist, PlayerState, PlayerStatus, RepeatMode };
+export type { Track, Playlist, PlayerState, PlayerStatus, PlaybackOrigin, MusicSession, RepeatMode };
+
+/**
+ * Strips promotional video tags, channel branding, and YouTube artifacts
+ * from track titles and artist names.
+ */
+export function cleanTrackMetadata(title: string, artist?: string): { cleanTitle: string; cleanArtist: string } {
+  let cleanTitle = title || '';
+  let cleanArtist = artist || '';
+
+  // 1. Remove brackets content that contain video/audio/remix/lyrics/official
+  cleanTitle = cleanTitle
+    .replace(/\[\s*(official\s*(music\s*)?video|video|audio|lyrics|official\s*audio|4k|hd|visualizer|remix|full\s*song|song)\s*\]/gi, '')
+    .replace(/\(\s*(official\s*(music\s*)?video|video|audio|lyrics|official\s*audio|4k|hd|visualizer|remix|full\s*song|song)\s*\)/gi, '')
+    // 2. Remove trailing '| ...' like '| T-Series' or '| Sony Music India'
+    .replace(/\|.*$/g, '')
+    // 3. Remove standalone noise words
+    .replace(/(official\s*video|official\s*audio|full\s*song|lyric\s*video|video\s*song|full\s*video|audio\s*song)/gi, '')
+    // 4. Remove leading/trailing non-alphanumeric punctuation
+    .replace(/^[\s\-_:]+|[\s\-_:]+$/g, '')
+    .trim();
+
+  // If title is in "Artist - Track" format
+  if (cleanTitle.includes(' - ')) {
+    const parts = cleanTitle.split(' - ');
+    if (parts.length >= 2) {
+      const maybeArtist = parts[0].trim();
+      const maybeSong = parts.slice(1).join(' - ').trim();
+      if (!cleanArtist || cleanArtist === 'Official Music' || cleanArtist.toLowerCase().includes('topic') || cleanArtist.toLowerCase().includes('records')) {
+        cleanArtist = maybeArtist;
+      }
+      cleanTitle = maybeSong;
+    }
+  }
+
+  // Clean artist
+  cleanArtist = cleanArtist
+    .replace(/\s*-\s*Topic$/i, '')
+    .replace(/VEVO$/i, '')
+    .replace(/Official\s*Channel/i, '')
+    .trim();
+
+  return {
+    cleanTitle: cleanTitle || title || 'Music Track',
+    cleanArtist: cleanArtist || artist || 'Life AI Music'
+  };
+}
 
 // Core featured tracks with verified YouTube video IDs and high-res album thumbnails
 export const FEATURED_TRACKS: Track[] = [
@@ -402,7 +456,8 @@ class MusicService {
   private state: PlayerState = {
     currentTrack: null,
     isPlaying: false,
-    playerStatus: 'UNSTARTED',
+    isPaused: false,
+    playerStatus: 'IDLE',
     currentTime: 0,
     duration: 0,
     volume: 85,
@@ -414,8 +469,29 @@ class MusicService {
     repeatMode: 'off',
     isShuffle: false,
     provider: 'youtube',
+    playbackOrigin: 'life_ai',
+    sessionId: `music_sess_${Date.now()}`,
+    playerInstanceId: `yt_inst_${Math.random().toString(36).substring(2, 9)}`,
     errorMessage: null
   };
+
+  public getSession(): MusicSession {
+    return {
+      sessionId: this.state.sessionId,
+      currentTrack: this.state.currentTrack,
+      isPlaying: this.state.isPlaying,
+      isPaused: this.state.isPaused,
+      playerStatus: this.state.playerStatus,
+      position: this.state.currentTime,
+      duration: this.state.duration,
+      volume: this.state.volume,
+      provider: this.state.provider,
+      playbackOrigin: this.state.playbackOrigin,
+      playerInstanceId: this.state.playerInstanceId,
+      startedAt: this.state.sessionId ? new Date().toISOString() : null,
+      updatedAt: new Date().toISOString()
+    };
+  }
 
   private listeners: Set<StateListener> = new Set();
   private directAudio: HTMLAudioElement | null = null;
@@ -602,13 +678,16 @@ class MusicService {
     console.log(`[MUSIC] YT onStateChange = ${ytState}`);
     if (ytState === 1) {
       this.state.isPlaying = true;
+      this.state.isPaused = false;
       this.state.playerStatus = 'PLAYING';
+      this.state.playbackOrigin = 'life_ai';
       this.state.errorMessage = null;
       handsFreeService.setMusicPlaying(true);
       this.startProgressTicker();
       this.notify();
     } else if (ytState === 2) {
       this.state.isPlaying = false;
+      this.state.isPaused = true;
       this.state.playerStatus = 'PAUSED';
       handsFreeService.setMusicPlaying(false);
       this.stopProgressTicker();
@@ -618,6 +697,8 @@ class MusicService {
       this.notify();
     } else if (ytState === 0) {
       console.log('[MUSIC] Track finished playing -> auto-advancing next track in queue');
+      this.state.isPlaying = false;
+      this.state.isPaused = false;
       this.state.playerStatus = 'ENDED';
       handsFreeService.setMusicPlaying(false);
       this.stopProgressTicker();
@@ -690,18 +771,21 @@ class MusicService {
     try {
       const data = await api.searchMusic(q, limit);
       if (data && data.success && Array.isArray(data.results)) {
-        const mapped: Track[] = data.results.map((r: any) => ({
-          id: r.id,
-          title: r.title,
-          artist: r.artist || r.channel || 'Official Music',
-          channel: r.channel || r.artist,
-          thumbnail: r.thumbnail || `https://i.ytimg.com/vi/${r.id}/hqdefault.jpg`,
-          duration: r.duration || '3:30',
-          durationSeconds: r.durationSeconds || 210,
-          source: 'youtube',
-          videoId: r.id,
-          url: r.url || `https://www.youtube.com/watch?v=${r.id}`
-        }));
+        const mapped: Track[] = data.results.map((r: any) => {
+          const cleaned = cleanTrackMetadata(r.title, r.artist || r.channel);
+          return {
+            id: r.id,
+            title: cleaned.cleanTitle,
+            artist: cleaned.cleanArtist,
+            channel: r.channel || r.artist,
+            thumbnail: r.thumbnail || `https://i.ytimg.com/vi/${r.id}/hqdefault.jpg`,
+            duration: r.duration || '3:30',
+            durationSeconds: r.durationSeconds || 210,
+            source: 'youtube',
+            videoId: r.id,
+            url: r.url || `https://www.youtube.com/watch?v=${r.id}`
+          };
+        });
         console.log(`[MUSIC_SEARCH] results=${mapped.length}`);
         return mapped;
       }
@@ -719,6 +803,7 @@ class MusicService {
 
   /**
    * Voice & Fast Intent: search for a song, choose top match, setup queue, and play immediately.
+   * Prioritizes individual single tracks over multi-hour jukebox compilations.
    */
   public async searchAndPlay(query: string): Promise<Track> {
     const clean = query.trim();
@@ -731,11 +816,23 @@ class MusicService {
       return fallback;
     }
 
-    const bestTrack = results[0];
+    // Filter out long compilations/jukeboxes unless user specifically asked for them
+    const isExplicitCompilation = /(jukebox|mashup|compilation|all\s*songs|nonstop|non-stop|full\s*album|collection)/i.test(clean);
+    let bestTrack: Track = results[0];
+
+    if (!isExplicitCompilation) {
+      const compilationRegex = /(jukebox|mashup|compilation|all\s*songs|nonstop|non-stop|full\s*album|collection|top\s*\d+\s*songs|hits\s*20\d\d)/i;
+      const singleTrack = results.find((t) => !compilationRegex.test(t.title));
+      if (singleTrack) {
+        bestTrack = singleTrack;
+      }
+    }
+
     console.log(`[MUSIC_PLAY] selected track="${bestTrack.title}" (id=${bestTrack.id})`);
 
     // Add remaining search results into current queue for seamless auto-play
-    this.state.queue = [bestTrack, ...results.slice(1)];
+    const remaining = results.filter((t) => t.id !== bestTrack.id);
+    this.state.queue = [bestTrack, ...remaining];
     this.state.queueIndex = 0;
 
     await this.play(bestTrack);
@@ -754,7 +851,9 @@ class MusicService {
     this.state.currentTrack = target;
     this.recordRecentlyPlayed(target);
     this.state.isPlaying = true;
+    this.state.isPaused = false;
     this.state.playerStatus = 'BUFFERING';
+    this.state.playbackOrigin = 'life_ai';
     this.state.currentTime = 0;
     this.state.duration = target.durationSeconds || 210;
     this.state.provider = target.source === 'direct' ? 'direct' : 'youtube';
@@ -775,9 +874,13 @@ class MusicService {
         this.directAudio.volume = this.state.volume / 100;
         await this.directAudio.play();
         this.state.isPlaying = true;
+        this.state.isPaused = false;
         this.state.playerStatus = 'PLAYING';
       } catch (err) {
         console.warn('[MUSIC_ERROR] Direct playback failed:', err);
+        this.state.isPlaying = false;
+        this.state.playerStatus = 'ERROR';
+        this.state.errorMessage = 'Audio stream error';
       }
     } else {
       // YouTube playback via official IFrame API
@@ -807,6 +910,7 @@ class MusicService {
   public pause(): void {
     console.log('[MUSIC] pause() requested');
     this.state.isPlaying = false;
+    this.state.isPaused = true;
     this.state.playerStatus = 'PAUSED';
     handsFreeService.setMusicPlaying(false);
 
@@ -828,12 +932,16 @@ class MusicService {
   public resume(): void {
     console.log('[MUSIC] resume() requested');
     if (!this.state.currentTrack) {
-      this.play(this.state.queue[0]);
+      if (this.state.queue.length > 0) {
+        this.play(this.state.queue[0]);
+      }
       return;
     }
 
     this.state.isPlaying = true;
+    this.state.isPaused = false;
     this.state.playerStatus = 'PLAYING';
+    this.state.playbackOrigin = 'life_ai';
     handsFreeService.setMusicPlaying(true);
 
     if (this.state.currentTrack.source === 'direct' && this.directAudio) {
@@ -859,10 +967,14 @@ class MusicService {
   }
 
   public stop(): void {
+    console.log('[MUSIC] stop() requested');
     this.stopPlaybackStreams();
     this.state.isPlaying = false;
-    this.state.playerStatus = 'UNSTARTED';
+    this.state.isPaused = false;
+    this.state.playerStatus = 'IDLE';
+    this.state.currentTrack = null;
     this.state.currentTime = 0;
+    this.state.playbackOrigin = 'life_ai';
     handsFreeService.setMusicPlaying(false);
     this.notify();
   }
@@ -1279,3 +1391,4 @@ class MusicService {
 }
 
 export const musicService = MusicService.getInstance();
+export const MusicController = musicService;

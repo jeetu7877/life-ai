@@ -1,5 +1,5 @@
 import { alarmService } from './alarmService';
-import { musicService, CURATED_TRACKS } from './musicService';
+import { musicService, CURATED_TRACKS, cleanTrackMetadata } from './musicService';
 
 export interface IntentResult {
   handled: boolean;
@@ -241,87 +241,239 @@ export class FastIntentRouter {
     }
 
     // ==========================================
-    // 2. VOICE-CONTROLLED MUSIC INTENTS
+    // 2. VOICE-CONTROLLED MUSIC INTENTS (MusicController)
     // ==========================================
 
-    // A. Pause / Stop Music
+    // External Music Disclaimer Intent
     if (
-      q.includes('gaana roko') ||
-      q.includes('gaana pause') ||
-      q.includes('pause music') ||
-      q.includes('stop music') ||
-      q.includes('music band karo') ||
-      q.includes('music roko') ||
-      q.includes('song pause') ||
-      q.includes('ye gaana pause karo') ||
-      q.includes('isko band karo') ||
-      q === 'stop' ||
-      q === 'pause'
+      (q.includes('spotify') && (q.includes('stop') || q.includes('band') || q.includes('pause') || q.includes('roko'))) ||
+      q.includes('phone ka gaana band') ||
+      q.includes('phone ka music band') ||
+      q.includes('external music') ||
+      q.includes('bahar ka gaana')
     ) {
-      musicService.pause();
       return {
         handled: true,
-        responseText: 'Gaana pause kar diya hai.'
+        responseText: 'Life AI sirf apne internal player ka music control kar sakta hai. External apps jaise Spotify ka audio control karne ki direct permission system me available nahi hai.'
       };
     }
 
-    // B. Resume / Play current Music
-    if (
+    // A. Stop Music Intent (Explicit Stop / Band Karo)
+    const isStopMusic =
+      q.includes('song stop') ||
+      q.includes('stop song') ||
+      q.includes('music stop') ||
+      q.includes('stop music') ||
+      q.includes('gaana stop') ||
+      q.includes('gana stop') ||
+      q.includes('stop gaana') ||
+      q.includes('stop gana') ||
+      q.includes('music band karo') ||
+      q.includes('gaana band karo') ||
+      q.includes('gana band karo') ||
+      q.includes('song band karo') ||
+      q.includes('isko band karo') ||
+      q.includes('band karo isko') ||
+      q.includes('gaana roko') ||
+      q.includes('gana roko') ||
+      q.includes('music roko') ||
+      q.includes('song roko') ||
+      q.includes('roko isko') ||
+      q === 'stop' ||
+      q === 'stop karo' ||
+      q === 'band karo';
+
+    if (isStopMusic) {
+      const curState = musicService.getState();
+      const hasActiveTrack = !!curState.currentTrack || curState.isPlaying || curState.isPaused || curState.playerStatus === 'PLAYING' || curState.playerStatus === 'BUFFERING';
+
+      if (hasActiveTrack) {
+        musicService.stop();
+        return {
+          handled: true,
+          responseText: 'Music stop kar diya hai.'
+        };
+      } else {
+        return {
+          handled: true,
+          responseText: 'Life AI par abhi koi gaana nahi chal raha hai.'
+        };
+      }
+    }
+
+    // B. Pause Music Intent
+    const isPauseMusic =
+      q.includes('gaana pause') ||
+      q.includes('gana pause') ||
+      q.includes('song pause') ||
+      q.includes('music pause') ||
+      q.includes('pause music') ||
+      q.includes('pause song') ||
+      q.includes('pause gaana') ||
+      q.includes('pause gana') ||
+      q.includes('ye gaana pause karo') ||
+      q === 'pause' ||
+      q === 'pause karo';
+
+    if (isPauseMusic) {
+      const curState = musicService.getState();
+      if (curState.isPlaying || curState.playerStatus === 'PLAYING' || curState.playerStatus === 'BUFFERING') {
+        musicService.pause();
+        return {
+          handled: true,
+          responseText: 'Gaana pause kar diya hai.'
+        };
+      } else if (curState.isPaused || curState.playerStatus === 'PAUSED') {
+        return {
+          handled: true,
+          responseText: 'Gaana pehle se hi pause hai.'
+        };
+      } else {
+        return {
+          handled: true,
+          responseText: 'Life AI par abhi koi gaana nahi chal raha hai.'
+        };
+      }
+    }
+
+    // C. Resume / Play current Music
+    const isResumeMusic =
       q === 'resume' ||
       q === 'resume karo' ||
-      q === 'gaana chalu karo' ||
-      q === 'play karo' ||
-      q === 'continue music' ||
+      q === 'continue' ||
+      q.includes('resume music') ||
+      q.includes('resume song') ||
+      q.includes('gaana resume') ||
+      q.includes('song resume') ||
+      q.includes('gaana chalu karo') ||
+      q.includes('gana chalu karo') ||
+      q.includes('continue music') ||
+      q.includes('continue song') ||
       q.includes('phir se chalao') ||
       q.includes('ye phir se chalao') ||
-      q.includes('resume music')
-    ) {
-      musicService.resume();
-      const current = musicService.getState().currentTrack;
-      const title = current ? current.title : 'gaana';
-      return {
-        handled: true,
-        responseText: `${title} resume kar diya.`
-      };
+      q.includes('wapas chalao') ||
+      q === 'play karo';
+
+    if (isResumeMusic) {
+      const curState = musicService.getState();
+      if ((curState.isPaused || curState.playerStatus === 'PAUSED') && curState.currentTrack) {
+        musicService.resume();
+        const clean = cleanTrackMetadata(curState.currentTrack.title, curState.currentTrack.artist);
+        return {
+          handled: true,
+          responseText: `${clean.cleanTitle} resume kar diya.`
+        };
+      } else if (curState.isPlaying && curState.currentTrack) {
+        const clean = cleanTrackMetadata(curState.currentTrack.title, curState.currentTrack.artist);
+        return {
+          handled: true,
+          responseText: `${clean.cleanTitle} pehle se hi chal raha hai.`
+        };
+      } else {
+        return {
+          handled: true,
+          responseText: 'Aap kaun sa gaana sunna chahte hain?'
+        };
+      }
     }
 
-    // C. Next / Skip Song
+    // D. Current Song Query Intent ("What song is playing?", "abhi konsa gana chal raha hai?")
+    const isCurrentSongQuery =
+      q.includes('what song is playing') ||
+      q.includes('which song is playing') ||
+      q.includes('what is playing') ||
+      q.includes('what song is this') ||
+      q.includes('which song is this') ||
+      q.includes('which track is this') ||
+      q.includes('current song') ||
+      q.includes('abhi kya chal raha hai') ||
+      q.includes('abhi kya baj raha hai') ||
+      q.includes('abhi kaun sa gaana') ||
+      q.includes('abhi konsa gaana') ||
+      q.includes('abhi konsa gana') ||
+      q.includes('kaun sa gaana chal raha') ||
+      q.includes('kaunsa gaana chal raha') ||
+      q.includes('konsa gaana chal raha') ||
+      q.includes('konsa gana chal raha') ||
+      q.includes('koun sa gana chal raha') ||
+      q.includes('kaun sa song chal raha') ||
+      q.includes('kaunsa song chal raha') ||
+      q.includes('konsa song chal raha') ||
+      q.includes('kounsa song chal raha') ||
+      q.includes('ye kaun sa gaana hai') ||
+      q.includes('ye kaunsa gaana hai') ||
+      q.includes('ye konsa gaana hai') ||
+      q.includes('ye konsa song hai') ||
+      q.includes('ye gaana kaun sa hai') ||
+      q.includes('gaane ka naam kya hai') ||
+      q.includes('song ka naam kya hai') ||
+      q.includes('track ka naam kya hai');
+
+    if (isCurrentSongQuery) {
+      const curState = musicService.getState();
+      if ((curState.isPlaying || curState.playerStatus === 'PLAYING') && curState.currentTrack) {
+        const clean = cleanTrackMetadata(curState.currentTrack.title, curState.currentTrack.artist);
+        return {
+          handled: true,
+          responseText: `Abhi "${clean.cleanTitle}" by ${clean.cleanArtist} chal raha hai.`
+        };
+      } else if ((curState.isPaused || curState.playerStatus === 'PAUSED') && curState.currentTrack) {
+        const clean = cleanTrackMetadata(curState.currentTrack.title, curState.currentTrack.artist);
+        return {
+          handled: true,
+          responseText: `"${clean.cleanTitle}" by ${clean.cleanArtist} abhi pause par hai.`
+        };
+      } else {
+        return {
+          handled: true,
+          responseText: 'Life AI par abhi koi gaana nahi chal raha hai.'
+        };
+      }
+    }
+
+    // E. Next / Skip Song
     if (
       q.includes('next song') ||
       q.includes('agla gaana') ||
+      q.includes('agla gana') ||
       q.includes('change song') ||
       q.includes('gaana badlo') ||
+      q.includes('gana badlo') ||
       q.includes('next track') ||
       q === 'agla' ||
       q === 'next'
     ) {
       musicService.next();
       const current = musicService.getState().currentTrack;
-      const title = current ? current.title : 'agla track';
+      const clean = current ? cleanTrackMetadata(current.title, current.artist) : null;
+      const title = clean ? clean.cleanTitle : 'agla track';
       return {
         handled: true,
         responseText: `Agla gaana chala rahi hoon: ${title}.`
       };
     }
 
-    // D. Previous Song
+    // F. Previous Song
     if (
       q.includes('previous song') ||
       q.includes('pichhla gaana') ||
       q.includes('pichla gana') ||
+      q.includes('pichhla gana') ||
       q === 'previous' ||
-      q === 'pichhla'
+      q === 'pichhla' ||
+      q === 'pichla'
     ) {
       musicService.previous();
       const current = musicService.getState().currentTrack;
-      const title = current ? current.title : 'pichhla track';
+      const clean = current ? cleanTrackMetadata(current.title, current.artist) : null;
+      const title = clean ? clean.cleanTitle : 'pichhla track';
       return {
         handled: true,
         responseText: `Pichhla gaana chala rahi hoon: ${title}.`
       };
     }
 
-    // E. Volume Control
+    // G. Volume Control
     const volumeMatch = q.match(/volume\s*(\d{1,3})\s*(percent|%)?/i);
     if (volumeMatch && volumeMatch[1]) {
       const volNum = parseInt(volumeMatch[1], 10);
@@ -350,19 +502,20 @@ export class FastIntentRouter {
       };
     }
 
-    // F. Add to Queue Intent
+    // H. Add to Queue Intent
     if (q.includes('queue me daal do') || q.includes('queue me add karo') || q.includes('add to queue')) {
       const current = musicService.getState().currentTrack;
       if (current) {
         musicService.addToQueue(current);
+        const clean = cleanTrackMetadata(current.title, current.artist);
         return {
           handled: true,
-          responseText: `${current.title} ko queue me add kar diya hai.`
+          responseText: `${clean.cleanTitle} ko queue me add kar diya hai.`
         };
       }
     }
 
-    // G. Play Specific Song or Dynamic Music Search
+    // I. Play Specific Song or Dynamic Music Search
     const hasMusicAction =
       q.includes('chalao') ||
       q.includes('chlao') ||
@@ -413,16 +566,18 @@ export class FastIntentRouter {
       if (!songQuery || songQuery.length < 2) {
         console.log('[FAST_INTENT] Spoken query was generic music action. Playing top hit track...');
         const track = await musicService.searchAndPlay('Bollywood Top Hits');
+        const clean = cleanTrackMetadata(track.title, track.artist);
         return {
           handled: true,
-          responseText: `Theek hai! ${track.title} gaana chala rahi hoon.`
+          responseText: `Theek hai! ${clean.cleanTitle} gaana chala rahi hoon.`
         };
       } else {
         console.log(`[FAST_INTENT] Spoken song search query extracted: "${songQuery}"`);
         const track = await musicService.searchAndPlay(songQuery);
+        const clean = cleanTrackMetadata(track.title, track.artist);
         return {
           handled: true,
-          responseText: `Theek hai! ${track.title} gaana chala rahi hoon.`
+          responseText: `Theek hai! ${clean.cleanTitle} gaana chala rahi hoon.`
         };
       }
     }
