@@ -266,7 +266,7 @@ class VoiceEngine {
   }
 
   public onAppBackground(): void {
-    console.log('[VOICE] App sent to background: releasing microphone completely.');
+    console.log('[VOICE] AppState = background');
     this.isAppInForeground = false;
     this.stopCurrentRecognition();
     this.releaseMicrophoneStream();
@@ -283,7 +283,7 @@ class VoiceEngine {
   }
 
   public async onAppForeground(): Promise<void> {
-    console.log('[VOICE] App entered foreground: checking auto-listen.');
+    console.log('[VOICE] AppState = active');
     this.isAppInForeground = true;
     this.gateMicrophone(false);
 
@@ -826,15 +826,15 @@ class VoiceEngine {
         const recognition = new SpeechRecognitionClass();
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = 'en-IN';
+        recognition.lang = 'hi-IN';
 
         recognition.onstart = () => {
-          console.log('[VOICE] speech recognition online');
+          console.log('[VOICE] Microphone opened');
         };
 
         recognition.onspeechstart = () => {
           if (!this.speechDetected) {
-            console.log('[VOICE] speech started');
+            console.log('[VOICE] Speech started');
             this.speechDetected = true;
             this.speechStartTime = Date.now();
             this.setDetailedState('speech_detected');
@@ -860,7 +860,7 @@ class VoiceEngine {
           const currentText = (finalStr || interim).trim();
           if (currentText) {
             if (!this.speechDetected) {
-              console.log('[VOICE] speech started');
+              console.log('[VOICE] Speech started');
               this.speechDetected = true;
               this.speechStartTime = Date.now();
               this.setDetailedState('speech_detected');
@@ -878,8 +878,7 @@ class VoiceEngine {
             if (this.speechPauseTimer) clearTimeout(this.speechPauseTimer);
             this.speechPauseTimer = setTimeout(() => {
               if (this.isListeningSession) {
-                console.log('[VOICE] speech ended');
-                console.log('[VOICE] transcription started');
+                console.log('[VOICE] Speech ended');
                 this.stopListeningSession();
               }
             }, this.END_SILENCE_MS);
@@ -983,7 +982,7 @@ class VoiceEngine {
     }
 
     if (candidateTranscript) {
-      console.log(`[VOICE] transcript: "${candidateTranscript}"`);
+      console.log(`[VOICE] Final transcript = "${candidateTranscript}"`);
       this.transcript = candidateTranscript;
       this.notify();
 
@@ -1026,13 +1025,19 @@ class VoiceEngine {
   private async handleUserUtterance(userText: string): Promise<void> {
     if (!userText || this.isSpeaking) return;
     const cleanText = userText.trim();
-    if (!cleanText) return;
+    if (!cleanText || cleanText === '.' || cleanText === ',' || cleanText.toLowerCase() === 'uh' || cleanText.toLowerCase() === 'ah') {
+      console.log('[VOICE] Ignoring empty / noise token:', cleanText);
+      if (this.isConversationActive) {
+        this.startQueryListening();
+      }
+      return;
+    }
 
     // Fast Device Intent Interception (Alarms & Music controls executed locally in <50ms)
     try {
       const fastResult = await fastIntentRouter.route(cleanText);
       if (fastResult.handled) {
-        console.log(`[VOICE] fast intent handled locally: "${fastResult.responseText}"`);
+        console.log(`[VOICE] Fast intent handled locally: "${fastResult.responseText}"`);
         this.assistantResponse = fastResult.responseText;
         this.voiceError = null;
         this.notify();
@@ -1045,7 +1050,7 @@ class VoiceEngine {
       console.warn('[VOICE] Fast intent evaluation notice:', fastErr);
     }
 
-    console.log('[VOICE] request started');
+    console.log(`[VOICE] Backend request started for query: "${cleanText}"`);
     this.setDetailedState('thinking');
 
     try {
@@ -1056,7 +1061,7 @@ class VoiceEngine {
         voice_mode: true
       });
 
-      console.log(`[VOICE] first response received: "${(res.response || '').substring(0, 50)}..."`);
+      console.log(`[VOICE] Backend response received: "${(res.response || '').substring(0, 50)}..."`);
       this.activeConversationId = res.conversation_id;
       this.assistantResponse = res.response;
       this.voiceError = null;
@@ -1320,7 +1325,7 @@ class VoiceEngine {
   // =========================================================================
 
   private onTTSFinished(): void {
-    console.log('[VOICE] TTS finished');
+    console.log('[VOICE] TTS completed');
     this.isSpeaking = false;
     this.stopOutputAudioAnalysis();
 
@@ -1329,12 +1334,12 @@ class VoiceEngine {
     // Continuous natural conversation re-arming:
     // When Life AI finishes speaking in the foreground, automatically re-listen after echo cooldown
     if (this.isVoiceModeEnabled && !this.isNative && this.isAppInForeground) {
-      console.log('[VOICE] echo cooldown started');
+      console.log('[VOICE] Cooldown (650ms)');
       this.setDetailedState('rearming');
 
       this.echoCooldownTimer = setTimeout(() => {
         if (this.isVoiceModeEnabled && !this.isSpeaking && this.isAppInForeground) {
-          console.log('[VOICE] microphone rearmed for follow-up speech');
+          console.log('[VOICE] Listening rearmed');
           this.gateMicrophone(false);
           this.startQueryListening(); // Automatically transitions to LISTENING for next utterance!
         }

@@ -263,6 +263,14 @@ public class HandsFreeVoicePlugin extends Plugin {
         String token = call.getString("token", "");
         String serverUrl = call.getString("serverUrl", "");
 
+        if (!token.isEmpty() || !serverUrl.isEmpty()) {
+            android.content.SharedPreferences prefs = getContext().getSharedPreferences("life_ai_prefs", android.content.Context.MODE_PRIVATE);
+            android.content.SharedPreferences.Editor editor = prefs.edit();
+            if (!token.isEmpty()) editor.putString("auth_token", token);
+            if (!serverUrl.isEmpty()) editor.putString("server_url", serverUrl);
+            editor.apply();
+        }
+
         if (HandsFreeVoiceService.isRunning()) {
             Intent updateIntent = new Intent(getContext(), HandsFreeVoiceService.class);
             updateIntent.setAction(HandsFreeVoiceService.ACTION_START);

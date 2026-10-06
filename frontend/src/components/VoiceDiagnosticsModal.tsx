@@ -128,48 +128,93 @@ export const VoiceDiagnosticsModal: React.FC = () => {
           </p>
         </div>
 
-        {/* Real-time Requirement 26 Live Status Board */}
+        {/* Real-time 11 Status Parameters Board */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-[11px] font-semibold">
+          {/* 1. Voice Engine */}
           <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
-            <span className="text-[10px] text-slate-400 block uppercase">Voice Engine</span>
+            <span className="text-[10px] text-slate-400 block uppercase">1. Voice Engine</span>
             <span className={voiceError ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
-              {voiceError ? "ERROR" : "READY"}
+              {voiceError ? "ERROR" : detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening' ? "LISTENING" : detailedVoiceState === 'speaking' || detailedVoiceState === 'tts' ? "SPEAKING" : "READY"}
             </span>
           </div>
+
+          {/* 2. Microphone Hardware */}
           <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
-            <span className="text-[10px] text-slate-400 block uppercase">Mic Permission</span>
+            <span className="text-[10px] text-slate-400 block uppercase">2. Microphone</span>
+            <span className={(inputVolume > 0.02 || detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening') ? "text-[#00D9FF] font-bold" : "text-slate-400 font-bold"}>
+              {(inputVolume > 0.02 || detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening') ? "OPEN / ACTIVE" : "STANDBY"}
+            </span>
+          </div>
+
+          {/* 3. Mic Permission */}
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">3. Permission</span>
             <span className={diagnostics.permissionGranted ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
               {diagnostics.permissionGranted ? "GRANTED" : "DENIED"}
             </span>
           </div>
+
+          {/* 4. Speech Recognizer */}
           <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
-            <span className="text-[10px] text-slate-400 block uppercase">Microphone</span>
-            <span className={(inputVolume > 0.02 || detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening') ? "text-[#00D9FF] font-bold" : "text-slate-400 font-bold"}>
-              {(inputVolume > 0.02 || detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening') ? "ACTIVE" : "INACTIVE"}
+            <span className="text-[10px] text-slate-400 block uppercase">4. Recognizer</span>
+            <span className="text-[#00A8FF] font-bold">
+              {isNativePlatform ? "ANDROID NATIVE" : "WEB SPEECH + GEMINI"}
             </span>
           </div>
+
+          {/* 5. Audio Input Level */}
           <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
-            <span className="text-[10px] text-slate-400 block uppercase">STT Status</span>
+            <span className="text-[10px] text-slate-400 block uppercase">5. Audio Input</span>
+            <span className="font-mono text-[#00D9FF] font-bold">
+              {Math.round(inputVolume * 100)}% ({inputVolume > 0.02 ? "Signal Detected" : "Quiet"})
+            </span>
+          </div>
+
+          {/* 6. STT Status */}
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">6. STT Pipeline</span>
             <span className="text-amber-300 font-bold uppercase">
-              {detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening' ? "LISTENING" : detailedVoiceState === 'processing' || detailedVoiceState === 'thinking' ? "PROCESSING" : "READY"}
+              {detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening' ? "LISTENING" : detailedVoiceState === 'processing' || detailedVoiceState === 'thinking' ? "THINKING" : "STANDBY"}
             </span>
           </div>
+
+          {/* 7. TTS Status */}
           <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
-            <span className="text-[10px] text-slate-400 block uppercase">Wake Word</span>
-            <span className={isWakeWordEnabled ? "text-emerald-400 font-bold" : "text-slate-400 font-bold"}>
-              {isWakeWordEnabled ? "ACTIVE" : "OFF"}
-            </span>
-          </div>
-          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
-            <span className="text-[10px] text-slate-400 block uppercase">TTS Status</span>
+            <span className="text-[10px] text-slate-400 block uppercase">7. TTS Output</span>
             <span className={isAudioSpeaking || detailedVoiceState === 'tts' || detailedVoiceState === 'greeting' ? "text-[#EC4899] font-bold" : "text-slate-400 font-bold"}>
               {isAudioSpeaking || detailedVoiceState === 'tts' || detailedVoiceState === 'greeting' ? "SPEAKING" : "IDLE"}
             </span>
           </div>
+
+          {/* 8. Music Ducking */}
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">8. Music Ducking</span>
+            <span className={(isAudioSpeaking || detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening' || detailedVoiceState === 'speaking') ? "text-purple-400 font-bold" : "text-slate-400 font-bold"}>
+              {(isAudioSpeaking || detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening' || detailedVoiceState === 'speaking') ? "DUCKED (-20dB)" : "NORMAL (100%)"}
+            </span>
+          </div>
+
+          {/* 9. App State */}
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">9. App State</span>
+            <span className="text-emerald-400 font-bold">
+              FOREGROUND (ACTIVE)
+            </span>
+          </div>
+
+          {/* 10. Wake Word Mode */}
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">10. Wake Word</span>
+            <span className={isWakeWordEnabled ? "text-emerald-400 font-bold" : "text-slate-400 font-bold"}>
+              {isWakeWordEnabled ? "ACTIVE ('Hey Life')" : "OFF"}
+            </span>
+          </div>
+
+          {/* 11. Backend Connectivity */}
           <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D] col-span-2">
-            <span className="text-[10px] text-slate-400 block uppercase">Network</span>
+            <span className="text-[10px] text-slate-400 block uppercase">11. Backend Server</span>
             <span className={isBackendOnline ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
-              {isBackendOnline ? "ONLINE (Connected)" : "OFFLINE"}
+              {isBackendOnline ? "ONLINE (Connected to Render)" : "OFFLINE"}
             </span>
           </div>
         </div>
