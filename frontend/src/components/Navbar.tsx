@@ -100,14 +100,11 @@ export const Navbar: React.FC = () => {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h1 className="text-sm sm:text-xl font-bold tracking-tight text-[#F8FAFC] truncate">
+                <h1 className="text-base sm:text-xl font-bold tracking-tight text-[#F8FAFC] truncate">
                   Life AI
                 </h1>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#00D9FF]/10 text-[#00D9FF] font-semibold border border-[#00D9FF]/30 hidden xs:inline-block shrink-0">
-                  Companion
-                </span>
               </div>
-              <p className="text-[10px] text-[#94A3B8] hidden sm:block truncate">Personal AI Operating System</p>
+              <p className="text-[10px] text-[#94A3B8] truncate leading-tight">Your Personal AI Companion</p>
             </div>
           </Link>
         </div>
@@ -160,34 +157,28 @@ export const Navbar: React.FC = () => {
           </div>
         )}
 
-        {/* Right: Profile, Settings & Sign Out */}
+        {/* Right: Profile Pill, Settings & Sign Out */}
         {isAuthenticated ? (
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {/* Clickable Profile Avatar Button */}
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+            {/* Clickable Profile Avatar Pill matching reference */}
             <Link
               to="/profile"
-              className="flex items-center gap-1.5 px-1.5 sm:px-2 py-1 rounded-xl bg-[#101722] hover:bg-[#16202E] border border-[#202B3D] hover:border-[#00D9FF]/40 transition-all cursor-pointer group shrink-0"
+              className="relative px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-2xl bg-[#0E1522] hover:bg-[#16202E] border border-[#202B3D] hover:border-[#00D9FF]/40 transition-all cursor-pointer group shrink-0 flex items-center justify-center min-w-[34px] sm:min-w-[40px] shadow-sm"
               title="View & Edit Profile"
             >
-              <div className="w-7 h-7 rounded-lg overflow-hidden border border-[#00D9FF]/30 bg-[#0A0F18] flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm">
-                {avatarDisplayUrl ? (
-                  <img src={avatarDisplayUrl} alt="Avatar" className="w-full h-full object-cover" />
-                ) : (
-                  <span>{user?.preferred_name?.[0] || user?.username?.[0] || 'U'}</span>
-                )}
-              </div>
-              <span className="hidden md:inline text-xs font-semibold text-slate-200 group-hover:text-[#00D9FF] transition-colors truncate max-w-[100px]">
-                {user?.preferred_name || user?.username || 'Profile'}
+              <span className="text-xs sm:text-sm font-bold text-white group-hover:text-[#00D9FF] transition-colors">
+                {user?.preferred_name?.[0]?.toUpperCase() || user?.full_name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || 'J'}
               </span>
+              <span className="absolute -bottom-0.5 -right-0.5 w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-[#22C55E] border-2 border-[#05070B]" />
             </Link>
 
             {/* Direct Settings Link Button */}
             <Link
               to="/settings"
-              className="p-1.5 sm:p-2 rounded-xl border border-[#202B3D] bg-[#101722] hover:bg-[#16202E] text-slate-300 hover:text-[#00D9FF] hover:border-[#00D9FF]/40 transition-all flex items-center justify-center cursor-pointer shrink-0"
+              className="p-2 sm:p-2.5 rounded-2xl border border-[#202B3D] bg-[#0E1522] hover:bg-[#16202E] text-slate-300 hover:text-white hover:border-[#00D9FF]/40 transition-all flex items-center justify-center cursor-pointer shrink-0 shadow-sm"
               title="System Settings"
             >
-              <Settings className="w-4 h-4" />
+              <Settings className="w-4 h-4 text-slate-300" />
             </Link>
 
             {/* Sign Out Button (Visible on sm: and up; in Drawer on mobile) */}

@@ -25,8 +25,42 @@ public class MainActivity extends BridgeActivity {
                 settings.setDatabaseEnabled(true);
                 CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
             }
-        } catch (Exception e) {
-            // Safe fallback
-        }
+        } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("life_ai_prefs", android.content.Context.MODE_PRIVATE);
+            boolean bgEnabled = prefs.getBoolean("background_listening_enabled", false);
+            if (!bgEnabled) {
+                HandsFreeVoiceService.pauseListening(this);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("life_ai_prefs", android.content.Context.MODE_PRIVATE);
+            boolean handsFreeEnabled = prefs.getBoolean("hands_free_enabled", true);
+            if (handsFreeEnabled) {
+                HandsFreeVoiceService.resumeListening(this);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void onDestroy() {
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("life_ai_prefs", android.content.Context.MODE_PRIVATE);
+            boolean bgEnabled = prefs.getBoolean("background_listening_enabled", false);
+            if (!bgEnabled) {
+                HandsFreeVoiceService.pauseListening(this);
+            }
+        } catch (Exception ignored) {}
+        super.onDestroy();
     }
 }

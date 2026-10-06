@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
+  Home,
   Mic,
   MessageSquare,
   Network,
@@ -25,7 +26,7 @@ import {
 } from 'lucide-react';
 
 const mainNavItems = [
-  { to: '/', label: 'Home', icon: Mic },
+  { to: '/', label: 'Home', icon: Home },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
   { to: '/alarms', label: 'Alarms', icon: AlarmClock },
   { to: '/music', label: 'Music', icon: Music },
@@ -96,15 +97,24 @@ export const MobileBottomNav: React.FC = () => {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `w-full min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all cursor-pointer text-center ${
+                `w-full min-w-0 flex flex-col items-center justify-center py-1.5 px-0.5 rounded-2xl transition-all cursor-pointer text-center relative ${
                   isActive
-                    ? 'text-white font-semibold bg-gradient-to-r from-[#00A8FF]/20 to-[#8B5CF6]/20 border border-[#00D9FF]/40 shadow-[0_0_12px_rgba(0,217,255,0.25)]'
+                    ? 'text-[#00D9FF] font-semibold bg-gradient-to-r from-[#00A8FF]/20 via-[#00D9FF]/15 to-[#8B5CF6]/20 border border-[#00D9FF]/40 shadow-[0_0_15px_rgba(0,217,255,0.3)]'
                     : 'text-[#94A3B8] hover:text-[#F8FAFC]'
                 }`
               }
             >
-              <Icon className="w-4 h-4 mb-0.5 shrink-0" />
-              <span className="text-[10px] tracking-tight truncate w-full px-0.5">{item.label}</span>
+              {({ isActive }) => (
+                <>
+                  <Icon className={`w-4.5 h-4.5 mb-0.5 shrink-0 transition-transform ${isActive ? 'scale-110 text-[#00D9FF]' : ''}`} />
+                  <span className={`text-[10px] tracking-tight truncate w-full px-0.5 ${isActive ? 'text-white font-bold' : ''}`}>
+                    {item.label}
+                  </span>
+                  {isActive && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00D9FF] shadow-[0_0_8px_#00D9FF] mt-0.5" />
+                  )}
+                </>
+              )}
             </NavLink>
           );
         })}

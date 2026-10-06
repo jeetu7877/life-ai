@@ -64,6 +64,8 @@ public class HandsFreeVoiceService extends Service {
     public static final String ACTION_STOP = "com.vikash.lifeai.action.STOP_HANDS_FREE";
     public static final String ACTION_TRIGGER_LISTEN = "com.vikash.lifeai.action.TRIGGER_LISTEN";
     public static final String ACTION_SET_MUSIC_PLAYING = "com.vikash.lifeai.action.SET_MUSIC_PLAYING";
+    public static final String ACTION_PAUSE_LISTENING = "com.vikash.lifeai.action.PAUSE_LISTENING";
+    public static final String ACTION_RESUME_LISTENING = "com.vikash.lifeai.action.RESUME_LISTENING";
 
     public static final String EXTRA_SERVER_URL = "extra_server_url";
     public static final String EXTRA_TOKEN = "extra_token";
@@ -127,6 +129,32 @@ public class HandsFreeVoiceService extends Service {
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to send triggerListen intent: " + e.getMessage());
+        }
+    }
+
+    public static void pauseListening(Context context) {
+        if (context == null) return;
+        try {
+            Intent intent = new Intent(context, HandsFreeVoiceService.class);
+            intent.setAction(ACTION_PAUSE_LISTENING);
+            context.startService(intent);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to send pauseListening intent: " + e.getMessage());
+        }
+    }
+
+    public static void resumeListening(Context context) {
+        if (context == null) return;
+        try {
+            Intent intent = new Intent(context, HandsFreeVoiceService.class);
+            intent.setAction(ACTION_RESUME_LISTENING);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(context, intent);
+            } else {
+                context.startService(intent);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to send resumeListening intent: " + e.getMessage());
         }
     }
 
@@ -217,6 +245,28 @@ public class HandsFreeVoiceService extends Service {
             if (intent.hasExtra(EXTRA_SILENCE_TIMEOUT)) {
                 int secs = intent.getIntExtra(EXTRA_SILENCE_TIMEOUT, 15);
                 silenceTimeoutMs = Math.max(6000, secs * 1000L);
+            }
+
+            if (ACTION_PAUSE_LISTENING.equals(action)) {
+                Log.i(TAG, "[VOICE] pause_listening action received: releasing microphone hardware");
+                stopListeningTemporarily();
+                stopVadDetector();
+                destroySpeechRecognizer();
+                abandonAppAudioFocus();
+                setState(State.STOPPED);
+                return START_STICKY;
+            }
+
+            if (ACTION_RESUME_LISTENING.equals(action)) {
+                Log.i(TAG, "[VOICE] resume_listening action received: activating voice");
+                isServiceRunning = true;
+                startWakeStandbyMode();
+                mainHandler.postDelayed(() -> {
+                    if (isServiceRunning && (currentState == State.WAKE_LISTENING || currentState == State.IDLE || currentState == State.STOPPED)) {
+                        triggerListen(this);
+                    }
+                }, 250);
+                return START_STICKY;
             }
 
             if (ACTION_TRIGGER_LISTEN.equals(action)) {

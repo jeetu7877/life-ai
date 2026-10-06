@@ -327,4 +327,64 @@ public class HandsFreeVoicePlugin extends Plugin {
             call.reject("Failed to request battery optimization: " + e.getMessage(), e);
         }
     }
+
+    @PluginMethod
+    public void pauseListening(PluginCall call) {
+        try {
+            HandsFreeVoiceService.pauseListening(getContext());
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to pause listening: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void resumeListening(PluginCall call) {
+        try {
+            HandsFreeVoiceService.resumeListening(getContext());
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to resume listening: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    protected void handleOnPause() {
+        super.handleOnPause();
+        try {
+            android.content.SharedPreferences prefs = getContext().getSharedPreferences("life_ai_prefs", Context.MODE_PRIVATE);
+            boolean bgEnabled = prefs.getBoolean("background_listening_enabled", false);
+            if (!bgEnabled) {
+                HandsFreeVoiceService.pauseListening(getContext());
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        try {
+            android.content.SharedPreferences prefs = getContext().getSharedPreferences("life_ai_prefs", Context.MODE_PRIVATE);
+            boolean handsFreeEnabled = prefs.getBoolean("hands_free_enabled", true);
+            if (handsFreeEnabled && getPermissionState("microphone") == PermissionState.GRANTED) {
+                HandsFreeVoiceService.resumeListening(getContext());
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        try {
+            android.content.SharedPreferences prefs = getContext().getSharedPreferences("life_ai_prefs", Context.MODE_PRIVATE);
+            boolean bgEnabled = prefs.getBoolean("background_listening_enabled", false);
+            if (!bgEnabled) {
+                HandsFreeVoiceService.pauseListening(getContext());
+            }
+        } catch (Exception ignored) {}
+        super.handleOnDestroy();
+    }
 }

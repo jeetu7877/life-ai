@@ -185,26 +185,146 @@ class VoiceEngine {
       this.isBackendOnline = false;
     }
 
+    // Set up lifecycle hooks for automatic foreground listening & strict background mic release
+    this.setupAppLifecycle();
+
     // Hook up native Android listeners if on native platform
     if (this.isNative) {
       this.setupNativeListeners();
       if (this.isVoiceModeEnabled) {
-        console.log('[VOICE] Native platform: starting HandsFreeVoiceService automatically');
-        handsFreeService.start().catch((err) => {
+        console.log('[VOICE] Native platform: starting HandsFreeVoiceService and triggering auto-listen');
+        handsFreeService.start().then(() => {
+          handsFreeService.triggerListen().catch(() => {});
+        }).catch((err) => {
           console.warn('[VOICE] Automatic native start note:', err);
         });
       }
     } else {
       if (this.isVoiceModeEnabled) {
-        console.log('[VOICE] mode enabled');
-        this.setDetailedState('wake_listening');
-        this.startWakeWordListening();
+        console.log('[VOICE] Voice mode enabled: activating foreground auto-listen');
+        this.checkMicPermissionStatus().then((hasPerm) => {
+          if (hasPerm) {
+            console.log('[VOICE] Microphone permission previously granted. Listening automatically.');
+            this.startQueryListening();
+          } else {
+            this.setDetailedState('wake_listening');
+            this.startWakeWordListening();
+          }
+        }).catch(() => {
+          this.setDetailedState('wake_listening');
+          this.startWakeWordListening();
+        });
       } else {
         this.setDetailedState('disabled');
       }
     }
 
     this.notify();
+  }
+
+  private isAppInForeground: boolean = true;
+
+  private setupAppLifecycle(): void {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          this.onAppBackground();
+        } else if (document.visibilityState === 'visible') {
+          this.onAppForeground();
+        }
+      });
+
+      window.addEventListener('pagehide', () => {
+        this.onAppBackground();
+      });
+
+      window.addEventListener('blur', () => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          this.onAppBackground();
+        }
+      });
+
+      window.addEventListener('focus', () => {
+        if (typeof document !== 'undefined' && !document.hidden && this.isVoiceModeEnabled) {
+          this.onAppForeground();
+        }
+      });
+    }
+
+    try {
+      const cap = typeof window !== 'undefined' ? (window as any).Capacitor : null;
+      if (cap && cap.Plugins && cap.Plugins.App && typeof cap.Plugins.App.addListener === 'function') {
+        cap.Plugins.App.addListener('appStateChange', (state: { isActive: boolean }) => {
+          if (!state.isActive) {
+            this.onAppBackground();
+          } else {
+            this.onAppForeground();
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  public onAppBackground(): void {
+    console.log('[VOICE] App sent to background: releasing microphone completely.');
+    this.isAppInForeground = false;
+    this.stopCurrentRecognition();
+    this.releaseMicrophoneStream();
+    if (this.speechPauseTimer) clearTimeout(this.speechPauseTimer);
+    if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
+    if (this.echoCooldownTimer) clearTimeout(this.echoCooldownTimer);
+    if (this.wakeRecoveryTimer) clearTimeout(this.wakeRecoveryTimer);
+    this.gateMicrophone(true);
+    this.setDetailedState('idle');
+
+    if (this.isNative) {
+      handsFreeService.pauseListening().catch(() => {});
+    }
+  }
+
+  public async onAppForeground(): Promise<void> {
+    console.log('[VOICE] App entered foreground: checking auto-listen.');
+    this.isAppInForeground = true;
+    this.gateMicrophone(false);
+
+    if (!this.isVoiceModeEnabled) {
+      this.setDetailedState('disabled');
+      return;
+    }
+
+    if (this.isNative) {
+      try {
+        await handsFreeService.resumeListening();
+      } catch (_) {}
+      return;
+    }
+
+    try {
+      const hasPerm = await this.checkMicPermissionStatus();
+      if (hasPerm) {
+        console.log('[VOICE] Foreground auto-listening active without button press.');
+        this.startQueryListening();
+      } else {
+        this.setDetailedState('wake_listening');
+        this.startWakeWordListening();
+      }
+    } catch {
+      this.returnToWakeListening();
+    }
+  }
+
+  public async checkMicPermissionStatus(): Promise<boolean> {
+    if (this.isNative) {
+      const perm = await handsFreeService.checkPermissions();
+      return perm.microphone;
+    }
+    try {
+      if (navigator.permissions && (navigator.permissions as any).query) {
+        const status = await (navigator.permissions as any).query({ name: 'microphone' });
+        return status.state === 'granted';
+      }
+    } catch (_) {}
+    return this.micPermissionGranted;
   }
 
   /**
@@ -1206,19 +1326,20 @@ class VoiceEngine {
 
     if (this.echoCooldownTimer) clearTimeout(this.echoCooldownTimer);
 
-    // If conversation mode is active, automatically re-arm microphone after echo protection
-    if (this.isConversationActive && this.isVoiceModeEnabled && !this.isNative) {
+    // Continuous natural conversation re-arming:
+    // When Life AI finishes speaking in the foreground, automatically re-listen after echo cooldown
+    if (this.isVoiceModeEnabled && !this.isNative && this.isAppInForeground) {
       console.log('[VOICE] echo cooldown started');
       this.setDetailedState('rearming');
 
       this.echoCooldownTimer = setTimeout(() => {
-        if (this.isConversationActive && this.isVoiceModeEnabled && !this.isSpeaking) {
-          console.log('[VOICE] microphone rearmed');
+        if (this.isVoiceModeEnabled && !this.isSpeaking && this.isAppInForeground) {
+          console.log('[VOICE] microphone rearmed for follow-up speech');
           this.gateMicrophone(false);
           this.startQueryListening(); // Automatically transitions to LISTENING for next utterance!
         }
       }, this.ECHO_COOLDOWN_MS);
-    } else {
+    } else if (!this.isNative) {
       this.returnToWakeListening();
     }
   }
@@ -1228,7 +1349,7 @@ class VoiceEngine {
     this.isListeningSession = false;
     this.gateMicrophone(false);
 
-    if (this.isVoiceModeEnabled && !this.isNative) {
+    if (this.isVoiceModeEnabled && !this.isNative && this.isAppInForeground) {
       this.setDetailedState('wake_listening');
       this.startWakeWordListening();
     } else {
@@ -1262,7 +1383,7 @@ class VoiceEngine {
       return;
     }
 
-    if (this.isVoiceModeEnabled) {
+    if (this.isVoiceModeEnabled && this.isAppInForeground) {
       this.setDetailedState('wake_listening');
       this.startWakeWordListening();
     } else {
@@ -1282,7 +1403,7 @@ class VoiceEngine {
 
     if (this.isNative) {
       if (enabled) {
-        handsFreeService.start().catch(() => {});
+        handsFreeService.start().then(() => handsFreeService.triggerListen()).catch(() => {});
       } else {
         handsFreeService.stop().catch(() => {});
         this.setDetailedState('disabled');
@@ -1292,8 +1413,7 @@ class VoiceEngine {
     }
 
     if (enabled) {
-      this.setDetailedState('wake_listening');
-      this.startWakeWordListening();
+      this.onAppForeground();
     } else {
       this.stopVoice();
       this.setDetailedState('disabled');

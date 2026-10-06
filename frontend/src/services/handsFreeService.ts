@@ -30,6 +30,10 @@ export interface HandsFreeVoicePlugin {
 
   triggerListen(): Promise<{ success: boolean }>;
 
+  pauseListening(): Promise<{ success: boolean }>;
+
+  resumeListening(): Promise<{ success: boolean }>;
+
   checkPermissions(): Promise<{ microphone: boolean; notifications: boolean }>;
 
   requestMicPermission(): Promise<{ granted: boolean }>;
@@ -147,6 +151,32 @@ class HandsFreeService {
       }
     }
     return false;
+  }
+
+  public async pauseListening(): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.pauseListening();
+        return res.success;
+      } catch (err) {
+        console.warn('Failed to pause native listen:', err);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public async resumeListening(): Promise<boolean> {
+    if (this.isNative) {
+      try {
+        const res = await NativeHandsFree.resumeListening();
+        return res.success;
+      } catch (err) {
+        console.warn('Failed to resume native listen:', err);
+        return false;
+      }
+    }
+    return true;
   }
 
   public async checkPermissions(): Promise<{ microphone: boolean; notifications: boolean }> {
