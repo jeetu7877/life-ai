@@ -30,6 +30,93 @@ export class FastIntentRouter {
     const q = rawQuery.toLowerCase().trim();
 
     // ==========================================
+    // 0. FAST PERSONAL FACTS (<50ms)
+    // ==========================================
+    let userName = 'Vikash Yadav';
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.preferred_name || u.full_name || u.username) {
+          userName = u.preferred_name || u.full_name || u.username;
+        }
+      }
+    } catch (_) {}
+
+    // A. College Query
+    if (
+      q.includes('mera college') ||
+      q.includes('college kya hai') ||
+      q.includes('college batao') ||
+      q.includes('college konsa') ||
+      q.includes('college kaun sa') ||
+      q.includes('which college') ||
+      q.includes('meri university') ||
+      q.includes('university konsi')
+    ) {
+      return {
+        handled: true,
+        responseText: 'Aapka college Dr. B. R. Ambedkar National Institute of Technology Jalandhar (NIT Jalandhar) hai.'
+      };
+    }
+
+    // B. Branch Query
+    if (
+      q.includes('meri branch') ||
+      q.includes('mera branch') ||
+      q.includes('branch kya hai') ||
+      q.includes('branch batao') ||
+      q.includes('branch konsi') ||
+      q.includes('branch kaun si') ||
+      q.includes('which branch') ||
+      q.includes('mera course')
+    ) {
+      return {
+        handled: true,
+        responseText: 'Aapki branch Information Technology (IT) hai.'
+      };
+    }
+
+    // C. Roll Number Query
+    if (
+      q.includes('roll number') ||
+      q.includes('roll no') ||
+      q.includes('roll num')
+    ) {
+      return {
+        handled: true,
+        responseText: 'Aapka roll number 22103099 hai.'
+      };
+    }
+
+    // D. User Name Query
+    if (
+      q.includes('mera naam') ||
+      q.includes('mera name') ||
+      q.includes('who am i') ||
+      q.includes('what is my name')
+    ) {
+      return {
+        handled: true,
+        responseText: `Aapka naam ${userName} hai.`
+      };
+    }
+
+    // E. Assistant Identity
+    if (
+      q.includes('tumhara naam') ||
+      q.includes('tera naam') ||
+      q.includes('who are you') ||
+      q.includes('tum kaun ho') ||
+      q.includes('aap kaun ho')
+    ) {
+      return {
+        handled: true,
+        responseText: 'Mera naam Life AI hai, aapka personal intelligent companion aur operating system.'
+      };
+    }
+
+    // ==========================================
     // 1. SMART ALARM INTENTS
     // ==========================================
 

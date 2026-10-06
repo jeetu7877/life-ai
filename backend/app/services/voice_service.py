@@ -32,20 +32,11 @@ HINGLISH_MARKERS = {
 
 def detect_female_voice(text: str) -> str:
     """
-    Intelligently select the best Indian female voice:
-    - hi-IN-SwaraNeural: For Hindi & Hinglish
-    - en-IN-NeerjaNeural: For English
+    Intelligently select the best female voice:
+    - en-IN-NeerjaNeural: Default for English & Roman Hinglish (clear, natural Indian English voice)
+    - hi-IN-SwaraNeural: Only if Devanagari script is explicitly present
     """
-    # Devanagari script indicates pure Hindi
     if re.search(r'[\u0900-\u097F]', text):
-        return getattr(settings, 'VOICE_FEMALE_HINDI', 'hi-IN-SwaraNeural')
-
-    words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
-    if not words:
-        return getattr(settings, 'VOICE_FEMALE_HINDI', 'hi-IN-SwaraNeural')
-
-    h_count = sum(1 for w in words if w in HINGLISH_MARKERS)
-    if h_count >= 1 and (len(words) <= 4 or (h_count / len(words)) >= 0.10):
         return getattr(settings, 'VOICE_FEMALE_HINDI', 'hi-IN-SwaraNeural')
 
     return getattr(settings, 'VOICE_FEMALE_ENGLISH', 'en-IN-NeerjaNeural')

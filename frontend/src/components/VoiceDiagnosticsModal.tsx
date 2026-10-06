@@ -35,17 +35,37 @@ export const VoiceDiagnosticsModal: React.FC = () => {
     triggerManualListen,
     testMicrophoneInput,
     testBackendTranscription,
-    playAudioResponse
+    playAudioResponse,
+    isLocalTesting,
+    startLocalVoiceTest,
+    stopLocalVoiceTest
   } = useVoice();
 
   const [isRecordingTest, setIsRecordingTest] = useState<boolean>(false);
   const [testAudioBlob, setTestAudioBlob] = useState<Blob | null>(null);
   const [testAudioUrl, setTestAudioUrl] = useState<string | null>(null);
   const [testTranscript, setTestTranscript] = useState<string | null>(null);
+  const [liveTestTranscript, setLiveTestTranscript] = useState<string>('');
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [testError, setTestError] = useState<string | null>(null);
 
   if (!isDiagnosticsOpen) return null;
+
+  const handleToggleLocalTest = async () => {
+    if (isLocalTesting) {
+      stopLocalVoiceTest();
+    } else {
+      setLiveTestTranscript('');
+      setTestError(null);
+      try {
+        await startLocalVoiceTest((text) => {
+          setLiveTestTranscript(text);
+        });
+      } catch (err: any) {
+        setTestError(err.message || 'Failed to start local test');
+      }
+    }
+  };
 
   const handleRunMicTest = async () => {
     try {
@@ -384,8 +404,51 @@ export const VoiceDiagnosticsModal: React.FC = () => {
           </div>
         )}
 
+        {/* Section 5: Local Voice Test Mode (Zero AI / Zero Backend) */}
+        <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-blue-950/40 via-cyan-950/30 to-indigo-950/40 border border-[#00D9FF]/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Mic className="w-3.5 h-3.5 text-[#00D9FF]" />
+                Local Voice Test Mode (Section 5)
+              </span>
+              <p className="text-[11px] text-slate-400">
+                Tests Mic ➔ Speech Recognition ➔ Live Transcript with zero AI/backend calls.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleLocalTest}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                isLocalTesting
+                  ? 'bg-rose-500 text-white animate-pulse shadow-md shadow-rose-500/30'
+                  : 'bg-[#00D9FF] text-black hover:bg-[#00D9FF]/90 font-bold shadow-md shadow-[#00D9FF]/20'
+              }`}
+            >
+              {isLocalTesting ? 'Stop Local Test' : 'Start Local Test'}
+            </button>
+          </div>
+
+          {isLocalTesting && (
+            <div className="p-3 rounded-xl bg-black/60 border border-[#00D9FF]/30 space-y-1.5 animate-fadeIn">
+              <div className="flex items-center justify-between text-[11px] font-semibold">
+                <span className="text-[#00D9FF] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#00D9FF] animate-ping" />
+                  Live Local Speech Recognizer Active:
+                </span>
+                <span className="text-emerald-400 font-mono">
+                  Mic & STT OK
+                </span>
+              </div>
+              <p className="text-xs text-slate-100 font-medium italic min-h-[24px]">
+                {liveTestTranscript ? `"${liveTestTranscript}"` : '(Speak into your microphone now — words will stream here live)'}
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* Interactive Diagnostic Actions */}
-        <div className="mt-5 p-4 rounded-2xl bg-black/40 border border-[#202B3D] space-y-3">
+        <div className="mt-4 p-4 rounded-2xl bg-black/40 border border-[#202B3D] space-y-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
             Hardware & Speech Pipeline Tests
           </h3>

@@ -264,12 +264,22 @@ export const CompanionStage: React.FC<CompanionStageProps> = ({ onOpenChat }) =>
                 <div className="text-left min-w-0 flex-1">
                   <span className="text-[11px] sm:text-[12px] font-bold text-white block leading-tight truncate">Life Companion</span>
                   <span className="text-[9px] sm:text-[10px] text-slate-400 block leading-tight truncate">
-                    {isConversationActive
-                      ? 'Conversation mode ON'
+                    {detailedVoiceState === 'speech_detected'
+                      ? 'Hearing you...'
+                      : detailedVoiceState === 'transcribing'
+                      ? 'Got it...'
+                      : voiceState === 'thinking'
+                      ? 'Thinking...'
                       : voiceState === 'speaking'
                       ? (isMouthOpen ? 'Speaking now...' : 'Speaking (pause)...')
+                      : detailedVoiceState === 'rearming'
+                      ? 'Getting ready...'
                       : voiceState === 'listening'
-                      ? (inputVolume > 0.08 ? 'Hearing you...' : 'Listening... Speak now')
+                      ? 'Listening... Speak now'
+                      : detailedVoiceState === 'ready'
+                      ? 'Microphone ready'
+                      : !isVoiceModeEnabled
+                      ? 'Voice disabled'
                       : 'Say "Hey Life"'}
                   </span>
                 </div>

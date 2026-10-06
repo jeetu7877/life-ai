@@ -252,6 +252,9 @@ export interface KnowledgeGraphData {
 export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
 
 export type DetailedVoiceState =
+  | 'off'
+  | 'ready'
+  | 'audio_detected'
   | 'stopped'
   | 'disabled'
   | 'idle'

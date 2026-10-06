@@ -198,41 +198,83 @@ export const HomeVoicePage: React.FC = () => {
     }
   };
 
-  // Determine real status bar label & dot color
+  // Determine real status bar label & dot color adhering to deterministic voice states
   const getStatusBarMeta = () => {
-    if (!isVoiceModeEnabled) {
+    if (!isVoiceModeEnabled || detailedVoiceState === 'off' || detailedVoiceState === 'disabled') {
       return {
         label: 'Voice • Off',
         dotClass: 'bg-slate-500',
         ringClass: ''
       };
     }
-    switch (voiceState) {
-      case 'listening':
-        return {
-          label: detailedVoiceState === 'speech_detected' ? 'Hearing you...' : `Listening • ${wakeWord}`,
-          dotClass: 'bg-[#22C55E] animate-pulse',
-          ringClass: 'ring-2 ring-[#22C55E]/40'
-        };
-      case 'thinking':
-        return {
-          label: 'Thinking...',
-          dotClass: 'bg-[#00D9FF] animate-bounce',
-          ringClass: 'ring-2 ring-[#00D9FF]/40'
-        };
-      case 'speaking':
-        return {
-          label: 'Speaking...',
-          dotClass: 'bg-[#C084FC] animate-ping',
-          ringClass: 'ring-2 ring-[#C084FC]/40'
-        };
-      default:
-        return {
-          label: isWakeWordEnabled ? `Listening • ${wakeWord}` : `Ready • Tap Mic`,
-          dotClass: 'bg-[#22C55E]',
-          ringClass: ''
-        };
+    if (detailedVoiceState === 'initializing' || detailedVoiceState === 'starting_mic') {
+      return {
+        label: 'Initializing...',
+        dotClass: 'bg-amber-400 animate-pulse',
+        ringClass: 'ring-2 ring-amber-400/30'
+      };
     }
+    if (detailedVoiceState === 'speech_detected') {
+      return {
+        label: 'Hearing you...',
+        dotClass: 'bg-[#00D9FF] animate-pulse',
+        ringClass: 'ring-2 ring-[#00D9FF]/50'
+      };
+    }
+    if (detailedVoiceState === 'transcribing') {
+      return {
+        label: 'Got it...',
+        dotClass: 'bg-[#8B5CF6] animate-pulse',
+        ringClass: 'ring-2 ring-[#8B5CF6]/40'
+      };
+    }
+    if (voiceState === 'thinking') {
+      return {
+        label: 'Thinking...',
+        dotClass: 'bg-[#8B5CF6] animate-bounce',
+        ringClass: 'ring-2 ring-[#8B5CF6]/40'
+      };
+    }
+    if (voiceState === 'speaking') {
+      return {
+        label: 'Speaking...',
+        dotClass: 'bg-[#EC4899] animate-ping',
+        ringClass: 'ring-2 ring-[#EC4899]/40'
+      };
+    }
+    if (detailedVoiceState === 'rearming') {
+      return {
+        label: 'Getting ready...',
+        dotClass: 'bg-[#00D9FF] animate-pulse',
+        ringClass: 'ring-2 ring-[#00D9FF]/30'
+      };
+    }
+    if (detailedVoiceState === 'listening' || detailedVoiceState === 'user_listening') {
+      return {
+        label: 'Listening...',
+        dotClass: 'bg-[#22C55E] animate-pulse',
+        ringClass: 'ring-2 ring-[#22C55E]/40'
+      };
+    }
+    if (detailedVoiceState === 'ready') {
+      return {
+        label: 'Microphone ready',
+        dotClass: 'bg-[#22C55E]',
+        ringClass: ''
+      };
+    }
+    if (voiceState === 'error') {
+      return {
+        label: 'Voice Error',
+        dotClass: 'bg-rose-500',
+        ringClass: 'ring-2 ring-rose-500/40'
+      };
+    }
+    return {
+      label: isWakeWordEnabled ? `Listening • ${wakeWord}` : 'Microphone ready',
+      dotClass: 'bg-[#22C55E]',
+      ringClass: ''
+    };
   };
 
   const statusMeta = getStatusBarMeta();

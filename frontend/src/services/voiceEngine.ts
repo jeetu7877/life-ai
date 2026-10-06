@@ -36,6 +36,7 @@ export interface VoiceEngineSnapshot {
   streamActive: boolean;
   audioSampleRate: number;
   audioChannels: number;
+  isLocalTesting: boolean;
 }
 
 interface IWindow extends Window {
@@ -93,10 +94,15 @@ class VoiceEngine {
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
 
-  // Active Recognition Instance & Exclusive Locks
-  private activeRecognition: any = null;
-  private isTransitioning: boolean = false;
-  private isRestarting: boolean = false;
+  // Active Recognition Singleton & Shared State
+  private sharedRecognition: any = null;
+  private isRecognitionRunning: boolean = false;
+  private recognitionMode: 'query' | 'wake' | 'test' = 'query';
+  private consecutiveErrors: number = 0;
+  private restartTimer: any = null;
+  private isLocalTesting: boolean = false;
+  private localTestCallback: ((transcript: string, isFinal: boolean) => void) | null = null;
+
   private isMicGated: boolean = false;
   private isSpeaking: boolean = false;
   private isListeningSession: boolean = false;
@@ -121,9 +127,9 @@ class VoiceEngine {
   private echoCooldownTimer: any = null;
 
   // Configurable Parameters
-  private readonly ECHO_COOLDOWN_MS = 750;
-  private readonly END_SILENCE_MS = 950;
-  private readonly CONVERSATION_SILENCE_TIMEOUT_MS = 16000;
+  private readonly ECHO_COOLDOWN_MS = 650;
+  private readonly END_SILENCE_MS = 850;
+  private readonly CONVERSATION_SILENCE_TIMEOUT_MS = 20000;
 
   private isInitialized: boolean = false;
 
@@ -207,12 +213,11 @@ class VoiceEngine {
             console.log('[VOICE] Microphone permission previously granted. Listening automatically.');
             this.startQueryListening();
           } else {
-            this.setDetailedState('wake_listening');
-            this.startWakeWordListening();
+            console.log('[VOICE] Microphone permission pending. Setting state to ready.');
+            this.setDetailedState('ready');
           }
         }).catch(() => {
-          this.setDetailedState('wake_listening');
-          this.startWakeWordListening();
+          this.setDetailedState('ready');
         });
       } else {
         this.setDetailedState('disabled');
@@ -305,11 +310,10 @@ class VoiceEngine {
         console.log('[VOICE] Foreground auto-listening active without button press.');
         this.startQueryListening();
       } else {
-        this.setDetailedState('wake_listening');
-        this.startWakeWordListening();
+        this.setDetailedState('ready');
       }
     } catch {
-      this.returnToWakeListening();
+      this.setDetailedState('ready');
     }
   }
 
@@ -363,7 +367,8 @@ class VoiceEngine {
       isBackendOnline: this.isBackendOnline,
       streamActive: this.streamActive,
       audioSampleRate: this.audioSampleRate,
-      audioChannels: this.audioChannels
+      audioChannels: this.audioChannels,
+      isLocalTesting: this.isLocalTesting
     };
   }
 
@@ -381,17 +386,22 @@ class VoiceEngine {
   private setDetailedState(detailed: DetailedVoiceState): void {
     this.detailedVoiceState = detailed;
     switch (detailed) {
-      case 'wake_listening':
-      case 'idle':
-      case 'disabled':
+      case 'off':
       case 'stopped':
+      case 'disabled':
+      case 'idle':
+      case 'ready':
+      case 'initializing':
+      case 'starting_mic':
       case 'recovering':
         this.voiceState = 'idle';
         break;
       case 'listening':
       case 'user_listening':
+      case 'audio_detected':
       case 'speech_detected':
       case 'rearming':
+      case 'wake_listening':
         this.voiceState = 'listening';
         break;
       case 'processing':
@@ -576,20 +586,12 @@ class VoiceEngine {
   }
 
   // =========================================================================
-  // WAKE WORD LISTENER ("Hey Life")
+  // SINGLETON SPEECH RECOGNITION (WEB SPEECH API)
   // =========================================================================
 
-  public async startWakeWordListening(): Promise<void> {
-    if (this.isNative || !this.isVoiceModeEnabled || this.isSpeaking || this.isListeningSession) {
-      return;
-    }
-
-    if (this.isTransitioning) return;
-    this.isTransitioning = true;
-
-    if (this.wakeRecoveryTimer) {
-      clearTimeout(this.wakeRecoveryTimer);
-      this.wakeRecoveryTimer = null;
+  private getOrCreateRecognition(): any {
+    if (this.sharedRecognition) {
+      return this.sharedRecognition;
     }
 
     const SpeechRecognitionClass =
@@ -597,109 +599,257 @@ class VoiceEngine {
       (window as unknown as IWindow).webkitSpeechRecognition;
 
     if (!SpeechRecognitionClass) {
-      this.isTransitioning = false;
-      return;
+      return null;
     }
 
     try {
-      await this.ensureLiveMicrophoneStream();
-    } catch (err) {
-      console.warn('[VOICE ERROR] mic stream check before wake listener:', err);
-      this.isTransitioning = false;
-      return;
-    }
+      const rec = new SpeechRecognitionClass();
+      rec.continuous = false; // Controlled per-utterance session: prevents Chrome desktop hanging
+      rec.interimResults = true;
+      rec.lang = 'en-IN'; // Indian English / Roman Hinglish transcript
+      rec.maxAlternatives = 1;
 
-    this.stopCurrentRecognition();
-
-    try {
-      const wakeRec = new SpeechRecognitionClass();
-      wakeRec.continuous = true;
-      wakeRec.interimResults = true;
-      wakeRec.lang = 'en-IN';
-
-      wakeRec.onstart = () => {
-        console.log('[VOICE] wake listener started');
-        this.setDetailedState('wake_listening');
-        this.isTransitioning = false;
+      rec.onstart = () => {
+        this.isRecognitionRunning = true;
+        this.consecutiveErrors = 0;
+        if (this.recognitionMode === 'test') {
+          console.log('[VOICE TEST] Diagnostic recognition started');
+        } else if (this.recognitionMode === 'query') {
+          console.log('[VOICE] microphone ready');
+          console.log('[VOICE] microphone started');
+          console.log('[VOICE] listening again');
+          if (this.detailedVoiceState !== 'speech_detected') {
+            this.setDetailedState('listening');
+          }
+        } else {
+          this.setDetailedState('ready');
+        }
       };
 
-      wakeRec.onresult = (event: any) => {
-        if (this.isSpeaking || this.isListeningSession || this.isMicGated) return;
+      rec.onspeechstart = () => {
+        if (!this.speechDetected) {
+          console.log('[VOICE] Speech sound detected by recognizer');
+          if (this.recognitionMode === 'query' && this.detailedVoiceState === 'listening') {
+            // Audio detected, but DO NOT show "Hearing you..." until actual words arrive in onresult!
+            this.setDetailedState('audio_detected');
+          }
+        }
+        if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
+      };
 
-        let transcriptText = '';
+      rec.onresult = (event: any) => {
+        if (this.isMicGated || this.isSpeaking) return;
+
+        let interim = '';
+        let finalStr = '';
+
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          transcriptText += event.results[i][0].transcript;
+          const item = event.results[i][0];
+          if (event.results[i].isFinal) {
+            finalStr += item.transcript;
+          } else {
+            interim += item.transcript;
+          }
         }
 
-        const lower = transcriptText.toLowerCase().trim();
-        const targetWake = this.wakeWord.toLowerCase();
+        const currentText = (finalStr || interim).trim();
 
-        if (
-          lower.includes(targetWake) ||
-          lower.includes('hey life') ||
-          lower.includes('life') ||
-          lower.includes('lyf') ||
-          lower.includes('हे लाइफ') ||
-          lower.includes('लाइफ') ||
-          lower.includes('hey jeet') ||
-          lower.includes('jeet') ||
-          lower.includes('जीत')
-        ) {
-          console.log(`[VOICE] wake word detected: "${lower}"`);
-          this.stopCurrentRecognition();
-          this.handleWakeDetected();
+        // 1. Diagnostic Local Test Mode (No Backend / No AI)
+        if (this.recognitionMode === 'test') {
+          if (currentText && this.localTestCallback) {
+            this.localTestCallback(currentText, !!finalStr);
+          }
+          if (finalStr) {
+            console.log(`[VOICE TEST] Final test transcript: "${finalStr}"`);
+          }
+          return;
         }
-      };
 
-      wakeRec.onerror = (e: any) => {
-        if (e.error !== 'aborted' && e.error !== 'no-speech') {
-          console.warn('[VOICE ERROR] wake listener error:', e.error);
+        // 2. Wake Word Standby Mode
+        if (this.recognitionMode === 'wake') {
+          const lower = currentText.toLowerCase();
+          const targetWake = this.wakeWord.toLowerCase();
+          if (
+            lower.includes(targetWake) ||
+            lower.includes('hey life') ||
+            lower.includes('life') ||
+            lower.includes('hey jeet') ||
+            lower.includes('jeet')
+          ) {
+            console.log(`[VOICE] wake word detected: "${currentText}"`);
+            this.stopCurrentRecognition();
+            this.handleWakeDetected();
+          }
+          return;
         }
-      };
 
-      wakeRec.onend = () => {
-        this.activeRecognition = null;
-        // Auto-recover wake listener if still enabled and not in conversation/speaking/listening
-        if (this.isVoiceModeEnabled && !this.isConversationActive && !this.isSpeaking && !this.isListeningSession && !this.isNative) {
-          this.wakeRecoveryTimer = setTimeout(() => {
-            if (this.isVoiceModeEnabled && !this.isConversationActive && !this.isSpeaking && !this.isListeningSession) {
-              console.log('[VOICE] automatic restart (wake listener)');
-              this.startWakeWordListening();
+        // 3. Continuous Query Mode (User Utterance)
+        if (currentText) {
+          if (!this.speechDetected) {
+            console.log('[VOICE] speech started');
+            this.speechDetected = true;
+            this.speechStartTime = Date.now();
+          }
+
+          // ONLY transition to 'speech_detected' ("Hearing you...") when actual words arrive!
+          this.setDetailedState('speech_detected');
+
+          this.accumulatedTranscript = currentText;
+          this.lastSpokenText = currentText;
+          this.transcript = currentText;
+          this.notify();
+
+          if (interim) {
+            console.log(`[VOICE] interim transcript: "${interim}"`);
+          }
+          if (finalStr) {
+            console.log(`[VOICE] final transcript = "${finalStr}"`);
+          }
+
+          if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
+
+          // End-of-speech silence timer: auto-submit if browser takes too long to fire onend
+          if (this.speechPauseTimer) clearTimeout(this.speechPauseTimer);
+          this.speechPauseTimer = setTimeout(() => {
+            if (this.isListeningSession && this.speechDetected) {
+              console.log('[VOICE] speech ended');
+              this.stopCurrentRecognition();
             }
-          }, 300);
+          }, this.END_SILENCE_MS);
         }
       };
 
-      this.activeRecognition = wakeRec;
-      wakeRec.start();
+      rec.onerror = (e: any) => {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          console.error('[VOICE ERROR] microphone error: permission denied');
+          this.micPermissionError = true;
+          this.voiceError = 'Microphone permission required.';
+          this.setDetailedState('error');
+        } else if (e.error === 'no-speech') {
+          // Benign browser silence timeout
+        } else if (e.error !== 'aborted') {
+          console.warn('[VOICE ERROR] speech recognition error:', e.error);
+          this.consecutiveErrors++;
+        }
+      };
+
+      rec.onend = () => {
+        this.isRecognitionRunning = false;
+
+        // Diagnostic test mode: auto-loop test listening
+        if (this.recognitionMode === 'test') {
+          if (this.isLocalTesting) {
+            setTimeout(() => {
+              if (this.isLocalTesting) {
+                this.safeStartRecognition();
+              }
+            }, 200);
+          }
+          return;
+        }
+
+        // If speaking, gated, or app backgrounded: do not restart
+        if (this.isSpeaking || this.isMicGated || !this.isAppInForeground) {
+          return;
+        }
+
+        // Utterance captured?
+        const candidate = (this.lastSpokenText || this.accumulatedTranscript || this.transcript || '').trim();
+        if (candidate && this.speechDetected) {
+          console.log('[VOICE] speech ended');
+          this.processCompletedUtterance(candidate);
+          return;
+        }
+
+        // Silence: re-arm query listening or wake standby without tight loop
+        if (this.recognitionMode === 'query' && this.isListeningSession && this.isConversationActive && this.isVoiceModeEnabled) {
+          const delay = Math.min(2000, 250 + this.consecutiveErrors * 350);
+          this.restartTimer = setTimeout(() => {
+            if (
+              this.recognitionMode === 'query' &&
+              this.isListeningSession &&
+              this.isConversationActive &&
+              this.isVoiceModeEnabled &&
+              !this.isSpeaking &&
+              !this.isMicGated &&
+              this.isAppInForeground
+            ) {
+              this.safeStartRecognition();
+            }
+          }, delay);
+        } else if (this.recognitionMode === 'wake' && this.isVoiceModeEnabled && !this.isSpeaking && this.isAppInForeground) {
+          this.restartTimer = setTimeout(() => {
+            if (this.recognitionMode === 'wake' && this.isVoiceModeEnabled && !this.isSpeaking && this.isAppInForeground) {
+              this.safeStartRecognition();
+            }
+          }, 350);
+        }
+      };
+
+      this.sharedRecognition = rec;
+      return rec;
+    } catch (err) {
+      console.error('[VOICE ERROR] SpeechRecognition initialization failed:', err);
+      return null;
+    }
+  }
+
+  private safeStartRecognition(): void {
+    if (this.isNative || !this.isAppInForeground || this.isSpeaking || this.isMicGated) {
+      return;
+    }
+    const rec = this.getOrCreateRecognition();
+    if (!rec) return;
+
+    if (this.isRecognitionRunning) {
+      return;
+    }
+
+    try {
+      rec.start();
     } catch (err: any) {
-      this.isTransitioning = false;
       if (err.name !== 'InvalidStateError') {
-        console.warn('[VOICE ERROR] wake listener start exception:', err);
+        console.warn('[VOICE ERROR] recognition start failed:', err);
       }
     }
   }
 
-  public stopWakeWordListening(): void {
-    if (this.wakeRecoveryTimer) {
-      clearTimeout(this.wakeRecoveryTimer);
-      this.wakeRecoveryTimer = null;
-    }
-    this.stopCurrentRecognition();
-  }
-
   private stopCurrentRecognition(): void {
-    if (this.activeRecognition) {
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    if (this.sharedRecognition && this.isRecognitionRunning) {
       try {
-        this.activeRecognition.abort();
+        this.sharedRecognition.abort();
       } catch (_) {}
-      this.activeRecognition = null;
+      this.isRecognitionRunning = false;
     }
   }
 
   // =========================================================================
-  // WAKE DETECTED -> GREETING ("Haan, bolo.") -> ENTER CONVERSATION
+  // WAKE WORD LISTENER ("Hey Life")
   // =========================================================================
+
+  public async startWakeWordListening(): Promise<void> {
+    if (this.isNative || !this.isVoiceModeEnabled || this.isSpeaking || this.isListeningSession) {
+      return;
+    }
+    this.recognitionMode = 'wake';
+    try {
+      await this.ensureLiveMicrophoneStream();
+      this.setDetailedState('ready');
+      this.safeStartRecognition();
+    } catch (err) {
+      console.warn('[VOICE ERROR] startWakeWordListening failed:', err);
+    }
+  }
+
+  public stopWakeWordListening(): void {
+    if (this.recognitionMode === 'wake') {
+      this.stopCurrentRecognition();
+    }
+  }
 
   private async handleWakeDetected(): Promise<void> {
     console.log('[VOICE] conversation started');
@@ -710,15 +860,14 @@ class VoiceEngine {
     this.voiceError = null;
     this.notify();
 
-    // Play "Haan, bolo." with mic gated
+    // Play greeting "Haan, bolo." with mic gated
     this.speakText('Haan, bolo.', () => {
-      // Once greeting completes, transition immediately to active listening
       this.startQueryListening();
     });
   }
 
   // =========================================================================
-  // QUERY LISTENING MODE (Continuous Multi-Turn Conversation)
+  // QUERY LISTENING MODE (Continuous Multi-Turn Human Conversation)
   // =========================================================================
 
   public async triggerManualListen(): Promise<void> {
@@ -746,7 +895,7 @@ class VoiceEngine {
       return;
     }
 
-    // Interruption: If currently speaking, stop TTS immediately and start listening (Barge-in)
+    // Barge-in Interruption: If currently speaking, stop TTS immediately and listen
     if (this.isSpeaking) {
       console.log('[VOICE] barge-in interruption triggered by user');
       this.stopTTSOutput();
@@ -757,265 +906,97 @@ class VoiceEngine {
       return;
     }
 
-    // If already in an active listening session, pressing mic toggles voice conversation OFF
+    // If already in an active listening session, toggle voice conversation OFF
     if (this.isListeningSession) {
       console.log('[VOICE] conversation stopped by user action');
       this.stopVoice();
       return;
     }
 
-    // Otherwise, start continuous voice conversation mode
+    // Otherwise start continuous voice conversation mode
     this.isConversationActive = true;
     this.isVoiceModeEnabled = true;
     localStorage.setItem('life_voice_mode_enabled', 'true');
     await this.startQueryListening();
   }
 
-  private async startQueryListening(): Promise<void> {
+  public async startQueryListening(): Promise<void> {
     if (this.isNative) {
-      console.log('[VOICE] On native platform, query listening is handled exclusively by native HandsFreeVoiceService.');
+      console.log('[VOICE] On native platform, query listening handled by native HandsFreeVoiceService.');
       return;
     }
-    if (!this.isVoiceModeEnabled) return;
+    if (!this.isVoiceModeEnabled || !this.isAppInForeground) return;
 
-    this.stopWakeWordListening();
+    this.stopCurrentRecognition();
     this.gateMicrophone(false);
 
+    this.recognitionMode = 'query';
     this.isListeningSession = true;
-    this.isRestarting = false;
+    this.isConversationActive = true;
     this.transcript = '';
     this.accumulatedTranscript = '';
     this.lastSpokenText = '';
     this.speechDetected = false;
-    this.recordedChunks = [];
     this.voiceError = null;
 
-    console.log('[VOICE] listening again');
     this.setDetailedState('listening');
     this.resetConversationSilenceTimeout();
 
     try {
-      const stream = await this.ensureLiveMicrophoneStream();
-
-      // Start MediaRecorder fallback buffer
-      try {
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : MediaRecorder.isTypeSupported('audio/webm')
-          ? 'audio/webm'
-          : '';
-
-        const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-        recorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            this.recordedChunks.push(e.data);
-          }
-        };
-        recorder.start(200);
-        this.mediaRecorder = recorder;
-      } catch (recErr) {
-        console.warn('[VOICE] MediaRecorder init note:', recErr);
-      }
-
-      // Initialize Web Speech Recognition
-      const SpeechRecognitionClass =
-        (window as unknown as IWindow).SpeechRecognition ||
-        (window as unknown as IWindow).webkitSpeechRecognition;
-
-      if (SpeechRecognitionClass) {
-        const recognition = new SpeechRecognitionClass();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'hi-IN';
-
-        recognition.onstart = () => {
-          console.log('[VOICE] Microphone opened');
-        };
-
-        recognition.onspeechstart = () => {
-          if (!this.speechDetected) {
-            console.log('[VOICE] Speech started');
-            this.speechDetected = true;
-            this.speechStartTime = Date.now();
-            this.setDetailedState('speech_detected');
-          }
-          if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
-        };
-
-        recognition.onresult = (event: any) => {
-          if (this.isMicGated || this.isSpeaking) return;
-
-          let interim = '';
-          let finalStr = '';
-
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            const text = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalStr += text;
-            } else {
-              interim += text;
-            }
-          }
-
-          const currentText = (finalStr || interim).trim();
-          if (currentText) {
-            if (!this.speechDetected) {
-              console.log('[VOICE] Speech started');
-              this.speechDetected = true;
-              this.speechStartTime = Date.now();
-              this.setDetailedState('speech_detected');
-            }
-
-            this.accumulatedTranscript = currentText;
-            this.lastSpokenText = currentText;
-            this.transcript = currentText;
-            this.notify();
-
-            // Clear conversation inactivity timeout while user is talking
-            if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
-
-            // Speech-end VAD detection: Auto-submit after 950ms of silence following speech
-            if (this.speechPauseTimer) clearTimeout(this.speechPauseTimer);
-            this.speechPauseTimer = setTimeout(() => {
-              if (this.isListeningSession) {
-                console.log('[VOICE] Speech ended');
-                this.stopListeningSession();
-              }
-            }, this.END_SILENCE_MS);
-          }
-        };
-
-        recognition.onerror = (e: any) => {
-          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-            console.error('[VOICE ERROR] microphone error: permission denied');
-            this.micPermissionError = true;
-            this.voiceError = 'Microphone permission required.';
-            this.setDetailedState('error');
-          } else if (e.error !== 'aborted' && e.error !== 'no-speech') {
-            console.warn('[VOICE ERROR] speech recognition error:', e.error);
-          }
-        };
-
-        recognition.onend = () => {
-          // If recognition ended unexpectedly while in active listening (e.g. browser silence timeout)
-          if (this.isListeningSession && !this.isSpeaking && this.isConversationActive && !this.isRestarting) {
-            console.log('[VOICE] recognition ended unexpectedly');
-            this.isRestarting = true;
-            setTimeout(() => {
-              if (this.isListeningSession && !this.isSpeaking && this.isConversationActive) {
-                console.log('[VOICE] automatic restart');
-                this.startQueryListening();
-              }
-            }, 250);
-          }
-        };
-
-        this.activeRecognition = recognition;
-        recognition.start();
-      }
+      await this.ensureLiveMicrophoneStream();
+      this.safeStartRecognition();
     } catch (err: any) {
       console.error('[VOICE ERROR] query listen start failed:', err);
       this.isListeningSession = false;
-      this.returnToWakeListening();
+      this.setDetailedState('ready');
     }
   }
 
-  // Conversation silence timeout: after 16s of silence with zero speech, gracefully return to wake-word standby
   private resetConversationSilenceTimeout(): void {
     if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
     this.conversationTimeoutTimer = setTimeout(() => {
       if (this.isListeningSession && !this.speechDetected && !this.isSpeaking) {
-        console.log('[VOICE] conversation session timed out due to inactivity');
+        console.log('[VOICE] conversation standby timeout');
         this.isConversationActive = false;
         this.stopCurrentRecognition();
-        this.returnToWakeListening();
+        this.setDetailedState('ready');
       }
     }, this.CONVERSATION_SILENCE_TIMEOUT_MS);
   }
 
-  private async stopListeningSession(): Promise<void> {
+  private async processCompletedUtterance(candidateText: string): Promise<void> {
     if (this.speechPauseTimer) clearTimeout(this.speechPauseTimer);
     if (this.conversationTimeoutTimer) clearTimeout(this.conversationTimeoutTimer);
 
     this.isListeningSession = false;
+    this.speechDetected = false;
+    this.stopCurrentRecognition();
 
-    // Stop Web Speech recognition
-    if (this.activeRecognition) {
-      try {
-        this.activeRecognition.stop();
-      } catch (_) {}
-    }
-    await new Promise((r) => setTimeout(r, 200));
+    console.log(`[VOICE] final transcript = "${candidateText}"`);
+    this.transcript = candidateText;
+    this.setDetailedState('transcribing');
 
-    // Grab audio blob from MediaRecorder
-    let recordedBlob: Blob | null = null;
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      try {
-        await new Promise<void>((resolve) => {
-          if (!this.mediaRecorder) return resolve();
-          this.mediaRecorder.onstop = () => resolve();
-          this.mediaRecorder.stop();
-        });
-        if (this.recordedChunks.length > 0) {
-          recordedBlob = new Blob(this.recordedChunks, { type: 'audio/webm' });
-        }
-      } catch (recErr) {
-        console.warn('[VOICE] MediaRecorder stop note:', recErr);
-      }
-    }
-
-    let candidateTranscript = (this.lastSpokenText || this.accumulatedTranscript || this.transcript || '').trim();
-
-    // Fallback: If Web Speech yielded no text but speech was recorded, invoke Gemini Multimodal STT
-    if (!candidateTranscript && recordedBlob && recordedBlob.size > 800) {
-      console.log('[VOICE] Web Speech yielded no transcript. Invoking backend Gemini Multimodal STT fallback...');
-      this.setDetailedState('transcribing');
-      try {
-        const backendRes = await api.transcribeAudio(recordedBlob);
-        if (backendRes && backendRes.transcript && backendRes.transcript.trim()) {
-          candidateTranscript = backendRes.transcript.trim();
-          this.transcript = candidateTranscript;
-        }
-      } catch (sttErr: any) {
-        console.warn('[VOICE ERROR] STT backend error:', sttErr);
-      }
-    }
-
-    if (candidateTranscript) {
-      console.log(`[VOICE] Final transcript = "${candidateTranscript}"`);
-      this.transcript = candidateTranscript;
-      this.notify();
-
-      // Check for user goodbye / stop phrases
-      const lowerCandidate = candidateTranscript.toLowerCase();
-      if (
-        lowerCandidate === 'bye' ||
-        lowerCandidate === 'bye bye' ||
-        lowerCandidate === 'goodbye' ||
-        lowerCandidate === 'alvida' ||
-        lowerCandidate === 'stop' ||
-        lowerCandidate === 'stop conversation' ||
-        lowerCandidate.includes('alvida life') ||
-        lowerCandidate.includes('chalo theek hai')
-      ) {
-        console.log('[VOICE] conversation ended by user gesture');
-        this.isConversationActive = false;
-        this.speakText('Theek hai, alvida! Jab bhi zaroorat ho, bas "Hey Life" keh dena.', () => {
-          this.returnToWakeListening();
-        });
-        return;
-      }
-
-      await this.handleUserUtterance(candidateTranscript);
-    } else {
-      console.log('[VOICE] empty transcript detected (silence)');
-      if (this.isConversationActive) {
-        // In continuous conversation, restart listening gracefully
-        this.startQueryListening();
-      } else {
+    // Check for user goodbye / stop phrases
+    const lowerCandidate = candidateText.toLowerCase().trim();
+    if (
+      lowerCandidate === 'bye' ||
+      lowerCandidate === 'bye bye' ||
+      lowerCandidate === 'goodbye' ||
+      lowerCandidate === 'alvida' ||
+      lowerCandidate === 'stop' ||
+      lowerCandidate === 'stop conversation' ||
+      lowerCandidate.includes('alvida life') ||
+      lowerCandidate.includes('chalo theek hai')
+    ) {
+      console.log('[VOICE] conversation ended by user gesture');
+      this.isConversationActive = false;
+      this.speakText('Theek hai, alvida! Jab bhi zaroorat ho, bas baat kar lena.', () => {
         this.returnToWakeListening();
-      }
+      });
+      return;
     }
+
+    await this.handleUserUtterance(candidateText);
   }
 
   // =========================================================================
@@ -1026,18 +1007,18 @@ class VoiceEngine {
     if (!userText || this.isSpeaking) return;
     const cleanText = userText.trim();
     if (!cleanText || cleanText === '.' || cleanText === ',' || cleanText.toLowerCase() === 'uh' || cleanText.toLowerCase() === 'ah') {
-      console.log('[VOICE] Ignoring empty / noise token:', cleanText);
+      console.log('[VOICE] Ignoring noise token:', cleanText);
       if (this.isConversationActive) {
         this.startQueryListening();
       }
       return;
     }
 
-    // Fast Device Intent Interception (Alarms & Music controls executed locally in <50ms)
+    // Fast Device Intent Interception (<50ms for Alarms, Music, Personal Facts)
     try {
       const fastResult = await fastIntentRouter.route(cleanText);
       if (fastResult.handled) {
-        console.log(`[VOICE] Fast intent handled locally: "${fastResult.responseText}"`);
+        console.log(`[VOICE] fast intent handled: "${fastResult.responseText}"`);
         this.assistantResponse = fastResult.responseText;
         this.voiceError = null;
         this.notify();
@@ -1050,7 +1031,8 @@ class VoiceEngine {
       console.warn('[VOICE] Fast intent evaluation notice:', fastErr);
     }
 
-    console.log(`[VOICE] Backend request started for query: "${cleanText}"`);
+    console.log('[VOICE] thinking started');
+    console.log(`[VOICE] backend request started for query: "${cleanText}"`);
     this.setDetailedState('thinking');
 
     try {
@@ -1061,13 +1043,12 @@ class VoiceEngine {
         voice_mode: true
       });
 
-      console.log(`[VOICE] Backend response received: "${(res.response || '').substring(0, 50)}..."`);
+      console.log(`[VOICE] backend response received: "${(res.response || '').substring(0, 50)}..."`);
       this.activeConversationId = res.conversation_id;
       this.assistantResponse = res.response;
       this.voiceError = null;
       this.notify();
 
-      // Execute server-directed tools (e.g. music play, alarm scheduling)
       if ((res as any).tools_executed) {
         executeServerTools((res as any).tools_executed).catch((toolErr) => {
           console.warn('[VOICE] Tool execution notice:', toolErr);
@@ -1132,7 +1113,6 @@ class VoiceEngine {
       }
     };
 
-    // Connect to AudioContext Analyser for synchronized avatar lip-sync
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
@@ -1207,33 +1187,32 @@ class VoiceEngine {
     (window as unknown as IWindow)._currentUtterance = utterance;
 
     const voices = window.speechSynthesis.getVoices();
-    const indianFemaleVoice =
+    // Prefer Indian English female voice (en-IN), fallback to generic English female voice
+    const femaleVoice =
       voices.find(
         (v) =>
-          (v.lang.toLowerCase().includes('in') ||
-            v.name.toLowerCase().includes('india') ||
-            v.name.toLowerCase().includes('hindi')) &&
-          (v.name.toLowerCase().includes('swara') ||
-            v.name.toLowerCase().includes('neerja') ||
+          v.lang.toLowerCase().startsWith('en-in') &&
+          (v.name.toLowerCase().includes('neerja') ||
             v.name.toLowerCase().includes('ananya') ||
-            v.name.toLowerCase().includes('heera') ||
-            v.name.toLowerCase().includes('kalpana') ||
+            v.name.toLowerCase().includes('female') ||
             (v as any).gender === 'female')
       ) ||
+      voices.find((v) => v.lang.toLowerCase().startsWith('en-in')) ||
       voices.find(
         (v) =>
-          v.name.toLowerCase().includes('zira') ||
-          v.name.toLowerCase().includes('female') ||
-          (v as any).gender === 'female' ||
-          v.lang.toLowerCase() === 'hi-in' ||
-          v.lang.toLowerCase() === 'en-in'
-      );
+          v.lang.toLowerCase().startsWith('en') &&
+          (v.name.toLowerCase().includes('zira') ||
+            v.name.toLowerCase().includes('samantha') ||
+            v.name.toLowerCase().includes('female') ||
+            (v as any).gender === 'female')
+      ) ||
+      voices.find((v) => v.lang.toLowerCase().startsWith('en'));
 
-    if (indianFemaleVoice) {
-      utterance.voice = indianFemaleVoice;
-      utterance.lang = indianFemaleVoice.lang;
+    if (femaleVoice) {
+      utterance.voice = femaleVoice;
+      utterance.lang = femaleVoice.lang;
     } else {
-      utterance.lang = 'hi-IN';
+      utterance.lang = 'en-IN';
     }
     utterance.rate = 0.95;
 
@@ -1332,7 +1311,7 @@ class VoiceEngine {
     if (this.echoCooldownTimer) clearTimeout(this.echoCooldownTimer);
 
     // Continuous natural conversation re-arming:
-    // When Life AI finishes speaking in the foreground, automatically re-listen after echo cooldown
+    // When Life AI finishes speaking in the foreground, automatically re-listen after 650ms echo cooldown
     if (this.isVoiceModeEnabled && !this.isNative && this.isAppInForeground) {
       console.log('[VOICE] Cooldown (650ms)');
       this.setDetailedState('rearming');
@@ -1341,7 +1320,7 @@ class VoiceEngine {
         if (this.isVoiceModeEnabled && !this.isSpeaking && this.isAppInForeground) {
           console.log('[VOICE] Listening rearmed');
           this.gateMicrophone(false);
-          this.startQueryListening(); // Automatically transitions to LISTENING for next utterance!
+          this.startQueryListening(); // Zero clicks needed: transitions automatically to LISTENING!
         }
       }, this.ECHO_COOLDOWN_MS);
     } else if (!this.isNative) {
@@ -1355,7 +1334,7 @@ class VoiceEngine {
     this.gateMicrophone(false);
 
     if (this.isVoiceModeEnabled && !this.isNative && this.isAppInForeground) {
-      this.setDetailedState('wake_listening');
+      this.setDetailedState('ready');
       this.startWakeWordListening();
     } else {
       this.setDetailedState('idle');
@@ -1389,12 +1368,46 @@ class VoiceEngine {
     }
 
     if (this.isVoiceModeEnabled && this.isAppInForeground) {
-      this.setDetailedState('wake_listening');
+      this.setDetailedState('ready');
       this.startWakeWordListening();
     } else {
       this.setDetailedState('stopped');
       this.releaseMicrophoneStream();
     }
+  }
+
+  // =========================================================================
+  // LOCAL VOICE TEST MODE (Diagnostic only — zero LLM / network calls)
+  // =========================================================================
+
+  public async startLocalVoiceTest(callback: (transcript: string, isFinal: boolean) => void): Promise<void> {
+    console.log('[VOICE] Local voice diagnostic test mode started');
+    this.isLocalTesting = true;
+    this.localTestCallback = callback;
+    this.recognitionMode = 'test';
+    this.stopTTSOutput();
+    this.stopCurrentRecognition();
+    await this.ensureLiveMicrophoneStream();
+    this.safeStartRecognition();
+    this.notify();
+  }
+
+  public stopLocalVoiceTest(): void {
+    console.log('[VOICE] Local voice diagnostic test mode stopped');
+    this.isLocalTesting = false;
+    this.localTestCallback = null;
+    this.recognitionMode = 'query';
+    this.stopCurrentRecognition();
+    if (this.isVoiceModeEnabled && this.isAppInForeground) {
+      this.startQueryListening();
+    } else {
+      this.setDetailedState('ready');
+    }
+    this.notify();
+  }
+
+  public isLocalVoiceTesting(): boolean {
+    return this.isLocalTesting;
   }
 
   // =========================================================================
@@ -1469,6 +1482,9 @@ class VoiceEngine {
     }
     try {
       await this.ensureLiveMicrophoneStream();
+      if (this.isVoiceModeEnabled) {
+        this.startQueryListening();
+      }
       return true;
     } catch {
       return false;

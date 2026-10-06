@@ -58,6 +58,9 @@ interface VoiceContextType {
   requestBatteryOptimizationExemption: () => Promise<void>;
   testMicrophoneInput: (seconds?: number) => Promise<Blob | null>;
   testBackendTranscription: (audioBlob: Blob) => Promise<string>;
+  isLocalTesting: boolean;
+  startLocalVoiceTest: (callback: (transcript: string, isFinal: boolean) => void) => Promise<void>;
+  stopLocalVoiceTest: () => void;
 }
 
 const VoiceContext = createContext<VoiceContextType | undefined>(undefined);
@@ -151,6 +154,14 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return await voiceEngine.testBackendTranscription(audioBlob);
   };
 
+  const startLocalVoiceTest = async (callback: (transcript: string, isFinal: boolean) => void) => {
+    await voiceEngine.startLocalVoiceTest(callback);
+  };
+
+  const stopLocalVoiceTest = () => {
+    voiceEngine.stopLocalVoiceTest();
+  };
+
   const diagnostics: VoiceDiagnosticsState = {
     micAvailable: snapshot.isNativePlatform || !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
     permissionGranted: snapshot.micPermissionGranted,
@@ -207,7 +218,10 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         checkBatteryOptimization,
         requestBatteryOptimizationExemption,
         testMicrophoneInput,
-        testBackendTranscription
+        testBackendTranscription,
+        isLocalTesting: snapshot.isLocalTesting,
+        startLocalVoiceTest,
+        stopLocalVoiceTest
       }}
     >
       {children}
@@ -259,7 +273,10 @@ export const useVoice = (): VoiceContextType => {
       checkBatteryOptimization: async () => handsFreeService.checkBatteryOptimization(),
       requestBatteryOptimizationExemption: async () => { await handsFreeService.requestIgnoreBatteryOptimization(); },
       testMicrophoneInput: async () => null,
-      testBackendTranscription: async () => ''
+      testBackendTranscription: async () => '',
+      isLocalTesting: snap.isLocalTesting,
+      startLocalVoiceTest: async (cb) => voiceEngine.startLocalVoiceTest(cb),
+      stopLocalVoiceTest: () => voiceEngine.stopLocalVoiceTest()
     };
   }
   return context;
