@@ -21,6 +21,12 @@ export const VoiceDiagnosticsModal: React.FC = () => {
     isDiagnosticsOpen,
     setIsDiagnosticsOpen,
     inputVolume,
+    detailedVoiceState,
+    transcript,
+    voiceError,
+    isWakeWordEnabled,
+    isBackendOnline,
+    isAudioSpeaking,
     isNativePlatform,
     isBatteryOptimizedExempt,
     requestBatteryOptimizationExemption,
@@ -120,6 +126,68 @@ export const VoiceDiagnosticsModal: React.FC = () => {
           <p className="text-[11px] text-slate-400 mt-2">
             Speak into your microphone to verify live hardware signal detection.
           </p>
+        </div>
+
+        {/* Real-time Requirement 26 Live Status Board */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-[11px] font-semibold">
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">Voice Engine</span>
+            <span className={voiceError ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
+              {voiceError ? "ERROR" : "READY"}
+            </span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">Mic Permission</span>
+            <span className={diagnostics.permissionGranted ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+              {diagnostics.permissionGranted ? "GRANTED" : "DENIED"}
+            </span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">Microphone</span>
+            <span className={(inputVolume > 0.02 || detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening') ? "text-[#00D9FF] font-bold" : "text-slate-400 font-bold"}>
+              {(inputVolume > 0.02 || detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening') ? "ACTIVE" : "INACTIVE"}
+            </span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">STT Status</span>
+            <span className="text-amber-300 font-bold uppercase">
+              {detailedVoiceState === 'user_listening' || detailedVoiceState === 'listening' ? "LISTENING" : detailedVoiceState === 'processing' || detailedVoiceState === 'thinking' ? "PROCESSING" : "READY"}
+            </span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">Wake Word</span>
+            <span className={isWakeWordEnabled ? "text-emerald-400 font-bold" : "text-slate-400 font-bold"}>
+              {isWakeWordEnabled ? "ACTIVE" : "OFF"}
+            </span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D]">
+            <span className="text-[10px] text-slate-400 block uppercase">TTS Status</span>
+            <span className={isAudioSpeaking || detailedVoiceState === 'tts' || detailedVoiceState === 'greeting' ? "text-[#EC4899] font-bold" : "text-slate-400 font-bold"}>
+              {isAudioSpeaking || detailedVoiceState === 'tts' || detailedVoiceState === 'greeting' ? "SPEAKING" : "IDLE"}
+            </span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-[#141C2B] border border-[#202B3D] col-span-2">
+            <span className="text-[10px] text-slate-400 block uppercase">Network</span>
+            <span className={isBackendOnline ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+              {isBackendOnline ? "ONLINE (Connected)" : "OFFLINE"}
+            </span>
+          </div>
+        </div>
+
+        {/* Live Transcript & Error Board */}
+        <div className="mt-3 p-3 rounded-2xl bg-black/40 border border-[#202B3D] space-y-2 text-xs">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Last Live Transcript</span>
+            <p className="text-slate-200 italic mt-0.5 font-medium">
+              {transcript ? `"${transcript}"` : <span className="text-slate-500 font-normal">None recorded yet</span>}
+            </p>
+          </div>
+          {voiceError && (
+            <div className="pt-2 border-t border-slate-800">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 block">Last Error</span>
+              <p className="text-rose-300 mt-0.5">{voiceError}</p>
+            </div>
+          )}
         </div>
 
         {/* Status Checklist Grid */}

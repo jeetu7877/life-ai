@@ -9,6 +9,7 @@ import { api, getServerHostUrl } from './api';
 import { handsFreeService } from './handsFreeService';
 import { fastIntentRouter } from './fastIntentRouter';
 import { executeServerTools } from './toolExecutor';
+import { musicService } from './musicService';
 
 export interface VoiceEngineSnapshot {
   voiceState: VoiceState;
@@ -291,6 +292,16 @@ class VoiceEngine {
         this.voiceState = 'idle';
         break;
     }
+
+    // Dynamic music ducking: duck music volume during listening or speaking, restore when idle
+    try {
+      if (this.voiceState === 'listening' || this.voiceState === 'speaking') {
+        musicService.duckVolume(20);
+      } else {
+        musicService.restoreVolume();
+      }
+    } catch (_) {}
+
     this.notify();
   }
 
@@ -299,6 +310,13 @@ class VoiceEngine {
   // =========================================================================
 
   private async ensureLiveMicrophoneStream(): Promise<MediaStream> {
+    if (this.isNative) {
+      this.micPermissionGranted = true;
+      this.micPermissionError = false;
+      this.streamActive = true;
+      return null as any;
+    }
+
     if (this.activeStream && this.activeStream.active && this.activeStream.getAudioTracks().some((t) => t.readyState === 'live')) {
       return this.activeStream;
     }
@@ -634,6 +652,10 @@ class VoiceEngine {
   }
 
   private async startQueryListening(): Promise<void> {
+    if (this.isNative) {
+      console.log('[VOICE] On native platform, query listening is handled exclusively by native HandsFreeVoiceService.');
+      return;
+    }
     if (!this.isVoiceModeEnabled) return;
 
     this.stopWakeWordListening();

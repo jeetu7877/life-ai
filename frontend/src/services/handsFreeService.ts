@@ -38,6 +38,8 @@ export interface HandsFreeVoicePlugin {
 
   updateAuth(options: { token?: string; serverUrl?: string }): Promise<{ success: boolean }>;
 
+  setMusicPlaying(options: { playing: boolean }): Promise<{ success: boolean }>;
+
   checkBatteryOptimization(): Promise<{ isIgnoringBatteryOptimizations: boolean }>;
 
   requestIgnoreBatteryOptimization(): Promise<{ success: boolean }>;
@@ -217,6 +219,14 @@ class HandsFreeService {
       } catch (e) {
         console.warn('updateAuth failed:', e);
       }
+    }
+  }
+
+  public async setMusicPlaying(playing: boolean): Promise<void> {
+    if (this.isNative) {
+      try {
+        await NativeHandsFree.setMusicPlaying({ playing });
+      } catch (_) {}
     }
   }
 

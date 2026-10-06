@@ -6,6 +6,7 @@
  */
 
 import { api } from './api';
+import { handsFreeService } from './handsFreeService';
 import { Track, Playlist, PlayerState, PlayerStatus, RepeatMode } from './musicProvider';
 
 export type { Track, Playlist, PlayerState, PlayerStatus, RepeatMode };
@@ -603,11 +604,13 @@ class MusicService {
       this.state.isPlaying = true;
       this.state.playerStatus = 'PLAYING';
       this.state.errorMessage = null;
+      handsFreeService.setMusicPlaying(true);
       this.startProgressTicker();
       this.notify();
     } else if (ytState === 2) {
       this.state.isPlaying = false;
       this.state.playerStatus = 'PAUSED';
+      handsFreeService.setMusicPlaying(false);
       this.stopProgressTicker();
       this.notify();
     } else if (ytState === 3) {
@@ -616,6 +619,7 @@ class MusicService {
     } else if (ytState === 0) {
       console.log('[MUSIC] Track finished playing -> auto-advancing next track in queue');
       this.state.playerStatus = 'ENDED';
+      handsFreeService.setMusicPlaying(false);
       this.stopProgressTicker();
       this.notify();
       this.handleTrackEnded();
@@ -804,6 +808,7 @@ class MusicService {
     console.log('[MUSIC] pause() requested');
     this.state.isPlaying = false;
     this.state.playerStatus = 'PAUSED';
+    handsFreeService.setMusicPlaying(false);
 
     if (this.directAudio) {
       try {
@@ -829,6 +834,7 @@ class MusicService {
 
     this.state.isPlaying = true;
     this.state.playerStatus = 'PLAYING';
+    handsFreeService.setMusicPlaying(true);
 
     if (this.state.currentTrack.source === 'direct' && this.directAudio) {
       this.directAudio.play().catch(() => {});
@@ -857,6 +863,7 @@ class MusicService {
     this.state.isPlaying = false;
     this.state.playerStatus = 'UNSTARTED';
     this.state.currentTime = 0;
+    handsFreeService.setMusicPlaying(false);
     this.notify();
   }
 
@@ -945,6 +952,40 @@ class MusicService {
       } catch (_) {}
     }
     this.notify();
+  }
+
+  private preDuckVolume: number = 85;
+  private isDucked: boolean = false;
+
+  public duckVolume(duckLevel: number = 20): void {
+    if (this.isDucked) return;
+    this.preDuckVolume = this.state.volume || 85;
+    this.isDucked = true;
+    const target = Math.min(this.preDuckVolume, duckLevel);
+    console.log(`[MUSIC] Ducking volume from ${this.preDuckVolume}% to ${target}%`);
+    if (this.directAudio) {
+      this.directAudio.volume = target / 100;
+    }
+    if (this.ytPlayer && this.ytReady) {
+      try {
+        this.ytPlayer.setVolume(target);
+      } catch (_) {}
+    }
+  }
+
+  public restoreVolume(): void {
+    if (!this.isDucked) return;
+    this.isDucked = false;
+    const target = this.preDuckVolume || 85;
+    console.log(`[MUSIC] Restoring volume to ${target}%`);
+    if (this.directAudio) {
+      this.directAudio.volume = target / 100;
+    }
+    if (this.ytPlayer && this.ytReady) {
+      try {
+        this.ytPlayer.setVolume(target);
+      } catch (_) {}
+    }
   }
 
   public addToQueue(track: Track): void {

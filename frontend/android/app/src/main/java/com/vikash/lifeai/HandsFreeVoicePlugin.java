@@ -277,6 +277,20 @@ public class HandsFreeVoicePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setMusicPlaying(PluginCall call) {
+        boolean playing = call.getBoolean("playing", false);
+        if (HandsFreeVoiceService.isRunning()) {
+            Intent intent = new Intent(getContext(), HandsFreeVoiceService.class);
+            intent.setAction(HandsFreeVoiceService.ACTION_SET_MUSIC_PLAYING);
+            intent.putExtra(HandsFreeVoiceService.EXTRA_IS_MUSIC_PLAYING, playing);
+            getContext().startService(intent);
+        }
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
     public void checkBatteryOptimization(PluginCall call) {
         try {
             boolean isIgnoring = true;
